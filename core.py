@@ -185,7 +185,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 					'host': self.request.host,
 					'host_url': self.request.host_url,
 					'path': self.request.path,
-					'query_string': self.request.query_string
+					'query_string': self.request.query_string,
 					'hash': os.environ.get('REQUEST_ID_HASH'),
 					'namespace': _apibridge.multitenancy.get_namespace()
 					
