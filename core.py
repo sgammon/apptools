@@ -8,7 +8,6 @@ import pprint
 import random
 import hashlib
 import logging
-import slimmer
 import webapp2
 
 ## Utilities
@@ -338,7 +337,28 @@ class BaseHandler(RequestHandler, AssetsMixin):
 						self.context[k] = v
 		return
 		
-	## 5: Public methods		
+	## 5: Public methods
+	def minify(self, rendered_template):
+		
+		''' Minify rendered template output. Override for custom minification function or monkeypatch to 'unicode' to disable completely. '''
+		
+		import slimmer
+	
+		minify = unicode ## default to unicode
+		
+		# Read minification config + setup minification handler
+		if self._outputConfig.get('minify', False) is True:
+			if content_type == 'text/html':
+				minify = slimmer.html_slimmer
+			elif content_type == 'text/javascript':
+				from slimmer.js_function_slimmer import slim as slimjs
+				minify = slimjs
+			elif content_type == 'text/css':
+				minify = slimmer.css_slimmer
+				
+		return minify(rendered_template)
+		
+	
 	def render(self, path, context={}, elements={}, content_type='text/html', headers={}, **kwargs):
 
 		''' Return a response containing a rendered Jinja template. Creates a session if one doesn't exist. '''
@@ -371,19 +391,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 				raise ## in production, the show must go on...
 			else:
 				pass
-			
-		# Read minification config + setup minification handler
-		if self._outputConfig.get('minify', False) is True:
-			if content_type == 'text/html':
-				self.minify = slimmer.html_slimmer
-			elif content_type == 'text/javascript':
-				from slimmer.js_function_slimmer import slim as slimjs
-				self.minify = slimjs
-			elif content_type == 'text/css':
-				self.minify = slimmer.css_slimmer
-			else:
-				self.minify = unicode ## be careful about minifying things we don't know about...
-				
+							
 		## Bind elements
 		map(self._setcontext, elements)
 		

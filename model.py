@@ -82,63 +82,63 @@ def property_classes(flatten=False):
 	return p_list
 
 
-class _ModelPathProperty(db.StringProperty):
+class _ModelPathProperty(ldb.StringProperty):
 	
 	''' Stores the Python package import path from the application root, for lazy-load on search. '''
 
-    def __init__(self, name, **kwargs):
-        super(_ModelPathProperty, self).__init__(name=name, default=None, **kwargs)
+	def __init__(self, name, **kwargs):
+		super(_ModelPathProperty, self).__init__(name=name, default=None, **kwargs)
 
-    def __set__(self, *args):
+	def __set__(self, *args):
 		raise ldb.DerivedPropertyError('Model-path is a derived property and cannot be set.')
 
-    def __get__(self, model_instance, model_class):
-        if model_instance is None: return self
-        return model_instance._getModelPath(':')
+	def __get__(self, model_instance, model_class):
+		if model_instance is None: return self
+		return model_instance._getModelPath(':')
 
 
-class _ClassKeyProperty(db.ListProperty):
+class _ClassKeyProperty(ldb.ListProperty):
 	
 	''' Stores the polymodel class inheritance path. '''
 
-    def __init__(self, name):
-        super(_ClassKeyProperty, self).__init__(name=name,item_type=str,default=None)
+	def __init__(self, name):
+		super(_ClassKeyProperty, self).__init__(name=name,item_type=str,default=None)
 
-    def __set__(self, *args):
-        raise ldb.DerivedPropertyError('Class-key is a derived property and cannot be set.')
+	def __set__(self, *args):
+		raise ldb.DerivedPropertyError('Class-key is a derived property and cannot be set.')
 
-    def __get__(self, model_instance, model_class):
-        if model_instance is None: return self
-        return model_instance._getClassPath()
+	def __get__(self, model_instance, model_class):
+		if model_instance is None: return self
+		return model_instance._getClassPath()
 
 
 class BaseModel(object):
 
-    ''' Root, master, non-polymorphic data model. Everything lives under this class. '''
+	''' Root, master, non-polymorphic data model. Everything lives under this class. '''
 
-    def _getModelPath(self,seperator=None):
+	def _getModelPath(self,seperator=None):
 
-        path = [i for i in str(self.__module__+'.'+self.__class__.__name__).split('.')]
+		path = [i for i in str(self.__module__+'.'+self.__class__.__name__).split('.')]
 
-        if seperator is not None:
-            return seperator.join(path)
+		if seperator is not None:
+			return seperator.join(path)
 
-        return path
+		return path
 
-    def _getClassPath(self, seperator=None):
+	def _getClassPath(self, seperator=None):
 
-        if hasattr(self, '__class_hierarchy__'):
-            path = [cls.__name__ for cls in self.__class_hierarchy__]
+		if hasattr(self, '__class_hierarchy__'):
+			path = [cls.__name__ for cls in self.__class_hierarchy__]
 
-            if seperator is not None:
-                return seperator.join(path)
-            return path
-        else:
-            return []			
+			if seperator is not None:
+				return seperator.join(path)
+			return path
+		else:
+			return []			
 
 
 ## +=+=+ Metaclass controlling the creation of Providence/Clarity PolyPro objects.
-class PolymorphicModel(db.PropertiedClass):
+class PolymorphicModel(ldb.PropertiedClass):
 
 	""" Populates properties like __root_class__ and __class_hierarchy__ and enforces logic about direct instantiation. """
 
@@ -173,7 +173,7 @@ class PolymorphicModel(db.PropertiedClass):
 
 
 ## +=+=+ Customized polymorphic database model based on Google's PolyModel implementation.
-class PolyPro(Model):
+class PolyPro(ldb.Model):
 
 	"""
 
@@ -397,26 +397,26 @@ class PolyPro(Model):
 			return query
 			
 
-class Model(db.Model, BaseModel):
+class Model(ldb.Model, BaseModel):
 	
 	''' Model class for legacy datastore models. '''
 	
 	pass
 	
 	
-class Expando(db.Expando, BaseModel):
+class Expando(ldb.Expando, BaseModel):
 	
 	''' Model class for expandable (schemaless) datastore models. '''
 	
 	
-class NDBModel(ndb.Model, BaseModel):
+class NDBModel(model.Model, BaseModel):
 	
 	''' Model class for modern datastore models. '''
 	
 	pass
 	
 	
-class NDBExpando(ndb.Expando, BaseModel):
+class NDBExpando(model.Expando, BaseModel):
 	
 	''' Model class for expandable (schemaless), modern datastore models. '''
 	
