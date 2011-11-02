@@ -1,0 +1,8 @@
+*.pyc
+*.pyo
+.DS_Store
+*.DS_Store
+*.svn*
+.svn
+.hg
+*.hg*

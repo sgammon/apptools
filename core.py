@@ -10,10 +10,18 @@ import hashlib
 import logging
 import webapp2
 
-## Utilities
-from util import timesince
-from util import byteconvert
-from util import httpagentparser
+# Datastructure Imports (shamelessly borrowed from Providence/Clarity)
+from util import DictProxy
+from util import ObjectProxy
+from util import CallbackProxy
+
+# Webapp2 Imports
+from webapp2 import Request
+from webapp2 import Response
+from webapp2 import RequestHandler
+from webapp2_extras import jinja2
+from webapp2_extras.appengine import sessions_ndb
+from webapp2_extras.appengine import sessions_memcache
 
 ## Assets API Bridge
 from api.assets import AssetsMixin
@@ -31,18 +39,6 @@ except ImportError:
 	except ImportError:
 		logging.critical('No compatible JSON adapter found.')
 
-# Webapp2 Imports
-from webapp2 import Request
-from webapp2 import Response
-from webapp2 import RequestHandler
-from webapp2_extras import jinja2
-from webapp2_extras.appengine import sessions_ndb
-from webapp2_extras.appengine import sessions_memcache
-
-# Datastructure Imports (shamelessly borrowed from Providence/Clarity)
-from util import DictProxy
-from util import ObjectProxy
-from util import CallbackProxy
 
 _api_cache = {}
 
@@ -100,6 +96,17 @@ _extbridge = CallbackProxy(_loadAPIModule, {
 
 })
 
+_utilbridge = CallbackProxy(_loadAPIModule, {
+
+	''' Lazy-loaded bridge to util libs that AppTools integrates with. '''
+	
+	'wtforms': 'wtforms',
+	'timesince': ('util', 'timesince'),
+	'byteconvert': ('util', 'byteconvert'),
+	'httpagentparser': ('util', 'httpagentparser')
+
+})
+
 
 class BaseHandler(RequestHandler, AssetsMixin):
 
@@ -115,6 +122,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 	## 2: Shortcuts
 	api = _apibridge
 	ext = _extbridge
+	util = _utilbridge
 		
 	## 3: HTTP Headers included in every response
 	baseHeaders = {
@@ -137,37 +145,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		logging.info('REQUEST ENVIRON: '+str(self.request.environ))
 	
 		return {
-			
-			## Python builtins
-			'all': all, 'any': any,
-			'int': int, 'str': str,
-			'len': len, 'map': map,
-			'max': max, 'min': min,
-			'zip': zip, 'bool': bool,
-			'list': list, 'dict': dict,
-			'tuple': tuple, 'range': range,
-			'round': round, 'slice': slice,
-			'xrange': xrange, 'filter': filter,
-			'reduce': reduce, 'sorted': sorted,
-			'unicode': unicode,	'reversed': reversed,
-			'isinstance': isinstance, 'issubclass': issubclass,
-			
-			## Anchors and assets
-			'link': self.url_for,
-			'asset': {
-			
-				## Link to the Assets API
-			
-				'url': self.get_asset,			
-				'image': self.get_img_asset,
-				'style': self.get_style_asset,
-				'script': self.get_script_asset
-			
-			},
-			
-			## System stuff
-			'version': str(self._sysConfig['version']['major'])+'.'+str(self._sysConfig['version']['minor'])+' '+str(self._sysConfig['version']['release']),			
-	
+							
 			## Utility stuff
 			'util': {
 
@@ -201,22 +179,29 @@ class BaseHandler(RequestHandler, AssetsMixin):
 				
 				},
 
+				## Main Environ & Config
 				'env': os.environ,
 				'config': {
 					'get': config.config.get,
 					'debug': config.debug,
 					'project': self._projectConfig
 				},
+				
+				## Converters
 				'converters': {
 					'json': json, ## SimpleJSON or Py2.7 JSON
-					'timesince': timesince.timesince, ## Util library for "15 minutes ago"-type text from datetimes
-					'byteconvert': byteconvert.humanize_bytes ## Util library for formatting data storage amounts
+					'timesince': self.util.timesince, ## Util library for "15 minutes ago"-type text from datetimes
+					'byteconvert': self.util.byteconvert ## Util library for formatting data storage amounts
 				},
+				
+				## Rand
 				'random': {
 					'random': random.random,
 					'randint': random.randint,
 					'randrange': random.randrange
 				},
+				
+				## Other utils
 				'pprint': pprint.pprint,
 			},
 		
@@ -232,7 +217,17 @@ class BaseHandler(RequestHandler, AssetsMixin):
 				'backends': _apibridge.backends,
 				'multitenancy': _apibridge.multitenancy
 		
-			}
+			},
+
+			## flags for the page
+			'page': {
+				'ie': False, ## flag that we're serving to IE
+				'mobile': False, ## flag that we're serving to mobile
+				'appcache': { ## whether to enable HTML5 appcaching
+					'enabled': False,
+					'location': None,
+				}
+			},			
 			
 		}
 	
@@ -307,16 +302,62 @@ class BaseHandler(RequestHandler, AssetsMixin):
 			# Parse templates for every new environment instances.
 			loader = CoreOutputLoader(self._jinjaConfig.get('template_path'))
 
-		self._jinjaConfig['environment_args']['loader'] = loader
-		environment = jinja2.Jinja2(app, config=self._jinjaConfig)
+		j2cfg = self._jinjaConfig
+		j2cfg['environment_args']['loader'] = loader
+		
+		## Inject python builtins as globals, so they are available to macros
+		j2cfg['globals'] = {
+		
+			## Python builtins
+			'all': all, 'any': any,
+			'int': int, 'str': str,
+			'len': len, 'map': map,
+			'max': max, 'min': min,
+			'zip': zip, 'bool': bool,
+			'list': list, 'dict': dict,
+			'tuple': tuple, 'range': range,
+			'round': round, 'slice': slice,
+			'xrange': xrange, 'filter': filter,
+			'reduce': reduce, 'sorted': sorted,
+			'unicode': unicode,	'reversed': reversed,
+			'isinstance': isinstance, 'issubclass': issubclass,
 
+			## uri_for shortcut
+			'link': webapp2.uri_for,
+
+			## assets API
+			'asset': {
+			
+				## Link to the Assets API
+				'url': self.get_asset,		
+				'image': self.get_img_asset,
+				'style': self.get_style_asset,
+				'script': self.get_script_asset
+			
+			},
+			
+			## System stuff
+			'version': str(self._sysConfig['version']['major'])+'.'+str(self._sysConfig['version']['minor'])+' '+str(self._sysConfig['version']['release'])
+	
+		}
+		
+		## Make & return template environment
+		environment = jinja2.Jinja2(app, config=j2cfg)
 		return environment
 
-	def _bindRuntimeTemplateContext(self):
+	def _bindRuntimeTemplateContext(self, basecontext):
 
 		''' Bind variables to the template context related to the current request context. '''
 
-		raise NotImplementedError("_bindRuntimeTemplateContext is not implemented in %s." % str(self.__class__))
+		## Detect if we're handling a request from IE, and if we are, tell the template context
+		if self.uagent:
+			if self.uagent['browser']['name'] == 'MSIE':
+				basecontext['page']['ie'] = True
+			
+			if self.uagent['browser']['mobile'] == True:
+				basecontext['page']['mobile'] = True
+				
+		return basecontext
 
 	def _setcontext(self, *args, **kwargs):
 		
