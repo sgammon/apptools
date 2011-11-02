@@ -1,7 +1,8 @@
 # -*- coding: utf-8 -*-
 
 """
-Extract client information from http user agent
+**Extract client information from http user agent**
+
 The module does not try to detect all capabilities of browser in current form (it can easily be extended though).
 Aim is
     * fast

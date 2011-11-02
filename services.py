@@ -1,13 +1,13 @@
 # -*- coding: utf-8 -*-
 
-## Base imports
+# Basic imports
 import base64
 import config
 import webapp2
 import logging
 import datetime
 
-## Resolve a JSON import
+# Resolve JSON adapter
 try:
 	import json
 except ImportError:
@@ -16,52 +16,54 @@ except ImportError:
 	except ImportError:
 		import simplejson as json
 
-## ProtoRPC imports
+# ProtoRPC imports
 import protorpc
-
 from protorpc import remote
 from protorpc import protojson
 from protorpc import messages
 
+# Message imports
 from protorpc.messages import Field
 from protorpc.messages import Variant
 
+# Service handlers
 from protorpc.webapp import service_handlers
 
-## Datastructures
+# Datastructures
 from apptools.util import DictProxy
 
-## Decorator imports
+# Decorator imports
 from apptools.decorators import audit
 from apptools.decorators import caching
 from apptools.decorators import security
 
-## Extras import
+# Extras import
 from webapp2_extras import protorpc as proto
 
 
-## Service layer middleware cache
+# Service layer middleware object cache
 _middleware_cache = {}
 
 
-## Expose service flags (middleware decorators)
+## Service flags
+# Decorate remote methods with these flags to annotate them with specific policies/functionality.
 flags = DictProxy({
 
-	## Decorators related to logging/backend output
+	# Decorators related to logging/backend output
 	'audit': DictProxy({
 		'monitor': audit.Monitor,
 		'debug': audit.Debug,
 		'loglevel': audit.LogLevel,
 	}),
 	
-	## Decorators related to caching, for performance
+	# Decorators related to caching, for performance
 	'caching': DictProxy({
 		'local': caching.LocalCacheable,
 		'memcache': caching.MemCacheable,
 		'cacheable': caching.Cacheable,
 	}),
 	
-	## Decorators related to access & security
+	# Decorators related to access & security
 	'security': DictProxy({
 		'authorize': security.Authorize,
 		'authenticate': security.Authenticate,
@@ -70,6 +72,8 @@ flags = DictProxy({
 
 })
 
+## VariantField
+# A hack that allows a fully-variant field in ProtoRPC message classes.
 class VariantField(Field):
 
 	''' Field definition for a completely variant field. '''
@@ -83,7 +87,8 @@ class VariantField(Field):
 
 	type = (int, long, bool, basestring, dict, messages.Message)
 
-
+## Message Fields
+# A nice, universal mapping to all available ProtoRPC message field types.
 fields = DictProxy({
 	
 	''' Shortcut to all the available message fields. '''
@@ -100,7 +105,8 @@ fields = DictProxy({
 })
 
 
-# JSON encoder for messages
+## Custom JSON encoder
+# This class overrides an internal ProtoRPC class so that we can properly package/unpackage API requests according to apptools' **wire format**.
 class _MessageJSONEncoder(protojson._MessageJSONEncoder):
 	
 	''' Custom JSON encoder for API request & response messages. '''
@@ -133,7 +139,7 @@ class _MessageJSONEncoder(protojson._MessageJSONEncoder):
 				item = value.get_assigned_value(field.name)
 				if item not in (None, [], ()):
 					result[field.name] = self.jsonForValue(item)
-					if isinstance(item, list): ## for repeated values...
+					if isinstance(item, list): # for repeated values...
 						result[field.name] = [self.jsonForValue(x) for x in item]
 					
 			else:
@@ -160,7 +166,8 @@ class _MessageJSONEncoder(protojson._MessageJSONEncoder):
 		else:
 			return str(value)
 
-
+## AppJSONRPCMapper
+# Custom RPC mapper that properly unpacks JSONRPC requests according to apptools' **wire format**.
 class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 
 	''' Custom JSONRPC Mapper for managing JSON API requests. '''
@@ -347,7 +354,7 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 		except (messages.ValidationError, messages.DecodeError), err:
 			raise service_handlers.RequestError('Unable to parse request content: %s' % err)
 
-
+# Class for generating/preparing new RemoteService objects
 class RemoteServiceFactory(object):
 
 	@classmethod
@@ -355,8 +362,9 @@ class RemoteServiceFactory(object):
 		return service
 
 
-## Top-Level Service Class
-class RemoteService(remote.Service):
+## BaseService
+# Top-level base class for remote services classes.
+class BaseService(remote.Service):
 	
 	''' Top-level parent class for ProtoRPC-based API services. '''
 	
@@ -385,16 +393,13 @@ class RemoteService(remote.Service):
 		
 		''' Internal method for initializing a service and injecting it's config. '''
 
-		##### ==== Step 1: Copy over global, module, and service configuration ==== ####
-		
-		## Copy global config
+		# Copy over global, module, and service configuration
 		self.config['global'] = self.globalConfig
 		
-		## Module configuration
 		if hasattr(self, 'moduleConfigPath'):
 			self.config['module'] = config.config.get(getattr(self, 'moduleConfigPath', '__null__'), {})
 
-			## If we have a module + service config path, pull it from the module's branch
+			# If we have a module + service config path, pull it from the module's branch
 			if hasattr(self, 'configPath'):
 				path = getattr(self, 'configPath').split('.')
 				if len(path) > 0:
@@ -405,27 +410,27 @@ class RemoteService(remote.Service):
 					if isinstance(fragment, dict):
 						self.config['service'] = fragment
 
-		## No module configuration
+		# No module configuration
 		else:
-			## Copy over default module config
+			# Copy over default module config
 			self.config['module'] = self.config['global']['defaults']['module']
 			
-			## If we have a service config path but no module config path...
+			# If we have a service config path but no module config path...
 			if hasattr(self, 'configPath'):
-				## Try importing it as a top-level namespace
+				# Try importing it as a top-level namespace
 				toplevel = config.config.get(self.configPath, None)
 				if toplevel is None:
-					## If that doesn't work, copy it over from defaults...
+					# If that doesn't work, copy it over from defaults...
 					self.config['service'] = self.config['global']['defaults']['service']
 				else:
 					self.config['service'] = toplevel
 					
 			else:
-				## If we have nothing, copy over defaults...
+				# If we have nothing, copy over defaults...
 				self.config['service'] = self.config['global']['defaults']['service']
 				
 
-		##### ==== Step 2: Check for an initialize hook ==== ####
+		# Check for initialize hook
 		if hasattr(self, 'initialize'):
 			self.initialize()
 		
@@ -461,12 +466,13 @@ class RemoteService(remote.Service):
 		if self.handler is not None:
 			return self.handler.getflag(name)
 			
-
+## RemoteServiceHandler
+# This class is responsible for bridging a request to a remote service class, dispatching/executing to get the response, and returning it to the client.
 class RemoteServiceHandler(service_handlers.ServiceHandler):
 	
 	''' Handler for responding to remote API requests. '''
 
-	## == Request/Response Containers == ##
+	# Request/Response Containers
 	_response_envelope = {
 
 		'id': None,
@@ -476,7 +482,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 	}
 
 
-	## == Config == ##
+	# Config
 	@webapp2.cached_property
 	def servicesConfig(self):
 		
@@ -485,7 +491,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 		return config.config.get('apptools.services')
 
 
-	## == Log Management == #
+	# Log Management
 	def log(self, message):
 		
 		''' Logging shortcut. '''
@@ -504,7 +510,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 		logging.error('ServiceHandler ERROR: '+str(message))
 
 
-	## == Response Flags == ##
+	# Response Flags
 	def setflag(self, name, value):
 		
 		''' Set a flag for the response envelope, like whether the response is cached or fresh. '''
@@ -528,7 +534,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 		return self._response_envelope['flags']
 
 
-	## == Envelope Access == ##
+	# Envelope Access
 	def setstatus(self, status):
 		
 		''' Set the status of a response. Good choices would be things like 'success' and 'error'. '''
@@ -556,7 +562,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 		return self._response_envelope['id']
 
 
-	## == Middleware == ##
+	# Middleware
 	def run_post_action_middleware(self, service):
 		
 		''' Run middleware that has a hook to run _after_ a request has been fulfilled by the RemoteService class. '''
@@ -588,7 +594,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 			self.log('Middleware is none or 0.')
 
 
-	## == Remote method execution == ##
+	# Remote method execution
 	def dispatch(self, factory, service):
 		
 		''' Dispatch the remote request, and generate a response. '''
@@ -597,7 +603,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 		self._ServiceHandler__factory = factory
 		self._ServiceHandler__service = service
 
-		## Link the service and handler both ways so we can pass stuff back and forth
+		# Link the service and handler both ways so we can pass stuff back and forth
 		service.handler = self
 
 		request = self.request
@@ -620,7 +626,8 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 				# Again, now a protected method.
 				self._ServiceHandler__show_info(service_path, remote_method)
 				
-				
+## RemoteServiceHandlerFactory
+# Over here, we're responsible for creating and preparing remote service handlers, which dispatch a request to a service class.
 class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
 	''' Factory for preparing ServiceHandlers. '''
@@ -658,7 +665,9 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
 		factory.add_request_mapper(service_handlers.ProtobufRPCMapper())
 		factory.add_request_mapper(service_handlers.URLEncodedRPCMapper())
-		factory.add_request_mapper(dialects.jsonrpc.AppJSONRPCMapper()) # <-- our nifty mapper, for correctly interpreting & providing our envelope schema
+
+		# our nifty mapper, for correctly interpreting & providing our envelope schema
+		factory.add_request_mapper(dialects.jsonrpc.AppJSONRPCMapper())
 
 		return factory
 
@@ -669,14 +678,14 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 		global _middleware_cache
 		global_debug = config.debug
 
-		## Extract response
+		# Extract response
 		response = request.response
 
-		## Manufacture service + handler
+		# Manufacture service + handler
 		service = self.service_factory()
 		service._initializeRemoteService()
 
-		## Consider service middleware
+		# Consider service middleware
 		middleware = self.servicesConfig.get('middleware', False)
 		if middleware is not False and len(middleware) > 0:
 

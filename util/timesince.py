@@ -2,6 +2,19 @@
 
 import datetime
 
+"""
+Takes two datetime objects and returns the time between d and now
+as a nicely formatted string, e.g. "10 minutes".  If d occurs after now,
+then "0 minutes" is returned.
+
+Units used are years, months, weeks, days, hours, and minutes.
+Seconds and microseconds are ignored.  Up to two adjacent units will be
+displayed.  For example, "2 weeks, 3 days" and "1 year, 3 months" are
+possible outputs, but "2 weeks, 3 hours" and "1 year, 5 days" are not.
+
+Adapted from [http://blog.natbat.co.uk/archive/2003/Jun/14/time_since](http://blog.natbat.co.uk/archive/2003/Jun/14/time_since)
+"""
+
 def getword(singular, plural, n):
 	
 	if n == 1:
@@ -10,18 +23,6 @@ def getword(singular, plural, n):
 		return plural
 
 def timesince(d, now=None):
-    """
-    Takes two datetime objects and returns the time between d and now
-    as a nicely formatted string, e.g. "10 minutes".  If d occurs after now,
-    then "0 minutes" is returned.
-
-    Units used are years, months, weeks, days, hours, and minutes.
-    Seconds and microseconds are ignored.  Up to two adjacent units will be
-    displayed.  For example, "2 weeks, 3 days" and "1 year, 3 months" are
-    possible outputs, but "2 weeks, 3 hours" and "1 year, 5 days" are not.
-
-    Adapted from http://blog.natbat.co.uk/archive/2003/Jun/14/time_since
-    """
     chunks = (
       (60 * 60 * 24 * 365, lambda n: getword('year', 'years', n)),
       (60 * 60 * 24 * 30, lambda n: getword('month', 'months', n)),

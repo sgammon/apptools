@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-## Base Imports
+# Base Imports
 import os
 import ndb
 import config
@@ -10,12 +10,27 @@ import hashlib
 import logging
 import webapp2
 
-# Datastructure Imports (shamelessly borrowed from Providence/Clarity)
+# Useful Datastructures
 from util import DictProxy
 from util import ObjectProxy
 from util import CallbackProxy
+from util import _loadAPIModule
 
-# Webapp2 Imports
+# Resolve a valid JSON adapter
+try:
+	import json
+except ImportError:
+	try:
+		import simplejson as json
+	except ImportError:
+		try:
+			from django.utils import simplejson as json
+		except ImportError:
+			logging.critical('No compatible JSON adapter found.')
+
+
+## Webapp2
+# AppTools uses [Webapp2](webapp-improved.appspot.com) for WSGI internals, session handling, request dispatching, and much more.
 from webapp2 import Request
 from webapp2 import Response
 from webapp2 import RequestHandler
@@ -23,49 +38,26 @@ from webapp2_extras import jinja2
 from webapp2_extras.appengine import sessions_ndb
 from webapp2_extras.appengine import sessions_memcache
 
-## Assets API Bridge
+## Assets API
+# AppTools includes an [asset management API](api/assets.html) for easily outputting links to static content.
+from api import assets
 from api.assets import AssetsMixin
 
-## Output Components
+## Output API
+# AppTools includes an [integrated output API](api/output.html) for easily loading and executing Jinja2 templates.
+# The output loader **automatically defaults to compiled templates** when running in production.
+from api import output
 from api.output import ModuleLoader
 from api.output import CoreOutputLoader
 
-## Resolve JSON Adapter
-try:
-	import json
-except ImportError:
-	try:
-		import simplejson as json
-	except ImportError:
-		logging.critical('No compatible JSON adapter found.')
 
-
-_api_cache = {}
-
-
-def _loadAPIModule(entry):
-	
-	''' Callback to lazy-load an API module in tuple(path, item) format. '''
-	
-	global _api_cache
-
-	if entry not in _api_cache:
-		if isinstance(entry, tuple):
-			path, name = entry
-			mod = __import__(path, globals(), locals(), [name])
-			_api_cache[entry] = getattr(mod, name)
-		elif isinstance(entry, basestring):
-			mod = __import__(entry, globals(), locals(), ['*'])
-			_api_cache[entry] = mod
-		else:
-			logging.error('Lazyloader failed to resolve module for shortcut: "'+str(entry)+'".')
-			raise ImportError, "Could not resolve module for entry '"+str(entry)+"'."
-		
-	return _api_cache[entry]
-	
+## AppEngine API Bridge
+# Lazy-loaded access to services, accessible from any apptools-based remote service, handler, model class or pipeline.
+# Access this bridge from any class that extends BaseHandler, BaseService, BasePipeline or BaseModel via `self.api`.
+"""
+Example: `self.api.memcache.get(<samplekey>)`
+"""
 _apibridge = CallbackProxy(_loadAPIModule, {
-
-	''' Lazy-loaded bridge to AppEngine API services. '''
 
 	'db': ('google.appengine.ext', 'db'),
 	'xmpp': ('google.appengine.api', 'xmpp'),
@@ -86,19 +78,26 @@ _apibridge = CallbackProxy(_loadAPIModule, {
 
 })
 
+## AppEngine Libraries Bridge
+# Lazy-loaded bridge to common GAE libraries, with
+# [NDB](http://code.google.com/p/appengine-ndb-experiment/),
+# [Map/Reduce](http://code.google.com/p/appengine-mapreduce/), and
+# [Pipelines](http://code.google.com/p/appengine-pipeline/) built in
 _extbridge = CallbackProxy(_loadAPIModule, {
 
-	''' Lazy-loaded bridge to useful AppEngine libs. '''
-
 	'ndb': 'ndb',
-	'pipelines': 'pipeline',
+	'pipelines': 'pipeline', 
 	'mapreduce': 'mapreduce',
 
 })
 
+## Utility Library Bridge
+# Lazy-loaded bridge to useful utility libraries, with
+# [WTForms](http://wtforms.simplecodes.com/),
+# [timesince](util/timesince.html),
+# [byteconvert](util/byteconvert.html), and
+# [httpagentparser](util/httpagentparser.html) built in
 _utilbridge = CallbackProxy(_loadAPIModule, {
-
-	''' Lazy-loaded bridge to util libs that AppTools integrates with. '''
 	
 	'wtforms': 'wtforms',
 	'timesince': ('util', 'timesince'),
@@ -107,27 +106,26 @@ _utilbridge = CallbackProxy(_loadAPIModule, {
 
 })
 
-
+## BaseHandler
+# Base request handler class, with shortcuts, utilities, and base template context
 class BaseHandler(RequestHandler, AssetsMixin):
 
 	''' Top-level parent class for request handlers in AppTools. '''
 	
-	## 1: Class variables
+	# Class Properties
 	configPath = 'apptools.project'
 	minify = unicode
 	response = Response
 	context = {}
 	uagent = {}
 	
-	## 2: Shortcuts
+	# Bridge shortcuts
 	api = _apibridge
 	ext = _extbridge
 	util = _utilbridge
 		
-	## 3: HTTP Headers included in every response
+	# Base HTTP Headers
 	baseHeaders = {
-	
-		''' HTTP headers added to every response (override via headers kwarg on `render`). '''
 		
 		'Cache-Control': 'no-cache', # Stop caching of responses from Python, by default
 		'X-Platform': 'AppTools/ProvidenceClarity-Embedded', # Indicate the platform that is serving this request
@@ -136,21 +134,17 @@ class BaseHandler(RequestHandler, AssetsMixin):
 
 	}
 	
-	## 4: Base template context
+	# Base template context - available to every template except macros (for that, see template globals)
 	@webapp2.cached_property
 	def baseContext(self):
 		
-		''' Base template context - available to every template at runtime. '''	
-	
-		logging.info('REQUEST ENVIRON: '+str(self.request.environ))
-	
+		''' Base template context - available to every template at runtime. '''
+
 		return {
 							
-			## Utility stuff
-			'util': {
+			'util': { # Utility stuff
 
-				## Request Information
-				'request': {
+				'request': { # Request Object
 			
 					'env': self.request.environ,
 					'body': self.request.body,
@@ -168,8 +162,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 					
 				},
 				
-				## App Information
-				'appengine': {
+				'appengine': { # App Information
 				
 					'instance': os.environ.get('INSTANCE_ID'),
 					'current_version': os.environ.get('CURRENT_VERSION_ID'),
@@ -179,34 +172,29 @@ class BaseHandler(RequestHandler, AssetsMixin):
 				
 				},
 
-				## Main Environ & Config
-				'env': os.environ,
-				'config': {
+				'env': os.environ, # Main Environ
+				'config': { # Main Config
 					'get': config.config.get,
 					'debug': config.debug,
 					'project': self._projectConfig
 				},
 				
-				## Converters
-				'converters': {
-					'json': json, ## SimpleJSON or Py2.7 JSON
-					'timesince': self.util.timesince, ## Util library for "15 minutes ago"-type text from datetimes
-					'byteconvert': self.util.byteconvert ## Util library for formatting data storage amounts
+				'converters': {	# Converters
+					'json': json, # SimpleJSON or Py2.7 JSON
+					'timesince': self.util.timesince, # Util library for "15 minutes ago"-type text from datetimes
+					'byteconvert': self.util.byteconvert # Util library for formatting data storage amounts
 				},
 				
-				## Rand
-				'random': {
+				'random': { # Random
 					'random': random.random,
 					'randint': random.randint,
 					'randrange': random.randrange
 				},
 				
-				## Other utils
 				'pprint': pprint.pprint,
 			},
 		
-			## API Shortcuts
-			'api': {
+			'api': { # API Shortcuts
 		
 				'users': {
 					'is_current_user_admin': _apibridge.users.is_current_user_admin,
@@ -219,11 +207,10 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		
 			},
 
-			## flags for the page
-			'page': {
-				'ie': False, ## flag that we're serving to IE
-				'mobile': False, ## flag that we're serving to mobile
-				'appcache': { ## whether to enable HTML5 appcaching
+			'page': { # Page flags
+				'ie': False, # when set to True, will serve an (ie.css)[assets/style/source/ie.html] stylesheet
+				'mobile': False, # when set to True, will serve a (mobile.css)[assets/style/source/mobile.html] stylesheet
+				'appcache': { # enable/disable HTML5 appcaching
 					'enabled': False,
 					'location': None,
 				}
@@ -232,55 +219,23 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		}
 	
 
-	## 5: Internal methods
 	def dispatch(self):
 		
 		''' Sniff the Uagent header, then pass off to Webapp2. '''
 		
-		# Parse useragent
+		# Sniff Uagent
 		if self.request.headers.get('User-Agent', None) is not None:
 			try:
+				# Pass through httpagentparser
 				self.uagent = httpagentparser.detect(self.request.headers.get('User-Agent'))
 			except Exception, e:
 				logging.warning('Exception encountered parsing uagent: '+str(e))
 				pass
+		
+		# Dispatch method (GET/POST/etc.)
 		return super(BaseHandler, self).dispatch()
-	
-	@webapp2.cached_property
-	def config(self):
-		
-		''' Cached shortcut to global config. '''
-		
-		return config.config
 
-	@webapp2.cached_property
-	def _sysConfig(self):
-		
-		''' Cached shortcut to handler config. '''
-		
-		return self.config.get(self.configPath)
-
-	@webapp2.cached_property
-	def _outputConfig(self):
-		
-		''' Cached shortcut to output config. '''
-		
-		return self.config.get(self.configPath+'.output')
-		
-	@webapp2.cached_property
-	def _projectConfig(self):
-		
-		''' Cached shortcut to project config. '''
-		
-		return self.config.get('apptools.project')
-
-	@webapp2.cached_property
-	def _jinjaConfig(self):
-		
-		''' Cached shortcut to Jinja2 config. '''
-		
-		return self.config.get('webapp2_extras.jinja2')
-
+	# Cached access to Jinja2
 	@webapp2.cached_property
 	def jinja2(self):
 		
@@ -288,6 +243,8 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		
 		return jinja2.get_jinja2(app=self.app, factory=self.jinja2EnvironmentFactory)
 		
+	
+	# Returns a prepared Jinja2 environment.
 	def jinja2EnvironmentFactory(self, app):
 
 		''' Returns a prepared Jinja2 environment. '''
@@ -299,16 +256,16 @@ class BaseHandler(RequestHandler, AssetsMixin):
 			# Use precompiled templates loaded from a module or zip.
 			loader = ModuleLoader(templates_compiled_target)
 		else:
-			# Parse templates for every new environment instances.
 			loader = CoreOutputLoader(self._jinjaConfig.get('template_path'))
 
 		j2cfg = self._jinjaConfig
 		j2cfg['environment_args']['loader'] = loader
 		
-		## Inject python builtins as globals, so they are available to macros
+		# Inject python builtins as globals, so they are available to macros
+		
+		# **Ever wanted your favorite Python builtins available in your template?** Look ma!
 		j2cfg['globals'] = {
 		
-			## Python builtins
 			'all': all, 'any': any,
 			'int': int, 'str': str,
 			'len': len, 'map': map,
@@ -322,13 +279,10 @@ class BaseHandler(RequestHandler, AssetsMixin):
 			'unicode': unicode,	'reversed': reversed,
 			'isinstance': isinstance, 'issubclass': issubclass,
 
-			## uri_for shortcut
-			'link': webapp2.uri_for,
+			'link': webapp2.uri_for, # Standalone uri_for shortcut
 
-			## assets API
-			'asset': {
+			'asset': { # Bridge to the Assets API
 			
-				## Link to the Assets API
 				'url': self.get_asset,		
 				'image': self.get_img_asset,
 				'style': self.get_style_asset,
@@ -336,20 +290,19 @@ class BaseHandler(RequestHandler, AssetsMixin):
 			
 			},
 			
-			## System stuff
 			'version': str(self._sysConfig['version']['major'])+'.'+str(self._sysConfig['version']['minor'])+' '+str(self._sysConfig['version']['release'])
 	
 		}
 		
-		## Make & return template environment
-		environment = jinja2.Jinja2(app, config=j2cfg)
+		environment = jinja2.Jinja2(app, config=j2cfg) # Make & return template environment
 		return environment
 
+	# Bind runtime template context variables (overridden in sub handlers to allow injection into the template context)
 	def _bindRuntimeTemplateContext(self, basecontext):
 
 		''' Bind variables to the template context related to the current request context. '''
 
-		## Detect if we're handling a request from IE, and if we are, tell the template context
+		# Detect if we're handling a request from IE, and if we are, tell the template context
 		if self.uagent:
 			if self.uagent['browser']['name'] == 'MSIE':
 				basecontext['page']['ie'] = True
@@ -378,7 +331,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 						self.context[k] = v
 		return
 		
-	## 5: Public methods
+	# Minify
 	def minify(self, rendered_template):
 		
 		''' Minify rendered template output. Override for custom minification function or monkeypatch to 'unicode' to disable completely. '''
@@ -399,7 +352,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 				
 		return minify(rendered_template)
 		
-	
+	# Render a template, given a context, with Jinja2
 	def render(self, path, context={}, elements={}, content_type='text/html', headers={}, **kwargs):
 
 		''' Return a response containing a rendered Jinja template. Creates a session if one doesn't exist. '''
@@ -433,15 +386,51 @@ class BaseHandler(RequestHandler, AssetsMixin):
 			else:
 				pass
 							
-		## Bind elements
+		# Bind elements
 		map(self._setcontext, elements)
 		
-		## Render template and write
+		# Render template and write
 		self.response.write(self.minify(self.jinja2.render_template(path, **self.context)))
 		
-		## Set response headers & content type
+		# Set response headers & content type
 		self.response.headers = [(key, value) for key, value in response_headers.items()]
 		self.response.content_type = content_type
 		
-		## Finished!
+		# Finished!
 		return
+
+	## Config Shortcuts
+	@webapp2.cached_property
+	def config(self):		
+
+		''' Cached shortcut to global config '''
+
+		return config.config
+
+	@webapp2.cached_property
+	def _sysConfig(self):
+
+		''' Cached shortcut to handler config. '''
+
+		return self.config.get(self.configPath)
+
+	@webapp2.cached_property
+	def _outputConfig(self):
+
+		''' Cached shortcut to output config. '''
+
+		return self.config.get(self.configPath+'.output')
+
+	@webapp2.cached_property
+	def _projectConfig(self):
+
+		''' Cached shortcut to project config. '''
+
+		return self.config.get('apptools.project')
+
+	@webapp2.cached_property
+	def _jinjaConfig(self):
+
+		''' Cached shortcut to Jinja2 config. '''
+
+		return self.config.get('webapp2_extras.jinja2')
