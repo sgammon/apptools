@@ -118,7 +118,7 @@ class MemCacheable(RemoteMethodDecorator):
 ## Security Flags
 
 # Specify that a remote service client cannot be on a blacklist in order to execute successfully.
-class Blacklist(ServiceFlag):
+class Blacklist(RemoteMethodDecorator):
 	
 	""" Indicate that a remote method must be matched against a blacklist. """
 	
@@ -126,7 +126,7 @@ class Blacklist(ServiceFlag):
 		return self.execute_remote()
 
 # Specify that a remote service client must be on a whitelist in order to execute successfully.
-class Blacklist(ServiceFlag):
+class Blacklist(RemoteMethodDecorator):
 
 	""" Indicate that a remote method must be matched against a whitelist. """
 
@@ -134,7 +134,7 @@ class Blacklist(ServiceFlag):
 		return self.execute_remote()		
 
 # Specify that a remote service client must authorize via an ACL or other grouping of users.
-class Authorize(ServiceFlag):
+class Authorize(RemoteMethodDecorator):
 	
 	""" Indicate that a remote method requires authorization. """
 
@@ -142,7 +142,7 @@ class Authorize(ServiceFlag):
 		return self.execute_remote()
 
 # Specify that a remote service client must authenticate before executing remote methods.
-class Authenticate(ServiceFlag):
+class Authenticate(RemoteMethodDecorator):
 
 	""" Indicate that a remote method requires authentication. """
 
@@ -150,7 +150,7 @@ class Authenticate(ServiceFlag):
 		return self.execute_remote()
 
 # Specify that a remote service method can be run by AppEngine-registered admins only.
-class AdminOnly(ServiceFlag):
+class AdminOnly(RemoteMethodDecorator):
 
 	""" Indicate that a remote method requires an admin to be logged in. """
 

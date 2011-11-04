@@ -21,9 +21,9 @@ from config import config
 from webapp2 import cached_property
 
 ## Momentum Imports
-from apptools import AppException
 from apptools.api import CoreAPI
 from apptools.api import HandlerMixin
+from apptools.exceptions import AppException
 
 from apptools.api.output import CoreOutputAPIException
 

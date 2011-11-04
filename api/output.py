@@ -36,7 +36,7 @@ from os import path
 from os.path import getmtime
 
 ## AppTools
-from apptools import AppException
+from apptools.exceptions import AppException
 
 ## Webapp2 Imports
 from webapp2 import cached_property
