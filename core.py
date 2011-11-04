@@ -100,9 +100,9 @@ _extbridge = CallbackProxy(_loadAPIModule, {
 _utilbridge = CallbackProxy(_loadAPIModule, {
 	
 	'wtforms': 'wtforms',
-	'timesince': ('util', 'timesince'),
-	'byteconvert': ('util', 'byteconvert'),
-	'httpagentparser': ('util', 'httpagentparser')
+	'timesince': ('apptools.util', 'timesince'),
+	'byteconvert': ('apptools.util', 'byteconvert'),
+	'httpagentparser': ('apptools.util', 'httpagentparser')
 
 })
 
