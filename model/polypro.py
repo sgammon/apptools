@@ -227,31 +227,5 @@ class PolyPro(ldb.Model):
 			query.bind(*args, **kwds)
 			return query
 			
-
-class Model(ldb.Model, BaseModel):
-	
-	''' Model class for legacy datastore models. '''
-	
-	pass
-	
-	
-class Expando(ldb.Expando, BaseModel):
-	
-	''' Model class for expandable (schemaless) datastore models. '''
-	
-	
-class NDBModel(model.Model, BaseModel):
-	
-	''' Model class for modern datastore models. '''
-	
-	pass
-	
-	
-class NDBExpando(model.Expando, BaseModel):
-	
-	''' Model class for expandable (schemaless), modern datastore models. '''
-	
-	pass
-	
-	
+			
 Polymodel = PolyPro
