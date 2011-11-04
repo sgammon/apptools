@@ -23,6 +23,16 @@ datastore.
 
 from apptools.model import ldb, _ModelPathProperty, _ClassKeyProperty
 
+# Internal settings
+_LOG_IMPORTS = True
+_PATH_SEPERATOR = ':'
+_KEY_NAME_SEPERATOR = '//'
+
+_PATH_KEY_PROPERTY	= '_path_'
+_CLASS_KEY_PROPERTY = '_class_'
+
+_class_map = {}
+
 # Carryover from appengine.ext.db
 class PolymorphicModel(ldb.PropertiedClass):
 

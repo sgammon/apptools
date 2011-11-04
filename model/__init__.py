@@ -13,16 +13,6 @@ from google.appengine.ext import blobstore
 from google.appengine.api import datastore_types
 from google.appengine.api import datastore_errors
 
-# Internal settings
-_LOG_IMPORTS = True
-_PATH_SEPERATOR = ':'
-_KEY_NAME_SEPERATOR = '//'
-
-_PATH_KEY_PROPERTY	= '_path_'
-_CLASS_KEY_PROPERTY = '_class_'
-
-_class_map = {}
-
 
 ## Property Classes
 
@@ -113,9 +103,9 @@ class _ClassKeyProperty(ldb.ListProperty):
 		if model_instance is None: return self
 		return model_instance._getClassPath()
 
-## BaseModel
-# This is the root base model for all AppTools-based models.
-class BaseModel(object):
+## _AppToolsModel
+# This model class mixes in a few utilities to all submodels.
+class _AppToolsModel(object):
 
 	''' Root, master, non-polymorphic data model. Everything lives under this class. '''
 
@@ -138,3 +128,28 @@ class BaseModel(object):
 			return path
 		else:
 			return []
+			
+
+## AppTools Model
+# This is the root base model for all AppTools-based models.
+class BaseModel(_AppToolsModel, ldb.Model):
+	
+	''' This is the root base model for all AppTools-based models. '''
+
+## NDBModel
+# This is the root base model for all NDB-based models.
+class NDBModel(_AppToolsModel, model.Model):
+	
+	''' This is the root base model for all NDB-based models '''
+	
+## BaseExpando
+# This is the root base expando for all expando-based models.
+class BaseExpando(_AppToolsModel, ldb.Expando):
+
+	''' This is the root base model for all AppTools-based expandos. '''
+	
+## NDBExpando
+# This is the root base expando for all NDB-based expandos.
+class NDBExpando(_AppToolsModel, model.Expando):
+	
+	''' This is the root base model for all NDB & Expando-based models. '''
