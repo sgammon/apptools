@@ -235,6 +235,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		# Dispatch method (GET/POST/etc.)
 		return super(BaseHandler, self).dispatch()
 
+
 	# Cached access to Jinja2
 	@webapp2.cached_property
 	def jinja2(self):
@@ -292,8 +293,10 @@ class BaseHandler(RequestHandler, AssetsMixin):
 
 			'util': {
 				'converters': {
-				 	'json': json
-				}	
+					'json': json
+				},
+				'api': _apibridge,
+				'ext': _extbridge
 			},
 			
 			'sys': {
@@ -312,14 +315,82 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		''' Bind variables to the template context related to the current request context. '''
 
 		# Detect if we're handling a request from IE, and if we are, tell the template context
-		if self.uagent:
+		context['page'] = {
+		
+			'ie': False, ## are we serving to IE?
+			'mobile': False, ## are we serving to mobile?
+			'appcache': {
+				'enabled': False, ## enable/disable appcaching
+				'location': None, ## location for appcache manifest
+			},
+			'services': {
+				'services_manifest': self.make_services_manifest(),
+				'global_config': self._globalServicesConfig
+			}, ## enable API services
+		
+		}
+		
+		if self.uagent is not None and len(self.uagent) > 0:
+			## Detect if we're handling a request from IE, and if we are, tell the template context
 			if self.uagent['browser']['name'] == 'MSIE':
-				basecontext['page']['ie'] = True
-			
-			if self.uagent['browser']['mobile'] == True:
-				basecontext['page']['mobile'] = True
-				
-		return basecontext
+				context['page']['ie'] = True
+		
+		return context
+
+	
+	def make_services_manifest(self):
+
+		''' Generate a struct we can pass to the page in JSON that describes API services. ''' 
+
+		## Generate list of services to expose to user
+		svcs = []
+		opts = {}
+
+		jsapi_cache = self.api.memcache.get('apptools//services_manifest')
+		if jsapi_cache is not None:
+			return jsapi_cache
+		else:
+			for name, config in self._servicesConfig['services'].items():
+				if config['enabled'] is True:
+
+					security_profile = self._globalServicesConfig['middleware_config']['security']['profiles'].get(config['config']['security'], None)
+
+					caching_profile = self._globalServicesConfig['middleware_config']['caching']['profiles'].get(config['config']['caching'], None)
+
+					if security_profile is None:
+
+						## Pull default profile if none is specified
+						security_profile = self._globalServicesConfig['middleware_config']['security']['profiles'][self._globalServicesConfig['defaults']['service']['config']['security']]
+
+					if caching_profile is None:
+						caching_profile = self._globalServicesConfig['middleware_config']['caching']['profiles'][self._globalServicesConfig['defaults']['service']['config']['caching']]
+
+					## Add caching to local opts
+					opts['caching'] = caching_profile['activate'].get('local', False)
+
+					## Grab prefix
+					service_action = self._servicesConfig['config']['url_prefix'].split('/')
+
+					## Add service name
+					service_action.append(name)
+
+					## Join into endpoint URL
+					service_action_url = '/'.join(service_action)
+
+					## Expose depending on security profile
+					if security_profile['expose'] == 'all':
+						svcs.append((name, service_action_url, config, opts))
+
+					elif security_profile['expose'] == 'admin':
+						if users.is_current_user_admin():
+							svcs.append((name, service_action_url, config, opts))
+
+					elif security_profile['expose'] == 'none':
+						continue
+
+			self.api.memcache.set('apptools//services_manifest', svcs)
+			return svcs
+
 
 	def _setcontext(self, *args, **kwargs):
 		
@@ -415,6 +486,20 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		''' Cached shortcut to global config '''
 
 		return config.config
+
+	@webapp2.cached_property
+	def _globalServicesConfig(self):
+
+		''' Cached shortcut to the global services config. '''
+		
+		return config.config.get('apptools.services') 
+
+	@webapp2.cached_property
+	def _servicesConfig(self):
+
+		''' Cached shortcut to the project services config. '''
+
+		return config.config.get('apptools.project.services')
 
 	@webapp2.cached_property
 	def _sysConfig(self):
