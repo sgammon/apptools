@@ -310,7 +310,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		return environment
 
 	# Bind runtime template context variables (overridden in sub handlers to allow injection into the template context)
-	def _bindRuntimeTemplateContext(self, basecontext):
+	def _bindRuntimeTemplateContext(self, context):
 
 		''' Bind variables to the template context related to the current request context. '''
 
