@@ -5,9 +5,6 @@ import os
 import logging
 import hashlib
 
-# Core APIs
-from apptools.api.cache import CoreCacheAPI
-
 ## ServiceGatewayMiddleware
 # This base class is for middleware that must be executed before or after a remote service method.
 class ServiceGatewayMiddleware(object):
@@ -78,7 +75,7 @@ class CachingMiddleware(ServiceGatewayMiddleware):
 		if 'caching' in service.config.get('service').get('config', []):
 			self.profile = self.config['middleware_config']['caching']['profiles'][service.config['service']['config']['caching']]
 
-			if self.profile['activate']['internal'] is True or self.profile['activate']['response'] is True:
+			if self.profile['activate']['internal'] is True:
 				self.key = self.generateKey(service, request, self.profile.get('localize', False))
 				service._setstate('cache_key', self.key)
 
@@ -108,6 +105,6 @@ class AuthorizationMiddleware(ServiceGatewayMiddleware):
 
 	""" Middleware for enforcing the policy that a user must be part of a group or have a certain privilege. """
 
-	def before_request(self, service, request, response):		
-		
-		return (service, request, response)
+ 	def before_request(self, service, request, response):		
+ 	                                                     	
+ 	    return (service, request, response)

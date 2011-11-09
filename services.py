@@ -29,6 +29,10 @@ from protorpc.messages import Variant
 # Service handlers
 from protorpc.webapp import service_handlers
 
+# Lazy-loaded shortcut bridges
+from apptools.core import _apibridge
+from apptools.core import _extbridge
+
 # Datastructures
 from apptools.util import DictProxy
 
@@ -103,7 +107,6 @@ fields = DictProxy({
 	'String': messages.StringField
 	
 })
-
 
 ## Custom JSON encoder
 # This class overrides an internal ProtoRPC class so that we can properly package/unpackage API requests according to apptools' **wire format**.
@@ -226,7 +229,7 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 
 			'flags': wrap['flags'],
 			'platform': {
-				'name': 'AppTools',
+				'name': config.config.get('apptools.project').get('name', 'AppTools'),
 				'version': '.'.join(map(lambda x: str(x), [sysconfig['version']['major'], sysconfig['version']['minor'], sysconfig['version']['micro']])),
 				'build': sysconfig['version']['build'],
 				'release': sysconfig['version']['release'],
@@ -239,7 +242,7 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 	def decode_request(self, message_type, dictionary):
 		
 		''' Decode a request. '''
-
+		
 		def decode_dictionary(message_type, dictionary):
 			
 			''' Decode a dictionary of items (recursive). '''
@@ -368,10 +371,17 @@ class BaseService(remote.Service):
 	
 	''' Top-level parent class for ProtoRPC-based API services. '''
 	
+	# General stuff
 	handler = None
 	middleware = {}
+	
+	# State + config
 	state = {'request': {}, 'opts': {}, 'service': {}}
 	config = {'global': {}, 'module': {}, 'service': {}}
+	
+	# Bridged shortcuts
+	api = _apibridge
+	_ext = _extbridge
 
 	@webapp2.cached_property
 	def globalConfig(self):
@@ -381,7 +391,7 @@ class BaseService(remote.Service):
 		return config.config.get('apptools.services')
 		
 	def __init__(self, *args, **kwargs):
-		super(RemoteService, self).__init__(*args, **kwargs)
+		super(BaseService, self).__init__(*args, **kwargs)
 		
 	def initiate_request_state(self, state):
 		
@@ -607,6 +617,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 		service.handler = self
 
 		request = self.request
+		
 		request_method = request.method
 		method = getattr(self, request_method.lower(), None)
 
@@ -663,11 +674,11 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
 		factory = cls(service_factory)
 
+		# our nifty mapper, for correctly interpreting & providing our envelope schema
+		factory.add_request_mapper(AppJSONRPCMapper())
+		
 		factory.add_request_mapper(service_handlers.ProtobufRPCMapper())
 		factory.add_request_mapper(service_handlers.URLEncodedRPCMapper())
-
-		# our nifty mapper, for correctly interpreting & providing our envelope schema
-		factory.add_request_mapper(dialects.jsonrpc.AppJSONRPCMapper())
 
 		return factory
 
@@ -721,7 +732,7 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 		else:
 			self.log('Middleware was none or 0.')
 
-		service_handler = RemoteServiceFactory.new(handler.RemoteServiceHandler(self, service))
+		service_handler = RemoteServiceFactory.new(RemoteServiceHandler(self, service))
 		service_handler.request = request
 		service_handler.response = response
 

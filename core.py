@@ -227,7 +227,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		if self.request.headers.get('User-Agent', None) is not None:
 			try:
 				# Pass through httpagentparser
-				self.uagent = httpagentparser.detect(self.request.headers.get('User-Agent'))
+				self.uagent = self.util.httpagentparser.detect(self.request.headers.get('User-Agent'))
 			except Exception, e:
 				logging.warning('Exception encountered parsing uagent: '+str(e))
 				pass
@@ -289,8 +289,17 @@ class BaseHandler(RequestHandler, AssetsMixin):
 				'script': self.get_script_asset
 			
 			},
+
+			'util': {
+				'converters': {
+				 	'json': json
+				}	
+			},
 			
-			'version': str(self._sysConfig['version']['major'])+'.'+str(self._sysConfig['version']['minor'])+' '+str(self._sysConfig['version']['release'])
+			'sys': {
+				'debug': config.debug,
+				'version':	str(self._sysConfig['version']['major'])+'.'+str(self._sysConfig['version']['minor'])+' '+str(self._sysConfig['version']['release'])
+			}
 	
 		}
 		
