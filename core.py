@@ -148,6 +148,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 			'reduce': reduce, 'sorted': sorted,
 			'unicode': unicode,	'reversed': reversed,
 			'isinstance': isinstance, 'issubclass': issubclass,
+			'enumerate': enumerate,
 
 			'link': webapp2.uri_for, # Standalone uri_for shortcut
 
@@ -206,7 +207,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 				
 				'converters': {	# Converters
 				               	'json': json, # SimpleJSON or Py2.7 JSON
-				               	'timesince': self.util.timesince, # Util library for "15 minutes ago"-type text from datetimes
+				               	'timesince': self.util.timesince.timesince, # Util library for "15 minutes ago"-type text from datetimes
 				               	'byteconvert': self.util.byteconvert # Util library for formatting data storage amounts
 				},
 				
