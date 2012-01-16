@@ -116,16 +116,20 @@ class BaseHandler(RequestHandler, AssetsMixin):
 	api = _apibridge
 	ext = _extbridge
 	util = _utilbridge
-		
-	# Base HTTP Headers
-	baseHeaders = {
-		
-		'Cache-Control': 'no-cache', # Stop caching of responses from Python, by default
-		'X-Platform': 'AppTools/ProvidenceClarity-Embedded', # Indicate the platform that is serving this request
-		'X-Powered-By': 'Google App Engine/1.5.5-prerelease', # Indicate the SDK version
-		'X-UA-Compatible': 'IE=edge,chrome=1' # Enable compatibility with Chrome Frame, and force IE to render with the latest engine
 
-	}
+
+	# Base HTTP Headers
+	@webapp2.cached_property
+	def baseHeaders(self):
+		return {
+		
+			'Cache-Control': 'no-cache', # Stop caching of responses from Python, by default
+			'X-Platform': 'AppTools/ProvidenceClarity-Embedded', # Indicate the platform that is serving this request
+			'X-Powered-By': 'Google App Engine/1.5.5-prerelease', # Indicate the SDK version
+			'X-UA-Compatible': 'IE=edge,chrome=1' # Enable compatibility with Chrome Frame, and force IE to render with the latest engine
+			'Access-Control-Allow-Origin': '*' # Allows Javascript served by local site to access data/scripts from any origin
+
+		}
 	
 	# Base template context - available to every template except macros (for that, see template globals)
 	@webapp2.cached_property
