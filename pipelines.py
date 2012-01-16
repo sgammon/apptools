@@ -9,5 +9,5 @@ else:
 
 	## BasePipeline
 	# This base class provides pipeline utilities.
-	class BasePipeline(object):
+	class BasePipeline(pipeline.Pipeline):
 		pass

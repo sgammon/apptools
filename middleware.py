@@ -36,7 +36,19 @@ class MonitoringMiddleware(ServiceGatewayMiddleware):
 
 	def before_request(self, service, request, response):
 		return (service, request, response)
-		
+
+	def after_request(self, service, request, response):
+		return (service, request, response)
+
+# Async Middleware for intercepting responses and returning them via Channel API
+class AsyncPushMiddleware(ServiceGatewayMiddleware):
+
+	""" Middleware for intercepting an asynchronous response from an API method. """
+
+	def after_request(self, service, request, response):
+		return (service, request, response)
+
+
 # Middleware for recording monitored data to datastore or memcache
 class RecordingMiddleware(ServiceGatewayMiddleware):
 	

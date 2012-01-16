@@ -1,8 +1,11 @@
 # -*- coding: utf-8 -*-
 
 # NDB Imports
-from ndb import key
-from ndb import model
+try:
+	from ndb import key, model
+except ImportError:
+	from google.appengine.ext.ndb import key, model
+
 
 from apptools.util import DictProxy
 
@@ -25,9 +28,11 @@ ndb = DictProxy({
 		'FloatProperty' : model.FloatProperty,
 		'BooleanProperty': model.BooleanProperty,
 		'DateTimeProperty': model.DateTimeProperty,
+		'DateProperty': model.DateProperty,
 		'TimeProperty': model.TimeProperty,
 		'GeoPtProperty': model.GeoPtProperty,
 		'KeyProperty' : model.KeyProperty,
+		'BlobKeyProperty': model.BlobKeyProperty,
 		'UserProperty': model.UserProperty,
 		'StructuredProperty' : model.StructuredProperty,
 		'LocalStructuredProperty' : model.LocalStructuredProperty,
@@ -153,3 +158,13 @@ class BaseExpando(_AppToolsModel, ldb.Expando):
 class NDBExpando(_AppToolsModel, model.Expando):
 	
 	''' This is the root base model for all NDB & Expando-based models. '''
+
+## Builtin Models
+
+# This model keeps track of async sessions established by the service layer.
+class UserServicePushSession(NDBModel):
+
+	''' This model keeps track of async sessions established by the service layer. '''
+	
+	seed = ndb.StringProperty()
+	token = ndb.StringProperty()
