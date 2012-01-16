@@ -15,24 +15,12 @@ import hashlib
 import logging
 import webapp2
 
-# Useful Datastructures
+# Datastructures
+from util import json
 from util import DictProxy
 from util import ObjectProxy
 from util import CallbackProxy
 from util import _loadAPIModule
-
-# Resolve a valid JSON adapter
-try:
-	import json
-except ImportError:
-	try:
-		import simplejson as json
-	except ImportError:
-		try:
-			from django.utils import simplejson as json
-		except ImportError:
-			logging.critical('No compatible JSON adapter found.')
-
 
 ## Webapp2
 # AppTools uses [Webapp2](webapp-improved.appspot.com) for WSGI internals, session handling, request dispatching, and much more.

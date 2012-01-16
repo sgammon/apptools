@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 import logging
 
+try:
+	import json
+except ImportError:
+	try:
+		import simplejson as json
+	except ImportError:
+		from django.utils import json
+
 _api_cache = {}
 
 ## _loadAPIModule
