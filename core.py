@@ -2,7 +2,12 @@
 
 # Base Imports
 import os
-import ndb
+
+try:
+	import ndb
+except ImportError, e:
+	from google.appengine.ext import ndb
+	
 import config
 import pprint
 import random
@@ -10,24 +15,12 @@ import hashlib
 import logging
 import webapp2
 
-# Useful Datastructures
+# Datastructures
+from util import json
 from util import DictProxy
 from util import ObjectProxy
 from util import CallbackProxy
 from util import _loadAPIModule
-
-# Resolve a valid JSON adapter
-try:
-	import json
-except ImportError:
-	try:
-		import simplejson as json
-	except ImportError:
-		try:
-			from django.utils import simplejson as json
-		except ImportError:
-			logging.critical('No compatible JSON adapter found.')
-
 
 ## Webapp2
 # AppTools uses [Webapp2](webapp-improved.appspot.com) for WSGI internals, session handling, request dispatching, and much more.
@@ -85,7 +78,7 @@ _apibridge = CallbackProxy(_loadAPIModule, {
 # [Pipelines](http://code.google.com/p/appengine-pipeline/) built in
 _extbridge = CallbackProxy(_loadAPIModule, {
 
-	'ndb': 'ndb',
+	'ndb': ('google.appengine.ext', 'ndb'),
 	'pipelines': 'pipeline', 
 	'mapreduce': 'mapreduce',
 
@@ -123,16 +116,20 @@ class BaseHandler(RequestHandler, AssetsMixin):
 	api = _apibridge
 	ext = _extbridge
 	util = _utilbridge
-		
-	# Base HTTP Headers
-	baseHeaders = {
-		
-		'Cache-Control': 'no-cache', # Stop caching of responses from Python, by default
-		'X-Platform': 'AppTools/ProvidenceClarity-Embedded', # Indicate the platform that is serving this request
-		'X-Powered-By': 'Google App Engine/1.5.5-prerelease', # Indicate the SDK version
-		'X-UA-Compatible': 'IE=edge,chrome=1' # Enable compatibility with Chrome Frame, and force IE to render with the latest engine
 
-	}
+
+	# Base HTTP Headers
+	@webapp2.cached_property
+	def baseHeaders(self):
+		return {
+		
+			'Cache-Control': 'no-cache', # Stop caching of responses from Python, by default
+			'X-Platform': 'AppTools/ProvidenceClarity-Embedded', # Indicate the platform that is serving this request
+			'X-Powered-By': 'Google App Engine/1.5.5-prerelease', # Indicate the SDK version
+			'X-UA-Compatible': 'IE=edge,chrome=1' # Enable compatibility with Chrome Frame, and force IE to render with the latest engine
+			'Access-Control-Allow-Origin': '*' # Allows Javascript served by local site to access data/scripts from any origin
+
+		}
 	
 	# Base template context - available to every template except macros (for that, see template globals)
 	@webapp2.cached_property
@@ -141,7 +138,40 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		''' Base template context - available to every template at runtime. '''
 
 		return {
-							
+
+			# Bind Python globals
+			'all': all, 'any': any,
+			'int': int, 'str': str,
+			'len': len, 'map': map,
+			'max': max, 'min': min,
+			'zip': zip, 'bool': bool,
+			'list': list, 'dict': dict,
+			'tuple': tuple, 'range': range,
+			'round': round, 'slice': slice,
+			'xrange': xrange, 'filter': filter,
+			'reduce': reduce, 'sorted': sorted,
+			'unicode': unicode,	'reversed': reversed,
+			'isinstance': isinstance, 'issubclass': issubclass,
+			'enumerate': enumerate,
+
+			'link': webapp2.uri_for, # Standalone uri_for shortcut
+
+			'sys': { # Basic system stuff
+
+				'debug': config.debug,
+				'version':	str(self._sysConfig['version']['major'])+'.'+str(self._sysConfig['version']['minor'])+' '+str(self._sysConfig['version']['release'])
+			
+			},
+
+			'asset': { # Bridge to the Assets API
+			
+				'url': self.get_asset,		
+				'image': self.get_img_asset,
+				'style': self.get_style_asset,
+				'script': self.get_script_asset
+			
+			},
+
 			'util': { # Utility stuff
 
 				'request': { # Request Object
@@ -180,9 +210,9 @@ class BaseHandler(RequestHandler, AssetsMixin):
 				},
 				
 				'converters': {	# Converters
-					'json': json, # SimpleJSON or Py2.7 JSON
-					'timesince': self.util.timesince, # Util library for "15 minutes ago"-type text from datetimes
-					'byteconvert': self.util.byteconvert # Util library for formatting data storage amounts
+				               	'json': json, # SimpleJSON or Py2.7 JSON
+				               	'timesince': self.util.timesince.timesince, # Util library for "15 minutes ago"-type text from datetimes
+				               	'byteconvert': self.util.byteconvert # Util library for formatting data storage amounts
 				},
 				
 				'random': { # Random
@@ -192,33 +222,28 @@ class BaseHandler(RequestHandler, AssetsMixin):
 				},
 				
 				'pprint': pprint.pprint,
-			},
-		
-			'api': { # API Shortcuts
-		
-				'users': {
-					'is_current_user_admin': _apibridge.users.is_current_user_admin,
-					'current_user': _apibridge.users.get_current_user,
-					'create_login_url': _apibridge.users.create_login_url,
-					'create_logout_url': _apibridge.users.create_logout_url
-				},
-				'backends': _apibridge.backends,
-				'multitenancy': _apibridge.multitenancy
-		
+
+				'api': _apibridge, # Bind util.api to _apibridge (hence, `util.api.users.is_current_user_admin()` can be done)
+				'ext': _extbridge  # Bind util.ext to _extbridge (hence, `util.ext.byteconvert.humanize_bytes()` can be done)
+
 			},
 
-			'page': { # Page flags
+			# Page flags
+			'page': { 
+
 				'ie': False, # when set to True, will serve an (ie.css)[assets/style/source/ie.html] stylesheet
 				'mobile': False, # when set to True, will serve a (mobile.css)[assets/style/source/mobile.html] stylesheet
 				'appcache': { # enable/disable HTML5 appcaching
 					'enabled': False,
 					'location': None,
-				}
-			},			
+				},
+
+			},
 			
 		}
 	
 
+	# Webapp2 dispatch override
 	def dispatch(self):
 		
 		''' Sniff the Uagent header, then pass off to Webapp2. '''
@@ -265,49 +290,11 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		# Inject python builtins as globals, so they are available to macros
 		
 		# **Ever wanted your favorite Python builtins available in your template?** Look ma!
-		j2cfg['globals'] = {
-		
-			'all': all, 'any': any,
-			'int': int, 'str': str,
-			'len': len, 'map': map,
-			'max': max, 'min': min,
-			'zip': zip, 'bool': bool,
-			'list': list, 'dict': dict,
-			'tuple': tuple, 'range': range,
-			'round': round, 'slice': slice,
-			'xrange': xrange, 'filter': filter,
-			'reduce': reduce, 'sorted': sorted,
-			'unicode': unicode,	'reversed': reversed,
-			'isinstance': isinstance, 'issubclass': issubclass,
-
-			'link': webapp2.uri_for, # Standalone uri_for shortcut
-
-			'asset': { # Bridge to the Assets API
-			
-				'url': self.get_asset,		
-				'image': self.get_img_asset,
-				'style': self.get_style_asset,
-				'script': self.get_script_asset
-			
-			},
-
-			'util': {
-				'converters': {
-					'json': json
-				},
-				'api': _apibridge,
-				'ext': _extbridge
-			},
-			
-			'sys': {
-				'debug': config.debug,
-				'version':	str(self._sysConfig['version']['major'])+'.'+str(self._sysConfig['version']['minor'])+' '+str(self._sysConfig['version']['release'])
-			}
-	
-		}
+		j2cfg['globals'] = self.baseContext
 		
 		environment = jinja2.Jinja2(app, config=j2cfg) # Make & return template environment
 		return environment
+
 
 	# Bind runtime template context variables (overridden in sub handlers to allow injection into the template context)
 	def _bindRuntimeTemplateContext(self, context):
@@ -338,6 +325,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		return context
 
 	
+	# Make and export a datastructure suitable for describing our available API services to JavaScript
 	def make_services_manifest(self):
 
 		''' Generate a struct we can pass to the page in JSON that describes API services. ''' 
@@ -410,8 +398,8 @@ class BaseHandler(RequestHandler, AssetsMixin):
 					for k, v in arg.items():
 						self.context[k] = v
 		return
-		
-	# Minify
+	
+	
 	def minify(self, rendered_template):
 		
 		''' Minify rendered template output. Override for custom minification function or monkeypatch to 'unicode' to disable completely. '''
@@ -431,7 +419,8 @@ class BaseHandler(RequestHandler, AssetsMixin):
 				minify = slimmer.css_slimmer
 				
 		return minify(rendered_template)
-		
+	
+
 	# Render a template, given a context, with Jinja2
 	def render(self, path, context={}, elements={}, content_type='text/html', headers={}, **kwargs):
 
@@ -478,6 +467,7 @@ class BaseHandler(RequestHandler, AssetsMixin):
 		
 		# Finished!
 		return
+
 
 	## Config Shortcuts
 	@webapp2.cached_property

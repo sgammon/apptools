@@ -3,6 +3,7 @@
 # Basic imports
 import base64
 import config
+import hashlib
 import webapp2
 import logging
 import datetime
@@ -43,6 +44,11 @@ from apptools.decorators import security
 
 # Extras import
 from webapp2_extras import protorpc as proto
+
+# New NDB import
+from google.appengine.ext import ndb as nndb
+from google.appengine.ext.ndb import key as nkey
+from google.appengine.ext.ndb import model as nmodel
 
 
 # Service layer middleware object cache
@@ -193,19 +199,23 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 		encoded = _MessageJSONEncoder().encode(struct)
 		return encoded
 
-	def build_response(self, handler, response):
+	def build_response(self, handler, response, response_envelope=None):
 
 		''' Encode a response. '''
 
 		try:
 			response.check_initialized()
-			envelope = self.encode_request(self.envelope(handler._response_envelope, response))
+			if response_envelope is not None and handler is None:
+				envelope = self.encode_request(self.envelope(response_envelope, response))
+			else:
+				envelope = self.encode_request(self.envelope(handler._response_envelope, response))
 
 		except messages.ValidationError, err:
 			raise ResponseError('Unable to encode message: %s' % err)
 		else:
-			handler.response.headers['Content-Type'] = "application/json"
-			handler.response.out.write(envelope)
+			if handler is not None: ## so we can inject responses...
+				handler.response.headers['Content-Type'] = "application/json"
+				handler.response.out.write(envelope)
 			return envelope
 
 
@@ -214,13 +224,11 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 		''' Wrap the result of the request in a descriptive, helpful envelope. '''
 
 		sysconfig = config.config.get('apptools.project')
-		if config.debug:
-			debugflag = True
 
 		return {
 
 			'id': wrap['id'],
-			'status': 'ok',
+			'status': wrap['status'],
 
 			'response': {
 				'content': response,
@@ -229,6 +237,7 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 
 			'flags': wrap['flags'],
 			'platform': {
+				'debug': config.debug,
 				'name': config.config.get('apptools.project').get('name', 'AppTools'),
 				'version': '.'.join(map(lambda x: str(x), [sysconfig['version']['major'], sysconfig['version']['minor'], sysconfig['version']['micro']])),
 				'build': sysconfig['version']['build'],
@@ -242,7 +251,7 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 	def decode_request(self, message_type, dictionary):
 		
 		''' Decode a request. '''
-		
+
 		def decode_dictionary(message_type, dictionary):
 			
 			''' Decode a dictionary of items (recursive). '''
@@ -327,7 +336,7 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 					setattr(message, field.name, valid_value)
 				else:
 					setattr(message, field.name, valid_value[-1])
-
+					
 		return message
 
 
@@ -336,7 +345,10 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 		''' Build a request object. '''
 
 		try:
-			request_object = protojson._load_json_module().loads(handler.request.body)
+			if hasattr(handler, 'interpreted_body') and handler.interpreted_body is not None:
+				request_object = handler.interpreted_body
+			else:
+				request_object = protojson._load_json_module().loads(handler.request.body)
 
 			try:
 				request_id = request_object['id']
@@ -350,7 +362,13 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 			self._request['agent'] = request_agent
 			self._request['opts'] = request_opts
 
+			handler._request_envelope['id'] = self._request['id']
+			handler._request_envelope['opts'] = self._request['opts']
+			handler._request_envelope['agent'] = self._request['agent']
+
 			handler._response_envelope['id'] = self._request['id']
+
+			logging.info('Decoding request...')
 
 			return self.decode_request(request_type, request_body['params'])
 
@@ -376,8 +394,8 @@ class BaseService(remote.Service):
 	middleware = {}
 	
 	# State + config
-	state = {'request': {}, 'opts': {}, 'service': {}}
-	config = {'global': {}, 'module': {}, 'service': {}}
+	state = DictProxy({'request': DictProxy({'opts': {}, 'agent': {}, 'id': None}), 'opts': {}, 'service': {}})
+	config = DictProxy({'global': {}, 'module': {}, 'service': {}})
 	
 	# Bridged shortcuts
 	api = _apibridge
@@ -443,11 +461,11 @@ class BaseService(remote.Service):
 		# Check for initialize hook
 		if hasattr(self, 'initialize'):
 			self.initialize()
-		
+	
 	def _setstate(self, key, value):
 		self.state['service'][key] = value
 		
-	def _getstate(self, key, default):
+	def _getstate(self, key, default=None):
 		if key in self.state['service']:
 			return self.state['service'][key]
 		else: return default
@@ -475,6 +493,109 @@ class BaseService(remote.Service):
 	def getflag(self, name):
 		if self.handler is not None:
 			return self.handler.getflag(name)
+
+	## async response functionality
+	def set_response(self, response):
+
+		''' Add the response message model to the internal service state, so it can be passed to a followup task, so the followup task can fulfill & push it asynchronously. '''
+
+		self._setstate('rmodel', response)
+		return
+
+	def prepare_followup(self, task=None, pipeline=None, start=False, *args, **kwargs):
+
+		''' Prepare and set a followup task or pipeline, for async functionality. '''
+
+		if task is not None:
+
+			logging.info('Loading followup task.')
+			logging.info('Task: '+str(task))
+			logging.info('Args: '+str(args))
+			logging.info('Kwargs: '+str(kwargs))
+
+			if 'params' not in kwargs:
+				kwargs['params'] = {}
+
+			kwargs['params']['_token'] = self._getstate('token')
+			kwargs['params']['_channel'] = self._getstate('channel')
+			kwargs['params']['_rhash'] = self._getstate('rhash')
+			kwargs['params']['_rid'] = self._getstate('rid')
+			kwargs['params']['_rmodel'] = '.'.join(self._getstate('rmodel').__module__.split('.')+[self._getstate('rmodel').__class__.__name__])
+
+			logging.info('Injected token, channel, rhash and rmodel path.')
+
+			t = task(*args, **kwargs)
+
+			logging.info('Instantiated task: ')
+			logging.info('--args == '+str(args))
+			logging.info('--kwargs == '+str(kwargs))
+
+			if start:
+				logging.info('Starting task.')
+				self._setstate('followup', t.add())
+
+				logging.info('Resulting task: "'+str(t)+'".')
+				self.setflag('tid', str(t))
+
+			return t
+
+		elif pipeline is not None:
+
+			logging.info('Loading followup pipeline.')
+			logging.info('Pipeline: '+str(pipeline))
+			logging.info('Args: '+str(args))
+			logging.info('Kwargs: '+str(kwargs))
+
+			kwargs['async_config'] = {
+				'token': self._getstate('token'),
+				'channel': self._getstate('channel'),
+				'rid': self._getstate('rid'),
+				'rhash': self._getstate('rhash'),
+				'rmodel': '.'.join(self._getstate('rmodel').__module__.split('.')+[self._getstate('rmodel').__class__.__name__])
+			}
+
+			p = pipeline(*args, **kwargs)
+
+			logging.info('Instantiated pipeline: "'+str(p)+'".')
+
+			if start:
+				logging.info('Starting pipeline.')
+
+				self._setstate('followup', p.start())
+
+				logging.info('Resulting pipeline: "'+str(p)+'".')
+				self.setflag('pid', str(p.pipeline_id))
+
+			return p
+
+	def set_followup(self, tid=None, pid=None):
+
+		''' Manually set the TID or PID response header. '''
+
+		if tid is None:
+			self.setflag('tid', str(tid))
+		elif pid is None:
+			self.setflag('pid', str(pid))
+		return
+
+	def go_async(self):
+
+		''' Go into async mode. '''
+
+		return self.handler.go_async()
+
+	def can_async(self):
+
+		''' Check if async mode is possible. '''
+
+		return self.handler.can_async()
+
+	## patched-through util methods
+	def get_request_body(self):
+
+		''' Interpret the request body and cache it for later. '''
+
+		return self.handler.get_request_body()
 			
 ## RemoteServiceHandler
 # This class is responsible for bridging a request to a remote service class, dispatching/executing to get the response, and returning it to the client.
@@ -483,13 +604,26 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 	''' Handler for responding to remote API requests. '''
 
 	# Request/Response Containers
-	_response_envelope = {
+	state = {}
+	service = None
+
+	_request_envelope = DictProxy({
+		
+		'id': None,
+		'opts': {},
+		'agent': {}
+
+	})
+
+	_response_envelope = DictProxy({
 
 		'id': None,
 		'flags': {},
-		'status': 'fail'
+		'status': 'ok'
 
-	}
+	})
+	interpreted_body = None	
+	enable_async_mode = False
 
 
 	# Config
@@ -542,6 +676,118 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 		''' Retrieve all envelope flags. '''
 		
 		return self._response_envelope['flags']
+
+	def go_async(self):
+
+		''' Indicate that a response will be delivered via Channel API. '''
+
+		self.setflag('alt', 'socket')
+		self.setflag('token', self.state['token'])
+		self.setflag('rhash', self.state['rhash'])
+		self.setstatus('wait')
+
+		self.service._setstate('token', self.state['token'])
+		self.service._setstate('channel', self.state['channel'])
+		self.service._setstate('rid', self._request_envelope.id)
+		self.service._setstate('rhash', self.state['rhash'])
+
+		self.enable_async_mode = True
+
+		return True, self.state['token'], self.state['channel'], self.state['rhash']
+
+	def get_request_body(self):
+
+		''' Interpret the request body early, so it can be manipulated/read. '''
+
+		if hasattr(self, 'interpreted_body') and self.interpreted_body is not None:
+			return self.interpreted_body
+		else:
+			try:
+				self.interpreted_body = json.loads(self.request.body)
+			except Exception, e:
+				self.interpreted_body = None
+				return False
+			else:
+				return self.interpreted_body
+
+	def can_async(self):
+
+		''' Check and return whether an async response is possible. '''
+
+		logging.info('CHECKING ASYNC CAPABILITY.')
+
+		if 'alt' in self._request_envelope.opts:
+
+			logging.info('1. `alt` flag found. value: "'+str(self._request_envelope.opts['alt'])+'".')
+
+			if self._request_envelope.opts['alt'] == 'socket':
+
+				if 'token' in self._request_envelope.opts:
+
+					logging.info('2. `token` flag found. value: "'+str(self._request_envelope.opts['token'])+'".')
+
+					if self._request_envelope.opts['token'] not in set(['', '_null_']):
+
+						logging.info('3. `token` is not null or invalid. proceeding.')
+
+						channel_token = self._get_channel_from_token(self._request_envelope.opts['token'])
+
+						logging.info('4. pulled `channel_token`: "'+str(channel_token)+'".')
+
+						if channel_token is not False:
+							logging.info('5. ASYNC CAPABLE! :)')
+
+							self.state['token'] = self._request_envelope.opts['token']
+							self.state['channel'] = channel_token
+							self.state['rhash'] = base64.b64encode(self.state['channel']+str(self._request_envelope['id']))
+							return True
+						else:
+							logging.warning('Could not pull channel ID.')
+
+							self.setflag('alt', 'denied')
+							self.setflag('pushcmd', 'reconnect')
+							return False
+		return False
+
+	def _get_channel_from_token(self, token):
+
+		''' Resolve a channel ID/seed from the client's token. '''
+
+		logging.info('Getting channel ID from token "'+str(token)+'".')
+
+		## try memcache first
+		token_key = self._get_token_key(token)
+
+		logging.info('Token key calculated: "'+str(token_key)+'".')
+
+		channel_id = _apibridge.memcache.get(token_key)
+		if channel_id is None:
+
+			logging.warning('Channel ID not found in memcache.')
+
+			## try datastore if we can't find it in memcache
+			from apptools.model import UserServicePushSession
+
+			ups = nkey.Key(UserServicePushSession, token_key).get()
+			if ups is not None:
+
+				logging.info('PushSession found in megastore. Found seed "'+str(ups.seed)+'".')
+
+				## if the model's found, set it in memecache
+				_apibridge.memcache.set(token_key, {'seed': ups.seed, 'key': ups.key.urlsafe()})
+				return ups.seed
+			else:
+				logging.error('PushSession not found in megastore. Invalid or discarded seed.')
+				return False
+		else:
+			logging.info('Channel ID found in memcache. Returning!')
+			return channel_id['seed']
+
+	def _get_token_key(self, token):
+
+		''' Encode and prefix a channel token, suitable for use as a key in memcache/megastore. '''
+
+		return 'push_token::'+base64.b64encode(hashlib.sha256(token).hexdigest())
 
 
 	# Envelope Access
@@ -615,6 +861,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
 		# Link the service and handler both ways so we can pass stuff back and forth
 		service.handler = self
+		self.service = service
 
 		request = self.request
 		
@@ -675,7 +922,8 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 		factory = cls(service_factory)
 
 		# our nifty mapper, for correctly interpreting & providing our envelope schema
-		factory.add_request_mapper(AppJSONRPCMapper())
+		jsonrpc = AppJSONRPCMapper()
+		factory.add_request_mapper(jsonrpc)
 		
 		factory.add_request_mapper(service_handlers.ProtobufRPCMapper())
 		factory.add_request_mapper(service_handlers.URLEncodedRPCMapper())
@@ -698,6 +946,11 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
 		# Consider service middleware
 		middleware = self.servicesConfig.get('middleware', False)
+
+		service_handler = RemoteServiceFactory.new(RemoteServiceHandler(self, service))
+		service_handler.request = request
+		service_handler.response = response
+
 		if middleware is not False and len(middleware) > 0:
 
 			for name, cfg in middleware:
@@ -731,10 +984,6 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 					continue
 		else:
 			self.log('Middleware was none or 0.')
-
-		service_handler = RemoteServiceFactory.new(RemoteServiceHandler(self, service))
-		service_handler.request = request
-		service_handler.response = response
 
 		self.log('Handler prepared. Dispatching...')
 
