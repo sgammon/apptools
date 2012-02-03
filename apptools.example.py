@@ -32,8 +32,11 @@ from pipelines import BasePipeline
 from apptools import BaseHandler
 
 class MyHandler(BaseHandler):
-	
-	def get(self):
-		self.api.memcache.get('<samplekey>')		# easy access to AppEngine APIs
-		self.ext.ndb.key.Key()				# easy access to NDB, Map/Reduce and Pipelines
-		self.render('<sampletemplate>', **context)	# built-in jinja2 integration
+
+    def get(self):
+        context = {
+            'message': 'hello world!'
+        }
+        self.api.memcache.get('<samplekey>')        # easy access to AppEngine APIs
+        self.ext.ndb.key.Key()              # easy access to NDB, Map/Reduce and Pipelines
+        self.render('<sampletemplate>', **context)  # built-in jinja2 integration

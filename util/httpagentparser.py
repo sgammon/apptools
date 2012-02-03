@@ -12,6 +12,7 @@ Aim is
 """
 import sys
 
+
 class DetectorsHub(dict):
     _known_types = ['os', 'dist', 'flavor', 'browser']
 
@@ -48,14 +49,14 @@ class DetectorsHub(dict):
 
 
 class DetectorBase(object):
-    name = "" # "to perform match in DetectorsHub object"
+    name = ""  # "to perform match in DetectorsHub object"
     info_type = "override me"
     result_key = "override me"
-    order = 10 # 0 is highest
+    order = 10  # 0 is highest
     look_for = "string to look for"
-    skip_if_found = [] # strings if present stop processin
+    skip_if_found = []  # strings if present stop processin
     can_register = False
-    prefs = dict() # dict(info_type = [name1, name2], ..)
+    prefs = dict()  # dict(info_type = [name1, name2], ..)
     version_splitters = ["/", " "]
     _suggested_detectors = None
 
@@ -111,7 +112,8 @@ class Macintosh(OS):
     look_for = 'Macintosh'
     prefs = dict(dist=None)
 
-    def getVersion(self, agent): pass
+    def getVersion(self, agent):
+        pass
 
 
 class Firefox(Browser):
@@ -125,11 +127,14 @@ class Konqueror(Browser):
 
 class Opera(Browser):
     look_for = "Opera"
+
     def getVersion(self, agent):
         return agent.split(self.look_for)[1][1:].split(' ')[0]
 
+
 class Netscape(Browser):
     look_for = "Netscape"
+
 
 class MSIE(Browser):
     look_for = "MSIE"
@@ -157,21 +162,23 @@ class Safari(Browser):
         if "Version/" in agent:
             return agent.split('Version/')[-1].split(' ')[0].strip()
         else:
-            return agent.split('Safari ')[-1].split(' ')[0].strip() # Mobile Safari
+            return agent.split('Safari ')[-1].split(' ')[0].strip()  # Mobile Safari
 
 
 class Linux(OS):
     look_for = 'Linux'
     prefs = dict(browser=["Firefox"], dist=["Ubuntu", "Android"], flavor=None)
 
-    def getVersion(self, agent): pass
+    def getVersion(self, agent):
+        pass
 
 
 class Macintosh(OS):
     look_for = 'Macintosh'
     prefs = dict(dist=None, flavor=['MacOS'])
 
-    def getVersion(self, agent): pass
+    def getVersion(self, agent):
+        pass
 
 
 class MacOS(Flavor):
@@ -215,12 +222,15 @@ class Chrome(Browser):
     look_for = "Chrome"
     version_splitters = ["/", " "]
 
+
 class ChromeOS(OS):
     look_for = "CrOS"
     version_splitters = [" ", " "]
     prefs = dict(browser=['Chrome'])
+
     def getVersion(self, agent):
         return agent.split(self.look_for + self.version_splitters[0])[-1].split(self.version_splitters[1])[1].strip()[:-1]
+
 
 class Android(Dist):
     look_for = 'Android'
@@ -244,7 +254,8 @@ class IPhone(Dist):
 
 detectorshub = DetectorsHub()
 
-def detect(agent):
+
+def detect_legacy(agent):
     result = dict()
     prefs = dict()
     _suggested_detectors = []
@@ -254,6 +265,7 @@ def detect(agent):
             _d_prefs = prefs.get(info_type, [])
             detectors = detectorshub.reorderByPrefs(detectors, _d_prefs)
             if "detector" in locals():
+                detector = locals().get('detector')
                 detector._suggested_detectors = detectors
         else:
             detectors = _suggested_detectors
@@ -291,9 +303,12 @@ def simple_detect(agent):
     """
     result = detect(agent)
     os_list = []
-    if 'flavor' in result: os_list.append(result['flavor']['name'])
-    if 'dist' in result: os_list.append(result['dist']['name'])
-    if 'os' in result: os_list.append(result['os']['name'])
+    if 'flavor' in result:
+        os_list.append(result['flavor']['name'])
+    if 'dist' in result:
+        os_list.append(result['dist']['name'])
+    if 'os' in result:
+        os_list.append(result['os']['name'])
 
     os = os_list and " ".join(os_list) or "Unknown OS"
     os_version = os_list and (result['flavor'] and result['flavor'].get('version')) or (
@@ -364,4 +379,3 @@ if __name__ == '__main__':
             print "Time taken for single detecttion: ", time_taken / (len(self.data) * self.harass_repeat)
 
     unittest.main()
-

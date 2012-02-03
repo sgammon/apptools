@@ -28,13 +28,15 @@ Recipe available at: [http://code.activestate.com/recipes/577081/](http://code.a
 >>> humanize_bytes(1024*1234*1111,1)
 '1.3 GB'
 """
+
+
 def humanize_bytes(bytes, precision=1):
     abbrevs = (
-        (1<<50L, 'PB'),
-        (1<<40L, 'TB'),
-        (1<<30L, 'GB'),
-        (1<<20L, 'MB'),
-        (1<<10L, 'kB'),
+        (1 << 50L, 'PB'),
+        (1 << 40L, 'TB'),
+        (1 << 30L, 'GB'),
+        (1 << 20L, 'MB'),
+        (1 << 10L, 'kB'),
         (1, 'bytes')
     )
     if bytes == 1:
