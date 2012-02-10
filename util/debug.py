@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 import logging
 
+_loggers = {}
+
 
 class AppToolsLogController(object):
 
     ''' Logging controller for outputting debug information from different levels of AppTools. '''
+
+    channel_name = '_default_'
 
     _severity_map = {
 
@@ -16,7 +20,8 @@ class AppToolsLogController(object):
 
     }
 
-    _loggers = {}
+    def __init__(self, name='apptools.default'):
+        self.channel_name = name
 
     def _send_log(self, message, module=None, severity='info'):
 

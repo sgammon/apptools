@@ -166,14 +166,3 @@ def property_classes(flatten=False):
             if flatten is False:
                 p_list.append((p_name, p_class))
     return p_list
-
-
-## Builtin Models
-
-# This model keeps track of async sessions established by the service layer.
-class UserServicePushSession(NDBModel):
-
-    ''' This model keeps track of async sessions established by the service layer. '''
-
-    seed = ndb.StringProperty()
-    token = ndb.StringProperty()
