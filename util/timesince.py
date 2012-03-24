@@ -2,7 +2,7 @@
 
 import datetime
 
-"""
+'''
 Takes two datetime objects and returns the time between d and now
 as a nicely formatted string, e.g. "10 minutes".  If d occurs after now,
 then "0 minutes" is returned.
@@ -13,7 +13,7 @@ displayed.  For example, "2 weeks, 3 days" and "1 year, 3 months" are
 possible outputs, but "2 weeks, 3 hours" and "1 year, 5 days" are not.
 
 Adapted from [http://blog.natbat.co.uk/archive/2003/Jun/14/time_since](http://blog.natbat.co.uk/archive/2003/Jun/14/time_since)
-"""
+'''
 
 
 def getword(singular, plural, n):
@@ -40,10 +40,7 @@ def timesince(d, now=None):
         now = datetime.datetime(now.year, now.month, now.day)
 
     if not now:
-        if d.tzinfo:
-            now = datetime.datetime.now(LocalTimezone(d))
-        else:
-            now = datetime.datetime.now()
+        now = datetime.datetime.now()
 
     # ignore microsecond part of 'd' since we removed it from 'now'
     delta = now - (d - datetime.timedelta(0, 0, d.microsecond))

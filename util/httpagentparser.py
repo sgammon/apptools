@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""
+'''
 **Extract client information from http user agent**
 
 The module does not try to detect all capabilities of browser in current form (it can easily be extended though).
@@ -9,7 +9,7 @@ Aim is
     * very easy to extend
     * reliable enough for practical purposes
     * and assist python web apps to detect clients.
-"""
+'''
 import sys
 
 

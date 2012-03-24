@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""
+'''
 This is **PolyPro**.
 
 Description: A modification to Model designed to introduce polymorphism,
@@ -19,7 +19,7 @@ the python module path to the corresponding class.
 Since we store the class path along with the class key, PolyPro can
 lazy-load the implementation class when an entity is pulled from the
 datastore.
-"""
+'''
 
 import os
 import sys

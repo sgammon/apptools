@@ -1,27 +1,19 @@
 # -*- coding: utf-8 -*-
 
-# Basic imports
+# Basic Imports
+import time
+import hmac
 import base64
 import config
 import hashlib
 import webapp2
-import logging
 import datetime
 
-# Resolve JSON adapter
-try:
-    import json
-except ImportError:
-    try:
-        from django.utils import json
-    except ImportError:
-        import simplejson as json
-
 # ProtoRPC imports
-import protorpc
 from protorpc import remote
-from protorpc import protojson
 from protorpc import messages
+from protorpc import protojson
+from protorpc import message_types
 
 # Message imports
 from protorpc.messages import Field
@@ -29,27 +21,38 @@ from protorpc.messages import Variant
 
 # Service handlers
 from protorpc.webapp import service_handlers
-
-# Lazy-loaded shortcut bridges
-from apptools.core import _apibridge
-from apptools.core import _extbridge
-
-# Datastructures
-from apptools.util import DictProxy
-
-# Decorator imports
-from apptools.decorators import audit
-from apptools.decorators import caching
-from apptools.decorators import security
+from protorpc.webapp.service_handlers import RequestError
 
 # Extras import
 from webapp2_extras import protorpc as proto
 
-# New NDB import
-from google.appengine.ext import ndb as nndb
-from google.appengine.ext.ndb import key as nkey
-from google.appengine.ext.ndb import model as nmodel
+# Util Imports
+from apptools.util import json
+from apptools.util.debug import AppToolsLogger
 
+# Datastructure Imports
+from apptools.util.datastructures import DictProxy
+from apptools.util.datastructures import WritableObjectProxy
+
+# Bridge Imports
+from apptools.core import _apibridge
+from apptools.core import _extbridge
+from apptools.core import _libbridge
+from apptools.core import _utilbridge
+
+# Decorator Imports
+from apptools.services.decorators import audit
+from apptools.services.decorators import caching
+from apptools.services.decorators import security
+
+# New NDB Import
+from google.appengine.ext.ndb import key as nkey
+
+
+# Globals
+_global_debug = config.debug
+logging = AppToolsLogger('apptools.services', 'ServiceLayer')
+date_time_types = (datetime.datetime, datetime.date, datetime.time)
 
 # Service layer middleware object cache
 _middleware_cache = {}
@@ -151,10 +154,23 @@ class _MessageJSONEncoder(protojson._MessageJSONEncoder):
                 if item not in (None, [], ()):
                     result[field.name] = self.jsonForValue(item)
                     if isinstance(item, list):  # for repeated values...
-                        result[field.name] = [self.jsonForValue(x) for x in item]
+                        listvalue = [self.jsonForValue(x) for x in item]
+                        result[field.name] = listvalue
 
             else:
                 return super(_MessageJSONEncoder, self).default(value)
+
+        elif isinstance(value, AppJSONRPCMapper.GenericResponse):
+            result = {}
+            for k, v in value.to_dict().items():
+                if v not in (None, [], ()):
+                    if isinstance(v, list):
+                        listvalue = [self.jsonForValue(x) for x in v]
+                        result[k] = listvalue
+                    else:
+                        result[k] = self.jsonForValue(v)
+                else:
+                    result[k] = super(_MessageJSONEncoder, self).default(v)
         else:
             return super(_MessageJSONEncoder, self).default(value)
 
@@ -167,7 +183,7 @@ class _MessageJSONEncoder(protojson._MessageJSONEncoder):
         if isinstance(value, (basestring, int, float, bool)):
             return value
 
-        elif isinstance(value, (datetime.datetime, datetime.date, datetime.time)):
+        elif isinstance(value, date_time_types):
             return str(value)
 
         elif isinstance(value, messages.Message):
@@ -202,19 +218,32 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
         encoded = _MessageJSONEncoder().encode(struct)
         return encoded
 
-    def build_response(self, handler, response):
+    def build_response(self, handler, response, response_envelope=None, extra_response_content={}):
 
         ''' Encode a response. '''
 
         try:
-            response.check_initialized()
-            envelope = self.encode_request(self.envelope(handler._response_envelope, response))
+            if isinstance(response, messages.Message):
+                response.check_initialized()
+            else:
+                response = self.GenericResponse.from_struct(response)
+            if response_envelope is not None and handler is None:
+                envelope = self.envelope(response_envelope, response)
+                if extra_response_content is not None and isinstance(extra_response_content, dict):
+                    for k, v in extra_response_content.items():
+                        if k not in envelope['response']:
+                            envelope['response'][k] = v
+                encoded_response = _MessageJSONEncoder().encode(envelope)
+                return encoded_response
+            else:
+                envelope = _MessageJSONEncoder().encode(self.envelope(handler._response_envelope, response))
 
         except messages.ValidationError, err:
-            raise messages.ResponseError('Unable to encode message: %s' % err)
+            raise service_handlers.RequestError('Unable to encode message: %s' % err)
         else:
-            handler.response.headers['Content-Type'] = "application/json"
-            handler.response.out.write(envelope)
+            if handler is not None:  # so we can inject responses...
+                handler.response.headers['Content-Type'] = "application/json"
+                handler.response.write(envelope)
             return envelope
 
     def envelope(self, wrap, response):
@@ -222,24 +251,33 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
         ''' Wrap the result of the request in a descriptive, helpful envelope. '''
 
         sysconfig = config.config.get('apptools.project')
+        svsconfig = config.config.get('apptools.project.services')
+
+        signature = [
+            svsconfig.get('secret_key', '__development__'),  # HMAC key
+            str(response),  # message
+            svsconfig.get('hmac_hash', hashlib.md5)
+        ]
 
         return {
 
             'id': wrap['id'],
-            'status': 'ok',
+            'status': wrap['status'],
 
             'response': {
                 'content': response,
-                'type': str(response.__class__.__name__)
+                'type': str(response.__class__.__name__),
+                'signature': hmac.new(*signature).hexdigest()
             },
 
             'flags': wrap['flags'],
             'platform': {
+                'debug': config.debug,
                 'name': config.config.get('apptools.project').get('name', 'AppTools'),
                 'version': '.'.join(map(lambda x: str(x), [sysconfig['version']['major'], sysconfig['version']['minor'], sysconfig['version']['micro']])),
                 'build': sysconfig['version']['build'],
                 'release': sysconfig['version']['release'],
-                'engine': 'Providence/Clarity::v1.1 Embedded'
+                'engine': 'Providence/Clarity::AppTools'
             }
 
         }
@@ -286,6 +324,7 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
                             valid_value.append(item)
 
                     if field.repeated:
+                        getattr(message, field.name)
                         setattr(message, field.name, valid_value)
                     else:
                         setattr(message, field.name, valid_value[-1])
@@ -327,6 +366,7 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
                     valid_value.append(item)
 
                 if field.repeated:
+                    getattr(message, field.name)
                     setattr(message, field.name, valid_value)
                 else:
                     setattr(message, field.name, valid_value[-1])
@@ -338,21 +378,30 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
         ''' Build a request object. '''
 
         try:
-            request_object = protojson._load_json_module().loads(handler.request.body)
+            if hasattr(handler, 'interpreted_body') and handler.interpreted_body is not None:
+                request_object = handler.interpreted_body
+            else:
+                request_object = protojson._load_json_module().loads(handler.request.body)
 
             try:
                 request_id = request_object['id']
                 request_agent = request_object['agent']
                 request_body = request_object['request']
                 request_opts = request_object['opts']
-            except AttributeError, e:
-                raise service_handlers.RequestError('Request is missing a valid ID, agent, request opts or request body. Exception: "%s".' % e)
+            except AttributeError:
+                raise service_handlers.RequestError('Request is missing a valid ID, agent, request opts or request body.')
 
             self._request['id'] = request_id
             self._request['agent'] = request_agent
             self._request['opts'] = request_opts
 
+            handler._request_envelope['id'] = self._request['id']
+            handler._request_envelope['opts'] = self._request['opts']
+            handler._request_envelope['agent'] = self._request['agent']
+
             handler._response_envelope['id'] = self._request['id']
+
+            logging.info('Decoding request...')
 
             return self.decode_request(request_type, request_body['params'])
 
@@ -376,15 +425,35 @@ class BaseService(remote.Service):
 
     # General stuff
     handler = None
+    request = DictProxy({})
     middleware = {}
 
     # State + config
-    state = {'request': {}, 'opts': {}, 'service': {}}
-    config = {'global': {}, 'module': {}, 'service': {}}
+    state = {
+        'request': {},
+        'opts': {},
+        'service': {}
+    }
+
+    config = {
+        'global': {},
+        'module': {},
+        'service': {}
+    }
 
     # Bridged shortcuts
     api = _apibridge
-    _ext = _extbridge
+    ext = _extbridge
+    lib = _libbridge
+    util = _utilbridge
+
+    @webapp2.cached_property
+    def logging(self):
+
+        ''' Create and return a logging channel. '''
+
+        global logging
+        return logging.extend(path='apptools.services.ServiceLayer.RemoteService', name=self.__class__.__name__)
 
     @webapp2.cached_property
     def globalConfig(self):
@@ -479,6 +548,116 @@ class BaseService(remote.Service):
         if self.handler is not None:
             return self.handler.getflag(name)
 
+    def set_response(self, response):
+
+        ''' Add the response message model to the internal service state, so it can be passed to a followup task. This gives the task proper context and allows the task to push a regular response asynchronously. '''
+
+        self._setstate('rmodel', response)
+        return
+
+    def prepare_followup(self, task=None, pipeline=None, start=False, queue_name=None, idempotence_key='', *args, **kwargs):
+
+        ''' Prepare and set a followup task or pipeline, for async functionality. '''
+
+        global _global_debug
+
+        result_return = []
+        self.logging.debug('Loading remote method followup.')
+        self.logging.debug('Task: "' + str(task) + '".')
+        self.logging.debug('Pipeline: "' + str(pipeline) + '".')
+        self.logging.debug('Start: "' + str(start) + '".')
+        self.logging.debug('Args: "' + str(args) + '".')
+        self.logging.debug('Kwargs: "' + str(kwargs) + '".')
+
+        if task is not None:
+
+            self.logging.debug('Loading followup task.')
+
+            if 'params' not in kwargs:
+                kwargs['params'] = {}
+
+            kwargs['params']['_token'] = self._getstate('token')
+            kwargs['params']['_channel'] = self._getstate('channel')
+            kwargs['params']['_rhash'] = self._getstate('rhash')
+            kwargs['params']['_rhash'] = self._getstate('rid')
+            kwargs['params']['_rmodel'] = '.'.join(self._getstate('rmodel').__module__.split('.') + [self._getstate('rmodel').__class__.__name__])
+
+            if _global_debug:
+                self.logging.dev('Injected token "%s", channel "%s", rhash "%s" and model path "%s".' % (self._getstate('token'), self._getstate('channel'), self._getstate('rhash'), kwargs['params']['_rmodel']))
+
+            t = task(*args, **kwargs)
+
+            self.logging.debug('Instantiated task: "%s".' % t)
+
+            if start:
+                self.logging.debug('Starting followup task.')
+                if queue_name is not None:
+                    self.logging.debug('Adding to queue "%s".' % queue_name)
+                    self._setstate('followup', t.add(queue_name=queue_name))
+                else:
+                    self._setstate('followup', t.add())
+                self.logging.info('Resulting task: "%s".' % t)
+                self.setflag('tid', str(t))
+
+            result_return.append(t)
+
+        if pipeline is not None:
+
+            self.logging.debug('Loading followup pipeline.')
+
+            kwargs['async_config'] = {
+                'token': self._getstate('token'),
+                'channel': self._getstate('channel'),
+                'rid': self._getstate('rid'),
+                'rhash': self._getstate('rhash'),
+                'rmodel': '.'.join(self._getstate('rmodel').__module__.split('.') + [self._getstate('rmodel').__class__.__name__])
+            }
+
+            p = pipeline(*args, **kwargs)
+            self.logging.debug('Instantiated pipeline: "%s".' % p)
+
+            if start:
+                self.logging.debug('Starting followup pipeline.')
+                if queue_name is not None:
+                    self._setstate('followup', p.start(queue_name=queue_name, idempotence_key=idempotence_key))
+                else:
+                    self._setstate('followup', p.start(idempotence_key=idempotence_key))
+
+            self.logging.info('Resulting pipeline: "%s".' % p)
+            self.setflag('pid', str(p.pipeline_id))
+
+            result_return.append(p)
+
+        return tuple(result_return)
+
+    def set_followup(self, tid=None, pid=None):
+
+        ''' Manually set the TID and/or PID response header. '''
+
+        if tid is None:
+            self.setflag('tid', str(tid))
+        if pid is None:
+            self.setflag('pid', str(pid))
+        return
+
+    def go_async(self):
+
+        ''' Go into async mode. '''
+
+        return self.handler.go_async()
+
+    def can_async(self):
+
+        ''' Check if async mode is possible. '''
+
+        return self.handler.can_async()
+
+    def get_request_body(self):
+
+        ''' Interpret the request body and cache it for later. '''
+
+        return self.handler.get_request_body()
+
 
 ## RemoteServiceHandler
 # This class is responsible for bridging a request to a remote service class, dispatching/executing to get the response, and returning it to the client.
@@ -487,13 +666,29 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
     ''' Handler for responding to remote API requests. '''
 
     # Request/Response Containers
-    _response_envelope = {
+    state = {}
+    service = None
+    interpreted_body = None
+    enable_async_mode = False
+
+    _request_envelope = DictProxy({
+
+        'id': None,
+        'opts': {},
+        'agent': {}
+
+    })
+
+    _response_envelope = DictProxy({
 
         'id': None,
         'flags': {},
-        'status': 'fail'
+        'status': 'success'
 
-    }
+    })
+
+    # Exception Mappings
+    ApplicationError = remote.ApplicationError
 
     # Config
     @webapp2.cached_property
@@ -503,6 +698,14 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
         return config.config.get('apptools.services')
 
+    @webapp2.cached_property
+    def logging(self):
+
+        ''' Log channel shim. '''
+
+        global logging
+        return logging.extend(name='RemoteServiceHandler')
+
     # Log Management
     def log(self, message):
 
@@ -510,16 +713,17 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
         if self.servicesConfig['logging'] is True:
             if config.debug:
-                handler = logging.info
+                self.logging.info(str(message))
             else:
-                handler = logging.debug
-            handler('ServiceHandler: ' + str(message))
+                self.logging.debug(str(message))
+        return
 
     def error(self, message):
 
         ''' Error shortcut. '''
 
-        logging.error('ServiceHandler ERROR: ' + str(message))
+        self.logging.error(str(message))
+        return
 
     # Response Flags
     def setflag(self, name, value):
@@ -602,6 +806,200 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
         else:
             self.log('Middleware is none or 0.')
 
+    def go_async(self):
+
+        ''' Indicate that a response will be delivered via Channel API. '''
+
+        self.setflag('alt', 'socket')
+        self.setflag('token', self.state['token'])
+        self.setflag('rhash', self.state['rhash'])
+        self.setstatus('wait')
+
+        self.service._setstate('token', self.state['token'])
+        self.service._setstate('channel', self.state['channel'])
+        self.service._setstate('rid', self._request_envelope.id)
+        self.service._setstate('rhash', self.state['rhash'])
+
+        self.enable_async_mode = True
+
+        return True, self.state['token'], self.state['channel'], self.state['rhash']
+
+    def get_request_body(self):
+
+        ''' Interpret the request body early, so it can be manipulated/read. '''
+
+        if hasattr(self, 'interpreted_body') and self.interpreted_body is not None:
+            return self.interpreted_body
+        else:
+            try:
+                self.interpreted_body = json.loads(self.request.body)
+            except Exception:
+                self.interpreted_body = None
+                return False
+            else:
+                return self.interpreted_body
+
+    def can_async(self):
+
+        ''' Check and return whether an async response is possible. '''
+
+        self.logging.info('--- Beginning check for async compatibility.')
+
+        if 'alt' in self._request_envelope.opts:
+
+            self.logging.debug('1. `alt` flag found. value: "' + str(self._request_envelope.opts['alt']) + '".')
+
+            if self._request_envelope.opts['alt'] == 'socket':
+
+                if 'token' in self._request_envelope.opts:
+
+                    self.logging.debug('2. `token` flag found. value: "' + str(self._request_envelope.opts['token']) + '".')
+
+                    if self._request_envelope.opts['token'] not in set(['', '_null_']):
+
+                        self.logging.debug('3. `token` is not null or invalid. proceeding.')
+
+                        channel_token = self._get_channel_from_token(self._request_envelope.opts['token'])
+
+                        self.logging.debug('4. pulled `channel_token`: "' + str(channel_token) + '".')
+
+                        if channel_token is not False:
+                            self.logging.debug('ASYNC CAPABLE! :)')
+
+                            self.state['token'] = self._request_envelope.opts['token']
+                            self.state['channel'] = channel_token
+                            self.state['rhash'] = base64.b64encode(self.state['channel'] + str(self._request_envelope['id']))
+                            return True
+                        else:
+                            logging.warning('Could not pull channel ID.')
+
+                            self.setflag('alt', 'denied')
+                            self.setflag('pushcmd', 'reconnect')
+                            return False
+        return False
+
+    def _get_channel_from_token(self, token):
+
+        ''' Resolve a channel ID/seed from the client's token. '''
+
+        self.logging.info('Getting channel ID from token "' + str(token) + '".')
+
+        ## try memcache first
+        token_key = self._get_token_key(token)
+        self.logging.info('Token key calculated: "' + str(token_key) + '".')
+
+        channel_id = _apibridge.memcache.get(token_key)
+        if channel_id is None:
+
+            self.logging.warning('Channel ID not found in memcache.')
+
+            ## try datastore if we can't find it in memcache
+            from apptools.model import PushSession
+
+            ups = nkey.Key(PushSession, token_key).get()
+            if ups is not None:
+
+                self.logging.info('PushSession found in datastore. Found seed "' + str(ups.seed) + '".')
+
+                ## if the model's found, set it in memecache
+                _apibridge.memcache.set(token_key, {'seed': ups.seed, 'key': ups.key.urlsafe()})
+                return ups.seed
+            else:
+                self.logging.error('PushSession not found in datastore. Invalid or discarded seed.')
+                return False
+        else:
+            self.logging.info('Channel ID found in memcache. Returning!')
+            return channel_id['seed']
+
+    def _get_token_key(self, token):
+
+        ''' Encode and prefix a channel token, suitable for use as a key in memcache/megastore. '''
+
+        return 'push_token::' + base64.b64encode(hashlib.sha256(token).hexdigest())
+
+    def handle(self, http_method, service_path, remote_method):
+
+        ''' Handle a remote service request. '''
+
+        self.response.headers['x-content-type-options'] = 'nosniff'
+        content_type = self._ServiceHandler__get_content_type()
+
+        # Provide server state to the service.  If the service object does not have
+        # an "initialize_request_state" method, will not attempt to assign state.
+        try:
+            state_initializer = self.service.initialize_request_state
+        except AttributeError:
+            pass
+        else:
+            server_port = self.request.environ.get('SERVER_PORT', None)
+            if server_port:
+                server_port = int(server_port)
+
+                request_state = remote.HttpRequestState(
+                    remote_host=self.request.environ.get('REMOTE_HOST', None),
+                    remote_address=self.request.environ.get('REMOTE_ADDR', None),
+                    server_host=self.request.environ.get('SERVER_HOST', None),
+                    server_port=server_port,
+                    http_method=http_method,
+                    service_path=service_path,
+                    headers=list(self._ServiceHandler__headers(content_type)))
+            state_initializer(request_state)
+
+        if not content_type:
+            self.setstatus('fail')
+            self.__send_simple_error(400, 'Invalid RPC request: missing content-type')
+            return
+
+        # Search for mapper to mediate request.
+        for mapper in self._ServiceHandler__factory.all_request_mappers():
+            if content_type in mapper.content_types:
+                break
+        else:
+            self.setstatus('fail')
+            self._ServiceHandler__send_simple_error(415, 'Unsupported content-type: %s' % content_type)
+            return
+
+        try:
+            if http_method not in mapper.http_methods:
+                self.setstatus('fail')
+                self._ServiceHandler__send_simple_error(405, 'Unsupported HTTP method: %s' % http_method)
+                return
+
+            try:
+                try:
+                    method = getattr(self.service, remote_method)
+                    method_info = method.remote
+                except AttributeError, err:
+                    self.setstatus('fail')
+                    self._ServiceHandler__send_error(400, remote.RpcState.METHOD_NOT_FOUND_ERROR, 'Unrecognized RPC method: %s' % remote_method, mapper)
+                    return
+
+                request = mapper.build_request(self, method_info.request_type)
+
+            except (RequestError, messages.DecodeError), err:
+                self.setstatus('fail')
+                self._ServiceHandler__send_error(400, remote.RpcState.REQUEST_ERROR, 'Error parsing RPC request (%s)' % err, mapper)
+                return
+
+            try:
+                response = method(request)
+            except self.ApplicationError, err:
+                self.setstatus('fail')
+                self._ServiceHandler__send_error(400, remote.RpcState.APPLICATION_ERROR, err.message, mapper, err.error_name)
+                return
+
+            mapper.build_response(self, response)
+
+        except Exception, err:
+            self.setstatus('fail')
+            logging.error('An unexpected error occured when handling RPC: %s' % err, exc_info=1)
+            logging.exception('Unexpected service exception of type "%s": "%s".' % (type(err), str(err)))
+            self._ServiceHandler__send_error(500, remote.RpcState.SERVER_ERROR, 'Internal Server Error', mapper)
+            if config.debug:
+                raise
+            else:
+                return
+
     # Remote method execution
     def dispatch(self, factory, service):
 
@@ -613,8 +1011,10 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
         # Link the service and handler both ways so we can pass stuff back and forth
         service.handler = self
+        self.service = service
 
         request = self.request
+        service.request = request
 
         request_method = request.method
         method = getattr(self, request_method.lower(), None)
@@ -649,22 +1049,30 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
         return config.config.get('apptools.services')
 
+    @webapp2.cached_property
+    def logging(self):
+
+        ''' Log channel shim. '''
+
+        global logging
+        return logging.extend(name='RemoteServiceHandlerFactory')
+
     def log(self, message):
 
         ''' Logging shortcut. '''
 
         if self.servicesConfig['logging'] is True:
             if config.debug:
-                message_handler = logging.info
+                self.logging.info(str(message))
             else:
-                message_handler = logging.debug
-            message_handler('ServiceHandlerFactory: ' + str(message))
+                logging.debug(str(message))
+        return
 
     def error(self, message):
 
         ''' Error shortcut. '''
 
-        logging.error('ServiceHandlerFactory ERROR: ' + str(message))
+        self.logging.error('ServiceHandlerFactory ERROR: ' + str(message))
 
     @classmethod
     def default(cls, service_factory, parameter_prefix=''):
@@ -688,6 +1096,8 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
         global _middleware_cache
 
         # Extract response
+        request.clock = {}
+        request.clock['threadstart'] = time.time()
         response = request.response
 
         # Manufacture service + handler

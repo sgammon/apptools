@@ -1,8 +1,12 @@
 # -*- coding: utf-8 -*-
 
 # Base Imports
-import logging
 import hashlib
+
+# Util Imports
+from apptools.util.debug import AppToolsLogger
+
+logging = AppToolsLogger('apptools.servicelayer', 'Middleware')
 
 
 ## ServiceGatewayMiddleware
@@ -111,10 +115,6 @@ class AuthenticationMiddleware(ServiceGatewayMiddleware):
     """ Middleware for enforcing the policy that a user (maybe only admins) must be authenticated. """
 
     def before_request(self, service, request, response):
-
-        logging.info('SERVICE: ' + str(service))
-        logging.info('REQUEST_TOKEN: ' + str(request.GET.get('token', '_NOTOKEN_')))
-
         return (service, request, response)
 
 

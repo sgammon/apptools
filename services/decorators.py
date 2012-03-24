@@ -1,7 +1,16 @@
 # -*- coding: utf-8 -*-
 
 # Base Imports
-from apptools.util import DictProxy
+import config
+
+# Shortcuts
+from apptools.core import _libbridge
+from apptools.core import _apibridge
+from apptools.core import _extbridge
+from apptools.core import _utilbridge
+
+# Datastructures
+from apptools.util.datastructures import DictProxy
 
 
 ## RemoteMethodDecorator
@@ -15,6 +24,11 @@ class RemoteMethodDecorator(object):
     request = None
     service = None
     callback = None
+
+    lib = _libbridge
+    api = _apibridge
+    ext = _extbridge
+    util = _utilbridge
 
     def __init__(self, *args, **kwargs):
 
@@ -78,7 +92,10 @@ class Debug(RemoteMethodDecorator):
     """ Set debug mode to true or false for a remote method. Adds extra debug flags to the response envelope and ups the logging level. """
 
     def execute(self):
-        return self.execute_remote()
+        config.debug = True
+        result = self.execute_remote()
+        config.debug = False
+        return result
 
 
 # Set the minimum log severity in the scope of a single remote method
@@ -131,7 +148,7 @@ class Blacklist(RemoteMethodDecorator):
 
 
 # Specify that a remote service client must be on a whitelist in order to execute successfully.
-class Blacklist(RemoteMethodDecorator):
+class Whitelist(RemoteMethodDecorator):
 
     """ Indicate that a remote method must be matched against a whitelist. """
 
@@ -163,7 +180,10 @@ class AdminOnly(RemoteMethodDecorator):
     """ Indicate that a remote method requires an admin to be logged in. """
 
     def execute(self):
-        return self.execute_remote()
+        if self.api.users.is_current_user_admin():
+            return self.execute_remote()
+        else:
+            raise Exception()
 
 
 ## Decorator shortcuts

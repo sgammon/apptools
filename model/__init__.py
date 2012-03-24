@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-from apptools.util import DictProxy
+from apptools.util import ObjectProxy
 
 # App Engine Imports
 from google.appengine.ext import db as ldb
@@ -102,7 +102,7 @@ class NDBExpando(_AppToolsModel, model.Expando):
 ## Property, Key & Model Classes
 
 # NDB/New Style
-ndb = DictProxy({
+ndb = ObjectProxy({
 
         'key': key.Key,
         'model': NDBModel,
@@ -125,7 +125,7 @@ ndb = DictProxy({
 }, case_sensitive=False)
 
 # DB/Old Style
-db = DictProxy({
+db = ObjectProxy({
 
         'key': ldb.Key,
         'model': BaseModel,

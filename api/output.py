@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""
+'''
 
 Core: Output
 
@@ -13,17 +13,17 @@ the template and store it in the cache.
 
 -sam (<sam@momentum.io>)
 
-"""
+'''
 
 ## Base Imports
 import base64
 import config
-import logging
 
 from os import path
 
-## AppTools
+## AppTools Imports
 from apptools.exceptions import AppException
+from apptools.util.debug import AppToolsLogger
 
 ## Webapp2 Imports
 from webapp2 import cached_property
@@ -31,6 +31,8 @@ from webapp2 import cached_property
 ## Jinja2 Imports
 from jinja2 import FileSystemLoader as JFileSystemLoader
 from jinja2.exceptions import TemplateNotFound
+
+logging = AppToolsLogger('apptools.core', 'OutputAPI')
 
 t_data = {}
 
@@ -44,11 +46,17 @@ class ModuleLoader(object):
 
     ''' Loads templates that have been compiled into Python modules. '''
 
+    @cached_property
+    def logging(self):
+        global logging
+        return logging.extend(name='ModuleLoader')
+
     def __init__(self, templatemodule):
 
         ''' Loads a template from a module. '''
 
         self.modules = {}
+        self.logging.debug('Loading templatemodule: "%s".' % templatemodule)
         self.templatemodule = templatemodule
 
     def load(self, environment, filename, globals=None):
@@ -60,29 +68,34 @@ class ModuleLoader(object):
 
         # Strip '/' and remove extension.
         filename, ext = path.splitext(filename.strip('/'))
+        self.logging.debug('Loading template at path "%s" with extension "%s".' % (filename, ext))
 
-        if filename not in self.modules:
-            # Store module to avoid unnecessary repeated imports.
-            self.modules[filename] = self.get_module(environment, filename)
+        try:
+            if filename not in self.modules:
+                # Store module to avoid unnecessary repeated imports.
+                self.modules[filename] = self.get_module(environment, filename)
 
-        tpl_vars = self.modules[filename].run(environment)
+            tpl_vars = self.modules[filename].run(environment)
 
-        t = object.__new__(environment.template_class)
-        t.environment = environment
-        t.globals = globals
-        t.name = tpl_vars['name']
-        t.filename = filename
-        t.blocks = tpl_vars['blocks']
+            t = object.__new__(environment.template_class)
+            t.environment = environment
+            t.globals = globals
+            t.name = tpl_vars['name']
+            t.filename = filename
+            t.blocks = tpl_vars['blocks']
 
-        # render function and module
-        t.root_render_func = tpl_vars['root']
-        t._module = None
+            # render function and module
+            t.root_render_func = tpl_vars['root']
+            t._module = None
 
-        # debug and loader helpers
-        t._debug_info = tpl_vars['debug_info']
-        t._uptodate = lambda: True
+            # debug and loader helpers
+            t._debug_info = tpl_vars['debug_info']
+            t._uptodate = lambda: True
 
-        return t
+            return t
+        except Exception, e:
+            self.logging.exception('Encountered exception during template module import: "%s".' % e)
+            raise e
 
     def get_module(self, environment, template):
 
@@ -93,9 +106,13 @@ class ModuleLoader(object):
         prefix, obj = module_name.rsplit('.', 1)
 
         try:
+            self.logging.debug('Template module at path "%s" for template path "%s" was found and is valid.' % (module_name, template))
             return getattr(__import__(prefix, None, {'environment': environment}, [obj]), obj)
         except (ImportError, AttributeError):
-            raise TemplateNotFound(template)
+            t = TemplateNotFound(template)
+            self.logging.error('Template module at path "%s" for template path "%s" could not be found or is not valid.' % (module_name, template))
+            self.logging.exception('TemplateNotFound exception was thrown: "%s".' % t)
+            raise t
 
 
 # Source caching
@@ -153,6 +170,11 @@ class CoreOutputLoader(JFileSystemLoader):
     ''' Loads templates and automatically inserts bytecode caching logic for both fastcache (instance memory) and memcache. '''
 
     @cached_property
+    def logging(self):
+        global logging
+        return logging.extend(name='FileSystemLoader')
+
+    @cached_property
     def devConfig(self):
 
         ''' Cached dev configuration. '''
@@ -182,7 +204,7 @@ class CoreOutputLoader(JFileSystemLoader):
         else:
             do_log = False
         if do_log:
-            logging.debug('OUTPUT_LOADER: Template Loader received request for name \'' + str(name) + '\'.')
+            self.logging.debug('Template requested for name \'' + str(name) + '\'.')
 
         # Don't do caching if we're in dev mode
         if not config.debug or self.loaderConfig['force'] is True:
@@ -196,7 +218,7 @@ class CoreOutputLoader(JFileSystemLoader):
             if source is None:  # Not found in fastcache
 
                 if do_log:
-                    logging.debug('OUTPUT_LOADER: Template not found in fastcache.')
+                    self.logging.debug('Template not found in fastcache.')
 
                 # Fallback to memcache
                 if y_cfg.get('use_memcache') == True:
@@ -206,7 +228,7 @@ class CoreOutputLoader(JFileSystemLoader):
                 if source is None:  # Not found in memcache
 
                     if do_log:
-                        logging.debug('OUTPUT_LOADER: Template not found in memcache.')
+                        self.logging.debug('Template not found in memcache.')
                     source, name, uptodate = super(CoreOutputLoader, self).get_source(environment, name)
 
                     if y_cfg.get('use_memcache') != False:

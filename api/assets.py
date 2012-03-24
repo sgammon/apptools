@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 
-"""
+'''
 
 Core: Assets
 
@@ -11,20 +11,23 @@ for cachebusting via key value pairs, and switching to minified assets.
 
 -sam (<sam@momentum.io>)
 
-"""
+'''
 
 ## Base Imports
 import random
-import logging
 import config as cfg
 from config import config
 from webapp2 import cached_property
 
-## Momentum Imports
+## AppTools Imports
 from apptools.api import CoreAPI
 from apptools.api import HandlerMixin
-
+from apptools.api import ServiceMixin
+from apptools.api import PipelineMixin
+from apptools.util.debug import AppToolsLogger
 from apptools.api.output import CoreOutputAPIException
+
+logging = AppToolsLogger('apptools.core', 'AssetsAPI')
 
 ## Global Vars
 _img_url_cache = {}
@@ -46,7 +49,7 @@ class InvalidAssetEntry(AssetException):
 
 class CoreAssetsAPI(CoreAPI):
 
-    """ Responds to requests for image and asset URLs, reads asset configuration & manages caching of asset URLs. """
+    ''' Responds to requests for image and asset URLs, reads asset configuration & manages caching of asset URLs. '''
 
     methods = ['script_url', 'style_url', 'asset_url']
 
@@ -309,9 +312,9 @@ class CoreAssetsAPI(CoreAPI):
 _api = CoreAssetsAPI()
 
 
-class AssetsMixin(HandlerMixin):
+class AssetsMixin(HandlerMixin, ServiceMixin, PipelineMixin):
 
-    """ Bridge the Core Assets API to methods on a handler. """
+    ''' Bridge the Core Assets API to methods on a handler. '''
 
     get_img_asset = _api.img_url
     get_style_asset = _api.style_url

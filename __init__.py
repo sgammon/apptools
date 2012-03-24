@@ -1,10 +1,31 @@
 # -*- coding: utf-8 -*-
 
+## Base Imports
+import time
+
 ## Base Classes
-from core import BaseHandler
-from model import BaseModel
-from services import BaseService
-from pipelines import BasePipeline
+from apptools.core import BaseHandler
+from apptools.model import BaseModel
+from apptools.services import BaseService
+from apptools.pipelines import BasePipeline
+
+## Service Layer Exports
+from apptools.services import messages
+from apptools.services import middleware
+from apptools.services import decorators
+
+
+wallclock = []
+
+
+def clockpoint(name):
+
+    """ Adds a clockpoint to the wallclock dict above, for easy walltime tracking. """
+
+    global wallclock
+    timepoint = (name, time.time())
+    wallclock.append(timepoint)
+    return timepoint
 
 
 ## WSGI Gateway
