@@ -1,5 +1,17 @@
 # -*- coding: utf-8 -*-
 
+'''
+
+AppTools Models
+
+Exports useful utils/classes for data modelling, along with builtin models
+and tools for working with polymorphic persistent data.
+
+-sam (<sam@momentum.io>)
+
+'''
+
+from apptools.util import platform
 from apptools.util import ObjectProxy
 
 # App Engine Imports
@@ -73,6 +85,7 @@ class _AppToolsModel(object):
 
 ## AppTools Model
 # This is the root base model for all AppTools-based models.
+@platform.PlatformInjector
 class BaseModel(_AppToolsModel, ldb.Model):
 
     ''' This is the root base model for all AppTools-based models. '''
@@ -80,6 +93,7 @@ class BaseModel(_AppToolsModel, ldb.Model):
 
 ## NDBModel
 # This is the root base model for all NDB-based models.
+@platform.PlatformInjector
 class NDBModel(_AppToolsModel, model.Model):
 
     ''' This is the root base model for all NDB-based models '''
@@ -87,6 +101,7 @@ class NDBModel(_AppToolsModel, model.Model):
 
 ## BaseExpando
 # This is the root base expando for all expando-based models.
+@platform.PlatformInjector
 class BaseExpando(_AppToolsModel, ldb.Expando):
 
     ''' This is the root base model for all AppTools-based expandos. '''
@@ -94,6 +109,7 @@ class BaseExpando(_AppToolsModel, ldb.Expando):
 
 ## NDBExpando
 # This is the root base expando for all NDB-based expandos.
+@platform.PlatformInjector
 class NDBExpando(_AppToolsModel, model.Expando):
 
     ''' This is the root base model for all NDB & Expando-based models. '''

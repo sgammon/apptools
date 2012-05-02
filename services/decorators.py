@@ -1,13 +1,20 @@
 # -*- coding: utf-8 -*-
 
+'''
+
+Services: Decorators
+
+Holds remote service method decorators for flagging specific middleware options
+on a RemoteService or RemoteService method.
+
+-sam (<sam@momentum.io>)
+
+'''
+
 # Base Imports
 import config
 
 # Shortcuts
-from apptools.core import _libbridge
-from apptools.core import _apibridge
-from apptools.core import _extbridge
-from apptools.core import _utilbridge
 
 # Datastructures
 from apptools.util.datastructures import DictProxy
@@ -25,10 +32,10 @@ class RemoteMethodDecorator(object):
     service = None
     callback = None
 
-    lib = _libbridge
-    api = _apibridge
-    ext = _extbridge
-    util = _utilbridge
+    #lib = _libbridge
+    #api = _apibridge
+    #ext = _extbridge
+    #util = _utilbridge
 
     def __init__(self, *args, **kwargs):
 

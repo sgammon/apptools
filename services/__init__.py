@@ -1,5 +1,17 @@
 # -*- coding: utf-8 -*-
 
+'''
+
+AppTools Service Layer
+
+This module governs the creation, management, and dispatch of ProtoRPC-backed API services.
+Everything from dispatch, to serialization, to logging/caching/security is taken care of for you -
+this module is very configurable using the "config/services.py" file.
+
+-sam (<sam@momentum.io>)
+
+'''
+
 # Basic Imports
 import time
 import hmac
@@ -28,17 +40,11 @@ from webapp2_extras import protorpc as proto
 
 # Util Imports
 from apptools.util import json
+from apptools.util import platform
 from apptools.util.debug import AppToolsLogger
 
 # Datastructure Imports
 from apptools.util.datastructures import DictProxy
-from apptools.util.datastructures import WritableObjectProxy
-
-# Bridge Imports
-from apptools.core import _apibridge
-from apptools.core import _extbridge
-from apptools.core import _libbridge
-from apptools.core import _utilbridge
 
 # Decorator Imports
 from apptools.services.decorators import audit
@@ -200,6 +206,7 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 
     ''' Custom JSONRPC Mapper for managing JSON API requests. '''
 
+    handler = None
     _request = {
 
         'id': None,
@@ -210,6 +217,13 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 
     def __init__(self):
         super(AppJSONRPCMapper, self).__init__()
+
+    @webapp2.cached_property
+    def ServicesConfig(self):
+
+        ''' Return the project services config. '''
+
+        return config.config.get('apptools.project.services')
 
     def encode_request(self, struct):
 
@@ -222,6 +236,7 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
 
         ''' Encode a response. '''
 
+        self.handler = handler
         try:
             if isinstance(response, messages.Message):
                 response.check_initialized()
@@ -253,34 +268,63 @@ class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
         sysconfig = config.config.get('apptools.project')
         svsconfig = config.config.get('apptools.project.services')
 
+        ## Compile signature
         signature = [
-            svsconfig.get('secret_key', '__development__'),  # HMAC key
+            svsconfig.get('secret_key', self.ServicesConfig.get('secret_key', '__development__')),  # HMAC key
             str(response),  # message
             svsconfig.get('hmac_hash', hashlib.md5)
         ]
 
-        return {
+        ## Start building response
+        response_envelope = {
 
-            'id': wrap['id'],
-            'status': wrap['status'],
-
-            'response': {
-                'content': response,
-                'type': str(response.__class__.__name__),
-                'signature': hmac.new(*signature).hexdigest()
-            },
-
-            'flags': wrap['flags'],
+            'id': wrap.get('id'),
+            'status': wrap.get('status'),
+            'response': {},
+            'flags': wrap.get('flags'),
             'platform': {
-                'debug': config.debug,
                 'name': config.config.get('apptools.project').get('name', 'AppTools'),
-                'version': '.'.join(map(lambda x: str(x), [sysconfig['version']['major'], sysconfig['version']['minor'], sysconfig['version']['micro']])),
-                'build': sysconfig['version']['build'],
-                'release': sysconfig['version']['release'],
-                'engine': 'Providence/Clarity::AppTools'
+                'version': '.'.join(map(lambda x: str(x), [sysconfig['version']['major'], sysconfig['version']['minor'], sysconfig['version']['micro']]))
             }
 
         }
+
+        ## Add debug info
+        if config.debug or self.ServicesConfig.get('debug', False):
+            response_envelope['platform']['debug'] = config.debug
+            response_envelope['platform']['build'] = sysconfig['version']['build']
+            response_envelope['platform']['release'] = sysconfig['version']['release']
+            response_envelope['platform']['engine'] = 'AppTools/ProtoRPC'
+
+            if self.ServicesConfig.get('debug', False):
+                response_envelope['platform']['info'] = {
+
+                    'datacenter': self.handler.request.environ.get('DATACENTER'),
+                    'instance': self.handler.request.environ.get('INSTANCE_ID'),
+                    'request_id': self.handler.request.environ.get('REQUEST_ID_HASH'),
+                    'server': self.handler.request.environ.get('SERVER_SOFTWARE'),
+                    'runtime': self.handler.request.environ.get('APPENGINE_RUNTIME'),
+                    'multithread': self.handler.request.environ.get('wsgi.multithread'),
+                    'multiprocess': self.handler.request.environ.get('wsgi.multiprocess')
+
+                }
+                if self.api.backends.get_backend() is not None:
+                    response_envelope['platform']['info']['layer'] = 'backend'
+                    response_envelope['platform']['info']['instance'] = self.api.backends.get_instance()
+                else:
+                    response_envelope['platform']['info']['layer'] = 'frontend'
+
+        ## Add actual response
+        response_envelope['response'] = {
+
+            'type': str(response.__class__.__name__),
+            'content': response,
+            'signature': hmac.new(*signature).hexdigest()
+
+        }
+
+        ## Done!
+        return response_envelope
 
     def decode_request(self, message_type, dictionary):
 
@@ -419,6 +463,7 @@ class RemoteServiceFactory(object):
 
 ## BaseService
 # Top-level base class for remote services classes.
+@platform.PlatformInjector
 class BaseService(remote.Service):
 
     ''' Top-level parent class for ProtoRPC-based API services. '''
@@ -441,12 +486,6 @@ class BaseService(remote.Service):
         'service': {}
     }
 
-    # Bridged shortcuts
-    api = _apibridge
-    ext = _extbridge
-    lib = _libbridge
-    util = _utilbridge
-
     @webapp2.cached_property
     def logging(self):
 
@@ -462,7 +501,17 @@ class BaseService(remote.Service):
 
         return config.config.get('apptools.services')
 
+    @webapp2.cached_property
+    def serviceConfig(self):
+
+        ''' Cached shortcut to project services config. '''
+
+        return config.config.get('apptools.project.services')
+
     def __init__(self, *args, **kwargs):
+
+        ''' Pass init up the chain. '''
+
         super(BaseService, self).__init__(*args, **kwargs)
 
     def initiate_request_state(self, state):
@@ -516,35 +565,62 @@ class BaseService(remote.Service):
             self.initialize()
 
     def _setstate(self, key, value):
+
+        ''' Set an item in service state. '''
+
         self.state['service'][key] = value
 
     def _getstate(self, key, default):
+
+        ''' Get an item from service state. '''
+
         if key in self.state['service']:
             return self.state['service'][key]
         else:
             return default
 
     def _delstate(self, key):
+
+        ''' Delete an item from service state. '''
+
         if key in self.state['service']:
             del self.state['service'][key]
 
     def __setitem__(self, key, value):
+
+        ''' `service[key] = value` syntax to set an item in service state. '''
+
         self._setstate(key, value)
 
     def __getitem__(self, key):
+
+        ''' `var = service[key]` syntax to get an item from service state. '''
+
         return self._getstate(key, None)
 
     def __delitem__(self, key):
+
+        ''' `del service[key] syntax` to delete an item from service state. '''
+
         self._delstate(key)
 
     def __repr__(self):
+
+        ''' Cleaner string representation. '''
+
         return '<RemoteService::' + '.'.join(self.__module__.split('.') + [self.__class__.__name__]) + '>'
 
     def setflag(self, name, value):
+
+        ''' Set a flag to be returned in the response envelope. '''
+
         if self.handler is not None:
             return self.handler.setflag(name, value)
 
     def getflag(self, name):
+
+        ''' Get the value of a flag set to be returned in the response envelope. '''
+
         if self.handler is not None:
             return self.handler.getflag(name)
 
@@ -562,16 +638,18 @@ class BaseService(remote.Service):
         global _global_debug
 
         result_return = []
-        self.logging.debug('Loading remote method followup.')
-        self.logging.debug('Task: "' + str(task) + '".')
-        self.logging.debug('Pipeline: "' + str(pipeline) + '".')
-        self.logging.debug('Start: "' + str(start) + '".')
-        self.logging.debug('Args: "' + str(args) + '".')
-        self.logging.debug('Kwargs: "' + str(kwargs) + '".')
+        if self.servicesConfig.get('debug', False):
+            self.logging.debug('Loading remote method followup.')
+            self.logging.debug('Task: "' + str(task) + '".')
+            self.logging.debug('Pipeline: "' + str(pipeline) + '".')
+            self.logging.debug('Start: "' + str(start) + '".')
+            self.logging.debug('Args: "' + str(args) + '".')
+            self.logging.debug('Kwargs: "' + str(kwargs) + '".')
 
         if task is not None:
 
-            self.logging.debug('Loading followup task.')
+            if self.servicesConfig.get('debug', False):
+                self.logging.debug('Loading followup task.')
 
             if 'params' not in kwargs:
                 kwargs['params'] = {}
@@ -587,23 +665,27 @@ class BaseService(remote.Service):
 
             t = task(*args, **kwargs)
 
-            self.logging.debug('Instantiated task: "%s".' % t)
+            if self.servicesConfig.get('debug', False):
+                self.logging.debug('Instantiated task: "%s".' % t)
 
             if start:
-                self.logging.debug('Starting followup task.')
+                if self.servicesConfig.get('debug', False):
+                    self.logging.debug('Starting followup task.')
                 if queue_name is not None:
                     self.logging.debug('Adding to queue "%s".' % queue_name)
                     self._setstate('followup', t.add(queue_name=queue_name))
                 else:
                     self._setstate('followup', t.add())
-                self.logging.info('Resulting task: "%s".' % t)
+                if self.servicesConfig.get('debug', False):
+                    self.logging.info('Resulting task: "%s".' % t)
                 self.setflag('tid', str(t))
 
             result_return.append(t)
 
         if pipeline is not None:
 
-            self.logging.debug('Loading followup pipeline.')
+            if self.servicesConfig.get('debug', False):
+                self.logging.debug('Loading followup pipeline.')
 
             kwargs['async_config'] = {
                 'token': self._getstate('token'),
@@ -614,16 +696,19 @@ class BaseService(remote.Service):
             }
 
             p = pipeline(*args, **kwargs)
-            self.logging.debug('Instantiated pipeline: "%s".' % p)
+            if self.servicesConfig.get('debug', False):
+                self.logging.debug('Instantiated pipeline: "%s".' % p)
 
             if start:
-                self.logging.debug('Starting followup pipeline.')
+                if self.servicesConfig.get('debug', False):
+                    self.logging.debug('Starting followup pipeline.')
                 if queue_name is not None:
                     self._setstate('followup', p.start(queue_name=queue_name, idempotence_key=idempotence_key))
                 else:
                     self._setstate('followup', p.start(idempotence_key=idempotence_key))
 
-            self.logging.info('Resulting pipeline: "%s".' % p)
+            if self.servicesConfig.get('debug', False):
+                self.logging.info('Resulting pipeline: "%s".' % p)
             self.setflag('pid', str(p.pipeline_id))
 
             result_return.append(p)
@@ -843,35 +928,42 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
         ''' Check and return whether an async response is possible. '''
 
-        self.logging.info('--- Beginning check for async compatibility.')
+        sdebug = self.servicesConfig.get('debug', False)
+        if sdebug:
+            self.logging.info('--- Beginning check for async compatibility.')
 
         if 'alt' in self._request_envelope.opts:
 
-            self.logging.debug('1. `alt` flag found. value: "' + str(self._request_envelope.opts['alt']) + '".')
+            if sdebug:
+                self.logging.debug('1. `alt` flag found. value: "' + str(self._request_envelope.opts['alt']) + '".')
 
             if self._request_envelope.opts['alt'] == 'socket':
 
                 if 'token' in self._request_envelope.opts:
 
-                    self.logging.debug('2. `token` flag found. value: "' + str(self._request_envelope.opts['token']) + '".')
+                    if sdebug:
+                        self.logging.debug('2. `token` flag found. value: "' + str(self._request_envelope.opts['token']) + '".')
 
                     if self._request_envelope.opts['token'] not in set(['', '_null_']):
 
-                        self.logging.debug('3. `token` is not null or invalid. proceeding.')
+                        if sdebug:
+                            self.logging.debug('3. `token` is not null or invalid. proceeding.')
 
                         channel_token = self._get_channel_from_token(self._request_envelope.opts['token'])
 
-                        self.logging.debug('4. pulled `channel_token`: "' + str(channel_token) + '".')
+                        if sdebug:
+                            self.logging.debug('4. pulled `channel_token`: "' + str(channel_token) + '".')
 
                         if channel_token is not False:
-                            self.logging.debug('ASYNC CAPABLE! :)')
+                            if sdebug:
+                                self.logging.debug('ASYNC CAPABLE! :)')
 
                             self.state['token'] = self._request_envelope.opts['token']
                             self.state['channel'] = channel_token
                             self.state['rhash'] = base64.b64encode(self.state['channel'] + str(self._request_envelope['id']))
                             return True
                         else:
-                            logging.warning('Could not pull channel ID.')
+                            self.logging.warning('Could not pull channel ID.')
 
                             self.setflag('alt', 'denied')
                             self.setflag('pushcmd', 'reconnect')
@@ -882,33 +974,39 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
         ''' Resolve a channel ID/seed from the client's token. '''
 
-        self.logging.info('Getting channel ID from token "' + str(token) + '".')
+        sdebug = self.servicesConfig.get('debug', False)
+        if sdebug:
+            self.logging.info('Getting channel ID from token "' + str(token) + '".')
 
         ## try memcache first
         token_key = self._get_token_key(token)
-        self.logging.info('Token key calculated: "' + str(token_key) + '".')
+        if sdebug:
+            self.logging.info('Token key calculated: "' + str(token_key) + '".')
 
-        channel_id = _apibridge.memcache.get(token_key)
+        channel_id = self.api.memcache.get(token_key)
         if channel_id is None:
 
-            self.logging.warning('Channel ID not found in memcache.')
+            if sdebug:
+                self.logging.warning('Channel ID not found in memcache.')
 
             ## try datastore if we can't find it in memcache
-            from apptools.model import PushSession
+            from apptools.model.builtin import PushSession
 
             ups = nkey.Key(PushSession, token_key).get()
             if ups is not None:
 
-                self.logging.info('PushSession found in datastore. Found seed "' + str(ups.seed) + '".')
+                if sdebug:
+                    self.logging.info('PushSession found in datastore. Found seed "' + str(ups.seed) + '".')
 
                 ## if the model's found, set it in memecache
-                _apibridge.memcache.set(token_key, {'seed': ups.seed, 'key': ups.key.urlsafe()})
+                self.api.memcache.set(token_key, {'seed': ups.seed, 'key': ups.key.urlsafe()})
                 return ups.seed
             else:
                 self.logging.error('PushSession not found in datastore. Invalid or discarded seed.')
                 return False
         else:
-            self.logging.info('Channel ID found in memcache. Returning!')
+            if sdebug:
+                self.logging.info('Channel ID found in memcache. Returning!')
             return channel_id['seed']
 
     def _get_token_key(self, token):
@@ -992,8 +1090,8 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
         except Exception, err:
             self.setstatus('fail')
-            logging.error('An unexpected error occured when handling RPC: %s' % err, exc_info=1)
-            logging.exception('Unexpected service exception of type "%s": "%s".' % (type(err), str(err)))
+            self.logging.error('An unexpected error occured when handling RPC: %s' % err, exc_info=1)
+            self.logging.exception('Unexpected service exception of type "%s": "%s".' % (type(err), str(err)))
             self._ServiceHandler__send_error(500, remote.RpcState.SERVER_ERROR, 'Internal Server Error', mapper)
             if config.debug:
                 raise

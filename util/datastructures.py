@@ -1,4 +1,15 @@
 # -*- coding: utf-8 -*-
+
+'''
+
+Util: Datastructures
+
+Holds useful classes and code for managing/manipulating/using specialized datastructures.
+
+-sam (<sam@momentum.io>)
+
+'''
+
 import logging
 
 

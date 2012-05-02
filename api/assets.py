@@ -2,7 +2,7 @@
 
 '''
 
-Core: Assets
+API: Assets
 
 Responsible for reading the assets config (see config/assets.py) and outputting asset
 URLs based on the config & resource requested. There is support for switching the
@@ -22,8 +22,8 @@ from webapp2 import cached_property
 ## AppTools Imports
 from apptools.api import CoreAPI
 from apptools.api import HandlerMixin
-from apptools.api import ServiceMixin
-from apptools.api import PipelineMixin
+
+## Logging + Exceptions
 from apptools.util.debug import AppToolsLogger
 from apptools.api.output import CoreOutputAPIException
 
@@ -36,14 +36,23 @@ _asset_url_cache = {}
 
 ## == Assets Module Exceptions == ##
 class AssetException(CoreOutputAPIException):
+
+    ''' Top-level exception for all Asset API-related exceptions. '''
+
     pass
 
 
 class InvalidAssetType(AssetException):
+
+    ''' Raised when a given asset type is not recognized. '''
+
     pass
 
 
 class InvalidAssetEntry(AssetException):
+
+    ''' Raised when a given asset type is valid, but an asset could not be found at the given identifier. '''
+
     pass
 
 
@@ -107,21 +116,24 @@ class CoreAssetsAPI(CoreAPI):
 
         ''' Return a simple URL for an image. (Note: does not use assets config - images are not registered assets) '''
 
-        global img_url_cache
+        global _img_url_cache
 
-        url_fragments = []
-        if self._OutputConfig.get('assets', {}).get('serving_mode', 'local') == 'cdn':
-            url_fragments.append('http://')
-            if isinstance(self._OutputConfig['assets']['cdn_prefix'], list):
-                cdnprefix = random.choice(self._OutputConfig['assets']['cdn_prefix'])
-            else:
-                cdnprefix = self._OutputConfig['assets']['cdn_prefix']
-            url_fragments.append([cdnprefix, 'img', 'static'] + [i for i in path.split('/')] + [''])
+        if (path, name) in _img_url_cache:
+            return _img_url_cache[(path, name)]
         else:
-            url_fragments.append('/')
-            url_fragments.append(['assets', 'img', 'static'] + [i for i in path.split('/')] + [''])
+            url_fragments = []
+            if self._OutputConfig.get('assets', {}).get('serving_mode', 'local') == 'cdn':
+                url_fragments.append('http://')
+                if isinstance(self._OutputConfig['assets']['cdn_prefix'], list):
+                    cdnprefix = random.choice(self._OutputConfig['assets']['cdn_prefix'])
+                else:
+                    cdnprefix = self._OutputConfig['assets']['cdn_prefix']
+                url_fragments.append([cdnprefix, 'assets', 'img', 'static'] + [i for i in path.split('/')] + [''])
+            else:
+                url_fragments.append('/')
+                url_fragments.append(['assets', 'img', 'static'] + [i for i in path.split('/')] + [''])
 
-        url_fragments.append(name)
+            url_fragments.append(name)
 
         return reduce(lambda x, y: str(x) + str(y), map(lambda x: isinstance(x, list) and '/'.join(x) or x, url_fragments))
 
@@ -171,7 +183,7 @@ class CoreAssetsAPI(CoreAPI):
                 if self._OutputConfig['assets']['serving_mode'] == 'local':
                     asset_url = ['assets', _type, prefix, module_path, ('.', filename)]
                 else:
-                    asset_url = [_type, prefix, module_path, ('.', filename)]
+                    asset_url = ['assets', _type, prefix, module_path, ('.', filename)]
                 minify = minify or self._OutputConfig['assets'].get('minified', False)
 
                 ## 1: Consider absolute assets
@@ -312,7 +324,7 @@ class CoreAssetsAPI(CoreAPI):
 _api = CoreAssetsAPI()
 
 
-class AssetsMixin(HandlerMixin, ServiceMixin, PipelineMixin):
+class AssetsMixin(HandlerMixin):
 
     ''' Bridge the Core Assets API to methods on a handler. '''
 

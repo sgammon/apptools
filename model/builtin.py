@@ -1,3 +1,16 @@
+# -*- coding: utf-8 -*-
+
+'''
+
+Models: Builtin
+
+Holds builtin models that are used by AppTools or AppTools extensions.
+
+-sam (<sam@momentum.io>)
+
+'''
+
+
 from apptools.model import ndb
 
 ## Builtin Models

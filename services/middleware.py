@@ -1,5 +1,16 @@
 # -*- coding: utf-8 -*-
 
+'''
+
+Services: Middleware
+
+Holds service middleware, that can hook into the pre- or post- remote method execution
+sequence.
+
+-sam (<sam@momentum.io>)
+
+'''
+
 # Base Imports
 import hashlib
 

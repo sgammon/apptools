@@ -1,5 +1,16 @@
 # -*- coding: utf-8 -*-
 
+'''
+
+AppTools Util
+
+Holds small utilities and useful pieces of code/functionality that don't
+belong anywhere more-specific in AppTools.
+
+-sam (<sam@momentum.io>)
+
+'''
+
 ## Export Util Controllers
 from apptools.util.debug import AppToolsLogger
 from apptools.util.debug import AppToolsLogController
