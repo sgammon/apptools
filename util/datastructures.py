@@ -303,3 +303,49 @@ class ObjectDictBridge(UtilStruct):
         except:
             return default_value
         return default_value
+
+
+class StateManager(object):
+
+    ''' Addon class for managing a self.state property. '''
+
+    def _setstate(self, key, value):
+
+        ''' Set an item in service state. '''
+
+        self.state['service'][key] = value
+        return
+
+    def _getstate(self, key, default):
+
+        ''' Get an item from service state. '''
+
+        if key in self.state['service']:
+            return self.state['service'][key]
+        else:
+            return default
+
+    def _delstate(self, key):
+
+        ''' Delete an item from service state. '''
+
+        if key in self.state['service']:
+            del self.state['service'][key]
+
+    def __setitem__(self, key, value):
+
+        ''' `service[key] = value` syntax to set an item in service state. '''
+
+        self._setstate(key, value)
+
+    def __getitem__(self, key):
+
+        ''' `var = service[key]` syntax to get an item from service state. '''
+
+        return self._getstate(key, None)
+
+    def __delitem__(self, key):
+
+        ''' `del service[key] syntax` to delete an item from service state. '''
+
+        self._delstate(key)

@@ -47,7 +47,8 @@ logging = AppToolsLogger('apptools.core', 'OutputAPI')
 t_data = {}
 
 
-## Output Exception
+## CoreOutputAPIException
+# Root exception class for all Output API-related exceptions.
 class CoreOutputAPIException(AppException):
 
     ''' Root exception class for all Output API-related exceptions. '''
@@ -55,6 +56,8 @@ class CoreOutputAPIException(AppException):
     pass
 
 
+## ModuleLoader
+# Loader that resolves templates compiled into Python modules.
 class ModuleLoader(object):
 
     ''' Loads templates that have been compiled into Python modules. '''
@@ -180,7 +183,8 @@ def set_tdata_to_memcache(name, data, do_log):
         logging.debug('OUTPUT_LOADER: Set template \'' + str(name) + '\' to memcache under key \'Core//Output//Template-' + str(name) + '\'.')
 
 
-# Loader class
+## CoreOutputLoader
+# Main, filesystem-based template loader, backed by instance/thread memory and memcache.
 class CoreOutputLoader(JFileSystemLoader):
 
     ''' Loads templates and automatically inserts bytecode caching logic for both fastcache (instance memory) and memcache. '''
@@ -262,6 +266,8 @@ class CoreOutputLoader(JFileSystemLoader):
         return source, name, lambda: True
 
 
+## OutputMixin
+# Used as an addon class for base classes like BaseHandler to bridge in access to the Core Output API.
 class OutputMixin(HandlerMixin):
 
     ''' Bridge the Core Assets API to methods on a handler. '''

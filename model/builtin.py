@@ -16,6 +16,7 @@ from apptools.model import ndb
 ## Builtin Models
 
 
+## StoredAsset
 # This model keeps track of StoredAssets.
 class StoredAsset(ndb.Model):
 
@@ -28,7 +29,8 @@ class StoredAsset(ndb.Model):
     content_type = ndb.StringProperty()
 
 
-# This model keeps track of blobstore upload sessions.
+## UploadSession
+# This model keeps track of file upload sessions.
 class UploadSession(ndb.Model):
 
     ''' This model keeps track of blobstore upload sessions. '''
@@ -38,9 +40,11 @@ class UploadSession(ndb.Model):
     created = ndb.DateTimeProperty(indexed=False)
     enable_cdn = ndb.BooleanProperty()
     assets = ndb.KeyProperty(repeated=True)
+    backend = ndb.StringProperty(indexed=True, choices=['blobstore', 'cloud'])
     status = ndb.StringProperty(choices=['pending', 'success', 'fail'], indexed=True)
 
 
+## PushSession
 # This model keeps track of async sessions established by the service layer.
 class PushSession(ndb.Model):
 

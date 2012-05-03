@@ -14,7 +14,6 @@ sequence.
 # Base Imports
 import config
 import logging
-import traceback
 
 # Exceptions
 from apptools.exceptions import AppException

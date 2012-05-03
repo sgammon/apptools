@@ -12,6 +12,8 @@ app (AppException).
 '''
 
 
+## AppException
+# Userland exceptions should extend this to hook into AppTools' error handling & routing.
 class AppException(Exception):
 
     ''' All app exceptions should inherit from this. '''
@@ -19,6 +21,8 @@ class AppException(Exception):
     pass
 
 
+## AppToolsException
+# All internal/plugin AppTools exceptions extend this.
 class AppToolsException(Exception):
 
     ''' All AppTools exceptions should inherit from this. '''

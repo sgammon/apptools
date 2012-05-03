@@ -4,8 +4,6 @@
 
 Models: PolyPro
 
-This is **PolyPro**.
-
 Description: A modification to Model designed to introduce polymorphism,
 allowing models to inherit properties and methods from other models.
 Cannot be instantiated directly - designed only to be extended.
@@ -22,6 +20,7 @@ the python module path to the corresponding class.
 Since we store the class path along with the class key, PolyPro can
 lazy-load the implementation class when an entity is pulled from the
 datastore.
+
 '''
 
 import os
@@ -29,17 +28,17 @@ import sys
 from apptools.core import _apibridge
 from apptools.model import ldb, _ModelPathProperty, _ClassKeyProperty
 
-# Internal settings
+# Internal settings / globals
 _LOG_IMPORTS = True
 _PATH_SEPERATOR = ':'
 _KEY_NAME_SEPERATOR = '//'
-
 _PATH_KEY_PROPERTY = '_path_'
 _CLASS_KEY_PROPERTY = '_class_'
 
 _class_map = {}
 
 
+## PolymorphicModel
 # Carryover from appengine.ext.db
 class PolymorphicModel(ldb.PropertiedClass):
 
@@ -75,6 +74,8 @@ class PolymorphicModel(ldb.PropertiedClass):
         _class_map[cls.class_key()] = cls
 
 
+## PolyPro
+# Enables "lazy-loaded implementation"-type polymorphic data models.
 class PolyPro(ldb.Model):
 
     __metaclass__ = PolymorphicModel

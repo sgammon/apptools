@@ -82,8 +82,9 @@ class RemoteMethodDecorator(object):
         return self.callback
 
 
-## Auditing Flags
+#### ==== Auditing Flags ==== ####
 
+## Monitor
 # Monitor individual and aggregate request data, and log to datastore or memcache
 class Monitor(RemoteMethodDecorator):
 
@@ -93,6 +94,7 @@ class Monitor(RemoteMethodDecorator):
         return self.execute_remote()
 
 
+## Debug
 # Set debug to true or false in the scope of a single remote method
 class Debug(RemoteMethodDecorator):
 
@@ -105,6 +107,7 @@ class Debug(RemoteMethodDecorator):
         return result
 
 
+## LogLevel
 # Set the minimum log severity in the scope of a single remote method
 class LogLevel(RemoteMethodDecorator):
 
@@ -114,8 +117,9 @@ class LogLevel(RemoteMethodDecorator):
         return self.execute_remote()
 
 
-## Caching Flags
+#### ==== Caching Flags ==== ####
 
+## Cacheable
 # Specify a method's caching policy for all caching layers.
 class Cacheable(RemoteMethodDecorator):
 
@@ -125,6 +129,7 @@ class Cacheable(RemoteMethodDecorator):
         return self.execute_remote()
 
 
+## LocalCacheable
 # Specify a method's caching policy for threadlocal/global layers.
 class LocalCacheable(RemoteMethodDecorator):
 
@@ -134,6 +139,7 @@ class LocalCacheable(RemoteMethodDecorator):
         return self.execute_remote()
 
 
+## MemCacheable
 # Specify a method's caching policy for memcaching.
 class MemCacheable(RemoteMethodDecorator):
 
@@ -143,8 +149,9 @@ class MemCacheable(RemoteMethodDecorator):
         return self.execute_remote()
 
 
-## Security Flags
+#### ==== Security Flags ==== ####
 
+## Blacklist
 # Specify that a remote service client cannot be on a blacklist in order to execute successfully.
 class Blacklist(RemoteMethodDecorator):
 
@@ -154,6 +161,7 @@ class Blacklist(RemoteMethodDecorator):
         return self.execute_remote()
 
 
+## Whitelist
 # Specify that a remote service client must be on a whitelist in order to execute successfully.
 class Whitelist(RemoteMethodDecorator):
 
@@ -163,6 +171,7 @@ class Whitelist(RemoteMethodDecorator):
         return self.execute_remote()
 
 
+## Authorize
 # Specify that a remote service client must authorize via an ACL or other grouping of users.
 class Authorize(RemoteMethodDecorator):
 
@@ -172,6 +181,7 @@ class Authorize(RemoteMethodDecorator):
         return self.execute_remote()
 
 
+## Authenticate
 # Specify that a remote service client must authenticate before executing remote methods.
 class Authenticate(RemoteMethodDecorator):
 
@@ -181,6 +191,7 @@ class Authenticate(RemoteMethodDecorator):
         return self.execute_remote()
 
 
+## AdminOnly
 # Specify that a remote service method can be run by AppEngine-registered admins only.
 class AdminOnly(RemoteMethodDecorator):
 
@@ -193,7 +204,7 @@ class AdminOnly(RemoteMethodDecorator):
             raise Exception()
 
 
-## Decorator shortcuts
+#### ==== Decorator Shortcuts ==== ####
 
 # Audit decorators
 audit = DictProxy({

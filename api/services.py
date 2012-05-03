@@ -16,31 +16,15 @@ This adds the methods + properties:
 
 '''
 
-# Base Imports
-import config
-import webapp2
-
 # Mixin Imports
 from apptools.api import HandlerMixin
 
 
+## ServicesMixin
+# Used as an addon class to base classes to bridge in Service Layer-related functionality.
 class ServicesMixin(HandlerMixin):
 
     ''' Exposes service-related methods to BaseHandler. '''
-
-    @webapp2.cached_property
-    def _servicesConfig(self):
-
-        ''' Returns a copy of the project services config. '''
-
-        return config.config.get('.'.join(self.configPath.split('.') + ['services']))
-
-    @webapp2.cached_property
-    def _globalServicesConfig(self):
-
-        ''' Return a copy of AppTools' service settings. '''
-
-        return config.config.get('apptools.services')
 
     def make_services_manifest(self):
 
@@ -50,13 +34,18 @@ class ServicesMixin(HandlerMixin):
         svcs = []
         opts = {}
 
-        self.logging.dev('Generating services manifest...')
+        sdebug = self._servicesConfig.get('debug', False)
+
+        if sdebug:
+            self.logging.dev('Generating services manifest...')
         for name, config in self._servicesConfig['services'].items():
 
-            self.logging.dev('Considering API "%s"...' % name)
+            if sdebug:
+                self.logging.dev('Considering API "%s"...' % name)
             if config['enabled'] is True:
 
-                self.logging.dev('API is enabled.')
+                if sdebug:
+                    self.logging.dev('API is enabled.')
                 security_profile = self._globalServicesConfig['middleware_config']['security']['profiles'].get(config['config']['security'], None)
 
                 caching_profile = self._globalServicesConfig['middleware_config']['caching']['profiles'].get(config['config']['caching'], None)
@@ -83,19 +72,24 @@ class ServicesMixin(HandlerMixin):
 
                 ## Expose depending on security profile
                 if security_profile['expose'] == 'all':
-                    self.logging.dev('API is exposed publicly.')
+                    if sdebug:
+                        self.logging.dev('API is exposed publicly.')
                     svcs.append((name, service_action_url, config, opts))
 
                 elif security_profile['expose'] == 'admin':
-                    self.logging.dev('API is exposed to admins only.')
+                    if sdebug:
+                        self.logging.dev('API is exposed to admins only.')
                     if self.api.users.is_current_user_admin():
-                        self.logging.dev('User valid for API access.')
+                        if sdebug:
+                            self.logging.dev('User valid for API access.')
                         svcs.append((name, service_action_url, config, opts))
 
                 elif security_profile['expose'] == 'none':
-                    self.logging.dev('API is set to expose to `none`.')
+                    if sdebug:
+                        self.logging.dev('API is set to expose to `none`.')
                     continue
             else:
-                self.logging.dev('API is disabled.')
+                if sdebug:
+                    self.logging.dev('API is disabled.')
 
         return svcs
