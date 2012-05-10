@@ -16,15 +16,33 @@ This adds the methods + properties:
 
 '''
 
-# Mixin Imports
+# API Imports
+from apptools.api import CoreAPI
 from apptools.api import HandlerMixin
 
+
+## CoreServicesAPI
+# Ties together interaction between base classes and the Service Layer.
+class CoreServicesAPI(CoreAPI):
+
+    ''' Ties together parts required to bridge the ServiceLayer and base classes. '''
+
+    def preload(self, *args, **kwargs):
+
+        ''' NotImplemented '''
+
+        raise NotImplemented
+
+
+_api = CoreServicesAPI()
 
 ## ServicesMixin
 # Used as an addon class to base classes to bridge in Service Layer-related functionality.
 class ServicesMixin(HandlerMixin):
 
     ''' Exposes service-related methods to BaseHandler. '''
+
+    _services_api = _api
 
     def make_services_manifest(self):
 

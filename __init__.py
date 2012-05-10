@@ -12,6 +12,19 @@ Copyright 2012, momentum labs (http://www.momentum.io)
 
 ## Base Imports
 import time
+import config
+import logging
+
+## Try the app bootstrapper, if it's around
+try:
+    import bootstrap
+    bootstrap.AppBootstrapper.prepareImports()
+except:
+    logging.warning('Could not resolve app bootstrapper.')
+    if config.debug:
+        raise
+    else:
+        pass
 
 ## Base Classes
 from apptools.core import BaseHandler

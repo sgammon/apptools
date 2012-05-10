@@ -103,25 +103,25 @@ class CoreAssetsAPI(CoreAPI):
 
         return
 
-    def script_url(self, name, module=None, prefix='static', version=None, minify=False, version_by_getvar=False, **kwargs):
+    def script_url(self, handler, name, module=None, prefix='static', version=None, minify=False, version_by_getvar=False, **kwargs):
 
         ''' Return a URL for a script. '''
 
-        return self.asset_url('js', name, module, prefix, version, minify, version_by_getvar, **kwargs)
+        return self.asset_url(handler, 'js', name, module, prefix, version, minify, version_by_getvar, **kwargs)
 
-    def style_url(self, name, module=None, prefix='static', version=None, minify=False, version_by_getvar=False, **kwargs):
+    def style_url(self, handler, name, module=None, prefix='static', version=None, minify=False, version_by_getvar=False, **kwargs):
 
         ''' Return a URL for a stylesheet. '''
 
-        return self.asset_url('style', name, module, prefix, version, minify, version_by_getvar, **kwargs)
+        return self.asset_url(handler, 'style', name, module, prefix, version, minify, version_by_getvar, **kwargs)
 
-    def ext_url(self, name, module=None, prefix='static', version=None, minify=False, version_by_getvar=False, **kwargs):
+    def ext_url(self, handler, name, module=None, prefix='static', version=None, minify=False, version_by_getvar=False, **kwargs):
 
         ''' Return a URL for a nonregular asset. '''
 
-        return self.asset_url('ext', name, module, prefix, version, minify, version_by_getvar, **kwargs)
+        return self.asset_url(handler, 'ext', name, module, prefix, version, minify, version_by_getvar, **kwargs)
 
-    def img_url(self, path, name):
+    def img_url(self, handler, path, name):
 
         ''' Return a simple URL for an image. (Note: does not use assets config - images are not registered assets) '''
 
@@ -132,7 +132,10 @@ class CoreAssetsAPI(CoreAPI):
         else:
             url_fragments = []
             if self._OutputConfig.get('assets', {}).get('serving_mode', 'local') == 'cdn':
-                url_fragments.append('http://')
+                if handler.force_https_assets is True:
+                    url_fragments.append('https://')
+                else:
+                    url_fragments.append('//')
                 if isinstance(self._OutputConfig['assets']['cdn_prefix'], list):
                     cdnprefix = random.choice(self._OutputConfig['assets']['cdn_prefix'])
                 else:
@@ -146,12 +149,12 @@ class CoreAssetsAPI(CoreAPI):
 
         return reduce(lambda x, y: str(x) + str(y), map(lambda x: isinstance(x, list) and '/'.join(x) or x, url_fragments))
 
-    def asset_url(self, _type, name, module, prefix, version, minify, version_by_getvar, **kwargs):
+    def asset_url(self, handler, _type, name, module, prefix, version, minify, version_by_getvar, **kwargs):
 
         ''' Return a URL for an asset, according to the current configuration. '''
 
         global _asset_url_cache
-        identifier = (_type, name, module, prefix, version, minify, version_by_getvar)
+        identifier = (handler.force_https_assets, _type, name, module, prefix, version, minify, version_by_getvar)
         if identifier in _asset_url_cache:
             return _asset_url_cache[identifier]
         else:
@@ -197,7 +200,10 @@ class CoreAssetsAPI(CoreAPI):
 
                 ## 1: Consider absolute assets
                 if 'absolute' in asset:
-                    abs_url = asset.get('scheme', 'http') + '://'
+                    if handler.force_https_assets:
+                        abs_url = 'https://'
+                    else:
+                        abs_url = asset.get('scheme', 'http') + '://'
 
                     if minify and 'min' in asset and isinstance(asset['min'], basestring):
                         return abs_url + asset.get('min')
@@ -318,8 +324,16 @@ class CoreAssetsAPI(CoreAPI):
                                 cdnprefix = self._OutputConfig['assets']['cdn_prefix']
 
                             if cfg.debug is not True:
-                                _asset_url_cache[identifier] = ''.join(['http://', cdnprefix] + [compiled_url])
-                            return ''.join(['http://', cdnprefix] + [compiled_url])
+                                if handler.force_https_assets:
+                                    _asset_url_cache[identifier] = ''.join(['https://', cdnprefix] + [compiled_url])
+                                else:
+                                    _asset_url_cache[identifier] = ''.join(['//', cdnprefix] + [compiled_url])
+                                return _asset_url_cache[identifier]
+                            else:
+                                if handler.force_https_assets:
+                                    return ''.join(['https://', cdnprefix] + [compiled_url])
+                                else:
+                                    return ''.join(['//', cdnprefix] + [compiled_url])
 
                         return compiled_url
 
@@ -339,7 +353,30 @@ class AssetsMixin(HandlerMixin):
 
     ''' Bridge the Core Assets API to methods on a handler. '''
 
-    get_img_asset = _api.img_url
-    get_style_asset = _api.style_url
-    get_script_asset = _api.script_url
-    get_asset = _api.asset_url
+    _assets_api = _api
+    force_https_assets = False
+    force_absolute_assets = False
+
+    def get_img_asset(self, *args, **kwargs):
+
+        ''' Proxy in the current handler. '''
+
+        return self._assets_api.img_url(self, *args, **kwargs)
+
+    def get_style_asset(self, *args, **kwargs):
+
+        ''' Proxy in the current handler. '''
+
+        return self._assets_api.style_url(self, *args, **kwargs)
+
+    def get_script_asset(self, *args, **kwargs):
+
+        ''' Proxy in the current handler. '''
+
+        return self._assets_api.script_url(self, *args, **kwargs)
+
+    def get_asset(self, *args, **kwargs):
+
+        ''' Proxy in the current handler. '''
+
+        return self._assets_api.asset_url(self, *args, **kwargs)

@@ -90,6 +90,19 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
                 self.logging.warning('Exception encountered parsing uagent: ' + str(e))
                 pass
 
+        if self.request.headers.get('x-appfactory-frontline', None) is not None:
+            self.logging.info('Incoming request was proxied through the AppFactory Frontline.')
+            if not hasattr(self, '_response_headers'):
+                self._response_headers = {}
+            self._response_headers['X-Platform'] = self.request.headers.get('x-appfactory-frontline')
+            if self.request.headers.get('x-appfactory-entrypoint', None) is not None:
+                self.force_absolute_assets = True
+            if self.request.headers.get('x-appfactory-force-protocol', 'HTTP') == 'HTTPS':
+                self.logging.info('Detected X-AppFactory-Force-Protocol header. Forcing SSL/HTTPS assets.')
+                self.force_https_assets = True
+        else:
+            self.logging.debug('Incoming request comes directly from a client browser.')
+
         # Dispatch method (GET/POST/etc.)
         return super(BaseHandler, self).dispatch()
 

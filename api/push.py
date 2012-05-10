@@ -22,7 +22,24 @@ import hashlib
 from apptools.util import datastructures
 
 # Mixin Imports
+from apptools.api import CoreAPI
 from apptools.api import HandlerMixin
+
+
+## CorePushAPI
+# Ties together all the pieces needed for proper server => client push communications.
+class CorePushAPI(CoreAPI):
+
+    ''' Contains core server=>client push features. '''
+
+    def create_channel(self, cid, duration):
+
+        ''' Just pass-through to Channel API for now. '''
+
+        from google.appengine.api import channel
+        return channel.create_channel(cid, duration)
+
+_api = CorePushAPI()
 
 
 ## PushMixin
@@ -31,6 +48,7 @@ class PushMixin(HandlerMixin):
 
     ''' Bridges the AppEngine Channel API and base classes. '''
 
+    _push_api = _api
     push = datastructures.ObjectProxy({
 
         'cid': None,
@@ -44,10 +62,9 @@ class PushMixin(HandlerMixin):
         ''' Preloads the session + template contexts with either a given or generated Channel token. '''
 
         if token is None:
-            from google.appengine.api import channel
             if cid is None:
                 cid = self.request.environ.get('REQUEST_ID_HASH', hashlib.sha256(random.random() * random.random()).hexdigest())
-            token = channel.create_channel(cid, duration)
+            token = self._push_api.create_channel(cid, duration)
 
         self.push.cid = cid
         self.push.token = token

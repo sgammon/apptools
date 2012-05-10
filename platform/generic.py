@@ -11,9 +11,15 @@ Provides utils and shortcuts that should always be available in AppTools.
 
 '''
 
+# Base Imports
 import config
 import webapp2
 
+# Util Imports
+from apptools.util import _loadModule
+from apptools.util import datastructures
+
+# Platform Imports
 from apptools.platform import Platform
 from apptools.platform import PlatformBridge
 
@@ -28,8 +34,15 @@ class AppToolsExtBridge(PlatformBridge):
 
         ''' Offers shortcuts to installed AppTools APIs/extensions. '''
 
-        # stubbed... for now (@TODO)
-        return self
+        # Return CallbackProxy to lazy-load module access
+        return datastructures.CallbackProxy(_loadModule, {
+
+            'assets': ('apptools.api.assets', '_api'),
+            'output': ('apptools.api.output', '_api'),
+            'push': ('apptools.api.push', '_api'),
+            'services': ('apptools.api.services', '_api')
+
+        })
 
 
 ## AppToolsUtilBridge
@@ -39,9 +52,6 @@ class AppToolsUtilBridge(PlatformBridge):
     ''' Offers shortcuts to installed third-party libraries. '''
 
     def __get__(self, instance, owner):
-
-        from apptools.util import _loadModule
-        from apptools.util import datastructures
 
         # Return CallbackProxy to lazy-load module access
         return datastructures.CallbackProxy(_loadModule, {
@@ -156,6 +166,13 @@ class GenericWSGI(Platform):
                 'image': handler.get_img_asset,  # generate a URL for an image asset
                 'style': handler.get_style_asset,  # generate a URL for a stylesheet asset
                 'script': handler.get_script_asset  # generate a URL for a javascript asset
+
+            }
+
+            context['assets'] = {  # Settings/details for ALL assets
+
+                'force_https': handler.force_https_assets,
+                'force_absolute': handler.force_absolute_assets
 
             }
 

@@ -25,6 +25,7 @@ import hashlib
 import webapp2
 
 ## API Mixins
+from apptools.api import CoreAPI
 from apptools.api import HandlerMixin
 
 ## Utils
@@ -266,13 +267,31 @@ class CoreOutputLoader(JFileSystemLoader):
         return source, name, lambda: True
 
 
+## CoreOutputAPI
+# Used to tie together everything needed for proper output abstraction.
+class CoreOutputAPI(CoreAPI):
+
+    ''' Contains utils, methods and properties related to outputting data with AppTools. '''
+
+    # Cached access to Jinja2
+    def get_jinja(self, app, factory):
+
+        ''' Cached access to Jinja2. '''
+
+        return jinja2.get_jinja2(app=app, factory=factory)
+
+_api = CoreOutputAPI()
+
+
 ## OutputMixin
 # Used as an addon class for base classes like BaseHandler to bridge in access to the Core Output API.
 class OutputMixin(HandlerMixin):
 
-    ''' Bridge the Core Assets API to methods on a handler. '''
+    ''' Bridge the Core Output API to methods on a handler. '''
 
     minify = unicode
+    _output_api = _api
+    _response_headers = {}
 
     # Cached access to Jinja2
     @cached_property
@@ -280,7 +299,7 @@ class OutputMixin(HandlerMixin):
 
         ''' Cached access to Jinja2. '''
 
-        return jinja2.get_jinja2(app=self.app, factory=self.jinja2EnvironmentFactory)
+        return self._output_api.get_jinja(self.app, self.jinja2EnvironmentFactory)
 
     @cached_property
     def _outputConfig(self):
@@ -302,20 +321,24 @@ class OutputMixin(HandlerMixin):
 
         ''' Base HTTP response headers - returned with every request. '''
 
+        if 'X-AppFactory-Frontline' in self.request.headers:
+            self._response_headers['X-Platform'] = self.request.headers.get('X-AppFactory-Frontline')
+
         if config.debug:
-            return {
+            self._response_headers.update({
                 'X-Debug': 'True',
                 'Cache-Control': self._outputConfig.get('headers', {}).get('Cache-Control', 'no-cache'),  # Stop caching of responses from Python, by default
                 'X-Powered-By': self._outputConfig.get('headers', {}).get('X-Powered-By', 'Google AppEngine/1.6.5 %s/%s' % (self._projectConfig['name'], '.'.join(map(str, [self._projectConfig['version']['major'], self._projectConfig['version']['minor'], self._projectConfig['version']['micro']])))),  # Indicate the SDK version
                 'X-UA-Compatible': self._outputConfig.get('headers', {}).get('X-UA-Compatible', 'IE=edge,chrome=1'),  # Enable compatibility with Chrome Frame, and force IE to render with the latest engine
                 'Access-Control-Allow-Origin': self._outputConfig.get('headers', {}).get('Access-Control-Allow-Origin', '*')  # Enable Cross Origin Resource Sharing (CORS)
-            }
+            })
         else:
-            return {
-                'Cache-Control': self._outputConfig.get('headers', {}).get('Cache-Control', 'no-cache'),  # Stop caching of responses from Python, by default
+            self._response_headers.update({
+                'Cache-Control': self._outputConfig.get('headers', {}).get('Cache-Control', 'private; max-age=600'),  # Stop caching of responses from Python, by default
                 'X-UA-Compatible': self._outputConfig.get('headers', {}).get('X-UA-Compatible', 'IE=edge,chrome=1'),  # Enable compatibility with Chrome Frame, and force IE to render with the latest engine
                 'Access-Control-Allow-Origin': self._outputConfig.get('headers', {}).get('Access-Control-Allow-Origin', '*')  # Enable Cross Origin Resource Sharing (CORS)
-            }
+            })
+        return self._response_headers
 
     # Base template context - available to every template, including macros (injected into Jinja2 globals)
     @webapp2.cached_property
