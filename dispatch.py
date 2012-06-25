@@ -16,7 +16,7 @@ import config
 import webapp2
 import logging
 
-from project.routing import get_rules
+from openfire.routing import get_rules
 
 from apptools.util import runtools
 
