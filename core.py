@@ -97,8 +97,8 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
             self._response_headers['X-Platform'] = self.request.headers.get('x-appfactory-frontline')
             if self.request.headers.get('x-appfactory-entrypoint', None) is not None:
                 self.force_absolute_assets = True
-            if self.request.headers.get('x-appfactory-force-protocol', 'HTTP') == 'HTTPS':
-                self.logging.info('Detected X-AppFactory-Force-Protocol header. Forcing SSL/HTTPS assets.')
+            if self.request.headers.get('x-appfactory-protocol', 'HTTP') == 'HTTPS':
+                self.logging.info('Detected X-AppFactory-Protocol header. Forcing SSL/HTTPS assets.')
                 self.force_https_assets = True
         else:
             self.logging.debug('Incoming request comes directly from a client browser.')

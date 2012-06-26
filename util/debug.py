@@ -64,6 +64,7 @@ class AppToolsLogger(AppToolsLoggingEngine):
     # Event/context config
     bubble = False
     context_fn = None
+    conditional = None
     logbook_support = False
 
     provider = None
@@ -154,15 +155,23 @@ class AppToolsLogger(AppToolsLoggingEngine):
                 logging.critical('AppTools logging could not be started for path "%s"/name "%s".' % path, name)
                 return logging
 
+    def _setcondition(self, conditional):
+
+        ''' Set a local flag to enable/disable logging through this pipe. '''
+
+        self.conditional = conditional
+        return self
+
     def _send_log(self, message, module=None, severity='info'):
 
         ''' Output an AppTools log message. '''
 
-        out_message = []
-        if module is not None:
-            out_message.append('[' + str(module) + ']')
-        out_message.append(message)
-        return self.provider.get(severity)(' '.join(out_message))
+        if self.conditional:
+            out_message = []
+            if module is not None:
+                out_message.append('[' + str(module) + ']')
+            out_message.append(message)
+            return self.provider.get(severity)(' '.join(out_message))
 
     def dev(self, message, module=None):
 

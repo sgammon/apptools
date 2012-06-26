@@ -591,4 +591,4 @@ class OutputMixin(HandlerMixin):
         self.response.content_type = content_type
 
         # Finished!
-        return
+        return self.response
