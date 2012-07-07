@@ -28,7 +28,7 @@ try:
     ## BasePipeline
     # This base class provides pipeline utilities.
     @platform.PlatformInjector
-    class BasePipeline(pipeline.Pipeline, datastructures.StateManager):
+    class BasePipeline(pipeline.Pipeline):
 
         # Pipeline State
         state = {}
@@ -51,7 +51,6 @@ try:
             ''' Cached shortcut to pipelines configuration. '''
 
             return config.config.get('apptools.pipelines')
-
 
 except ImportError:
     logging.critical('GAE lib "Pipelines" is not installed.')

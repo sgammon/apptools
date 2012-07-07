@@ -258,15 +258,16 @@ class BaseService(remote.Service, datastructures.StateManager):
 
         return self.handler.get_request_body()
 
-    def initiate_request_state(self, state):
+    def initialize_request_state(self, state):
 
         ''' Copy over request state from ProtoRPC. '''
 
-        super(BaseService, self).initiate_request_state(state)
+        self.state['request'] = state
+        super(BaseService, self).initialize_request_state(state)
 
     def _initializeRemoteService(self):
 
-        ''' Internal method for initializing a service and injecting it's config. '''
+        ''' Internal method for initializing a service and injecting its config. '''
 
         # Copy over global, module, and service configuration
         self.config['global'] = self._globalServicesConfig
@@ -303,10 +304,6 @@ class BaseService(remote.Service, datastructures.StateManager):
             else:
                 # If we have nothing, copy over defaults...
                 self.config['service'] = self.config['global']['defaults']['service']
-
-        # Check for initialize hook
-        if hasattr(self, 'initialize'):
-            self.initialize()
 
     def prepare_followup(self, task=None, pipeline=None, start=False, queue_name=None, idempotence_key='', *args, **kwargs):
 
@@ -662,29 +659,36 @@ class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.State
 
         ''' Handle a remote service request. '''
 
-        self.response.headers['x-content-type-options'] = 'nosniff'
+        self.response.headers['X-Content-Type-Options'] = 'nosniff'
         content_type = self._ServiceHandler__get_content_type()
+
+        # Copy handler to service
+        self.service.handler = self
 
         # Provide server state to the service.  If the service object does not have
         # an "initialize_request_state" method, will not attempt to assign state.
-        try:
-            state_initializer = self.service.initialize_request_state
-        except AttributeError:
-            pass
-        else:
-            server_port = self.request.environ.get('SERVER_PORT', None)
-            if server_port:
-                server_port = int(server_port)
+        state_initializer = self.service.initialize_request_state
+        server_port = self.request.environ.get('SERVER_PORT', None)
+        if server_port:
+            server_port = int(server_port)
 
-                request_state = remote.HttpRequestState(
-                    remote_host=self.request.environ.get('REMOTE_HOST', None),
-                    remote_address=self.request.environ.get('REMOTE_ADDR', None),
-                    server_host=self.request.environ.get('SERVER_HOST', None),
-                    server_port=server_port,
-                    http_method=http_method,
-                    service_path=service_path,
-                    headers=list(self._ServiceHandler__headers(content_type)))
-            state_initializer(request_state)
+            request_state = remote.HttpRequestState(
+                remote_host=self.request.environ.get('REMOTE_HOST', None),
+                remote_address=self.request.environ.get('REMOTE_ADDR', None),
+                server_host=self.request.environ.get('SERVER_HOST', None),
+                server_port=server_port,
+                http_method=http_method,
+                service_path=service_path,
+                headers=list(self._ServiceHandler__headers(content_type)))
+        state_initializer(request_state)
+
+        self.service.request = self.request
+        self.service.response = self.response
+        self.service.state['request'] = request_state
+
+        # Check for initialize hook
+        if hasattr(self.service, 'initialize'):
+            self.service.initialize()
 
         if not content_type:
             self.setstatus('fail')
@@ -730,6 +734,9 @@ class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.State
                 return
 
             mapper.build_response(self, response)
+
+            if hasattr(self.service, 'after_request_hook'):
+                self.service.after_request_hook()
 
         except Exception, err:
             self.setstatus('fail')
