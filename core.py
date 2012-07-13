@@ -128,6 +128,7 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
             'ie': False,  # are we serving to IE?
             'mobile': False,  # are we serving to mobile?
             'tablet': False,  # are we serving to a tablet?
+            'analytics': config.config.get('apptools.project.output', {}).get('analytics', {}),  # analytics settings
             'channel': {
                 'enabled': self.push.session,  # enable/disable appengine channel API
                 'token': self.push.token  # token for connecting channel
