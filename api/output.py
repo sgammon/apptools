@@ -413,7 +413,8 @@ class OutputMixin(HandlerMixin):
 
                     'random': random.random,
                     'randint': random.randint,
-                    'randrange': random.randrange
+                    'randrange': random.randrange,
+                    'choice': random.choice
 
                 },
 
