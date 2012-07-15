@@ -1,6 +1,14 @@
 # -*- coding: utf-8 -*-
 import logging
 
+try:
+	import json
+except ImportError:
+	try:
+		import simplejson as json
+	except ImportError:
+		from django.utils import json
+
 _api_cache = {}
 
 ## _loadAPIModule
@@ -100,6 +108,12 @@ class DictProxy(UtilStruct):
 	## Utiliy Methods
 	def items(self):
 		return [(k, v) for k, v in self.__dict__.items()]
+
+	def get(self, name, default_value=None):
+		if name in self.__dict__:
+			return self.__dict__[name]
+		else:
+			return default_value
 
 ## ObjectProxy
 # Take a datastructure and wrap it in an object that makes it accessible via ds.x, using getattr/setattr.
