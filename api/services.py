@@ -24,6 +24,8 @@ import webapp2
 from apptools.api import HandlerMixin
 
 
+## ServicesMixin
+# Used as an addon class to base classes to bridge in Service Layer-related functionality.
 class ServicesMixin(HandlerMixin):
 
     ''' Exposes service-related methods to BaseHandler. '''

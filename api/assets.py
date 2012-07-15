@@ -35,6 +35,9 @@ _asset_url_cache = {}
 
 
 ## == Assets Module Exceptions == ##
+
+## AssetException
+# Top level exception for all Asset API-related exceptions.
 class AssetException(CoreOutputAPIException):
 
     ''' Top-level exception for all Asset API-related exceptions. '''
@@ -42,6 +45,8 @@ class AssetException(CoreOutputAPIException):
     pass
 
 
+## InvalidAssetType
+# Raised when an asset type is invalid.
 class InvalidAssetType(AssetException):
 
     ''' Raised when a given asset type is not recognized. '''
@@ -49,6 +54,8 @@ class InvalidAssetType(AssetException):
     pass
 
 
+## InvalidAssetEntry
+# Raised when an asset entry is invalid.
 class InvalidAssetEntry(AssetException):
 
     ''' Raised when a given asset type is valid, but an asset could not be found at the given identifier. '''
@@ -56,6 +63,8 @@ class InvalidAssetEntry(AssetException):
     pass
 
 
+## CoreAssetsAPI
+# Brokers access and provides generated URLs to registered and unregistered assets.
 class CoreAssetsAPI(CoreAPI):
 
     ''' Responds to requests for image and asset URLs, reads asset configuration & manages caching of asset URLs. '''
@@ -324,6 +333,8 @@ class CoreAssetsAPI(CoreAPI):
 _api = CoreAssetsAPI()
 
 
+## AssetsMixin
+# Used as an addon class to BaseHandler, etc. to add util methods to retrieve assets.
 class AssetsMixin(HandlerMixin):
 
     ''' Bridge the Core Assets API to methods on a handler. '''

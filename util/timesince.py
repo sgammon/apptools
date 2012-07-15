@@ -1,8 +1,9 @@
 # -*- coding: utf-8 -*-
 
-import datetime
-
 '''
+
+Util: Timesince
+
 Takes two datetime objects and returns the time between d and now
 as a nicely formatted string, e.g. "10 minutes".  If d occurs after now,
 then "0 minutes" is returned.
@@ -13,7 +14,10 @@ displayed.  For example, "2 weeks, 3 days" and "1 year, 3 months" are
 possible outputs, but "2 weeks, 3 hours" and "1 year, 5 days" are not.
 
 Adapted from [http://blog.natbat.co.uk/archive/2003/Jun/14/time_since](http://blog.natbat.co.uk/archive/2003/Jun/14/time_since)
+
 '''
+
+import datetime
 
 
 def getword(singular, plural, n):

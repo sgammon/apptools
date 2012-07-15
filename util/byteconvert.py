@@ -1,12 +1,10 @@
 # -*- coding: utf-8 -*-
 
-# Imports
-from __future__ import division
-import doctest
-
 '''
 
-**Return a humanized string representation of a number of bytes.**
+Util: Byteconvert
+
+Return a humanized string representation of a number of bytes.
 
 Assumes `from __future__ import division`.
 Recipe available at: [http://code.activestate.com/recipes/577081/](http://code.activestate.com/recipes/577081/)
@@ -27,7 +25,12 @@ Recipe available at: [http://code.activestate.com/recipes/577081/](http://code.a
 '1.31 GB'
 >>> humanize_bytes(1024*1234*1111,1)
 '1.3 GB'
+
 '''
+
+# Imports
+from __future__ import division
+import doctest
 
 
 def humanize_bytes(bytes, precision=1):

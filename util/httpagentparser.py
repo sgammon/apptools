@@ -1,15 +1,13 @@
 # -*- coding: utf-8 -*-
 
 '''
-**Extract client information from http user agent**
 
-The module does not try to detect all capabilities of browser in current form (it can easily be extended though).
-Aim is
-    * fast
-    * very easy to extend
-    * reliable enough for practical purposes
-    * and assist python web apps to detect clients.
+Util: HTTPAgentParser
+
+Parse and extract client platform information from the Uagent.
+
 '''
+
 import sys
 
 

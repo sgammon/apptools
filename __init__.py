@@ -21,6 +21,7 @@ from apptools.pipelines import BasePipeline
 from apptools.exceptions import AppException
 
 ## Service Layer Exports
+from apptools.services import fields
 from apptools.services import messages
 from apptools.services import middleware
 from apptools.services import decorators
@@ -41,9 +42,21 @@ def clockpoint(name):
 
 ## WSGI Gateway
 def gateway(environ, start_response):
-    pass
+
+    ''' Central gateway into AppTools' WSGI dispatch. '''
+
+    from apptools import dispatch
+
+    ## Pass off to dispatch
+    return dispatch.gateway(environ, start_response)
 
 
 ## Expose base classes
+_apptools_servicelayer = [messages, fields, middleware, decorators]
 _apptools_base_classes = [BaseHandler, BaseModel, BaseService, BasePipeline, AppException]
-__all__ = [str(i.__class__.__name__) for i in _apptools_base_classes]
+__all__ = [str(i.__class__.__name__) for i in _apptools_base_classes] + _apptools_servicelayer
+
+
+## For direct/CGI...
+if __name__ == '__main__':
+    gateway(None, None)

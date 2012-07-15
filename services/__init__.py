@@ -14,22 +14,15 @@ this module is very configurable using the "config/services.py" file.
 
 # Basic Imports
 import time
-import hmac
 import base64
 import config
 import hashlib
 import webapp2
-import datetime
 
 # ProtoRPC imports
 from protorpc import remote
-from protorpc import messages
-from protorpc import protojson
-from protorpc import message_types
-
-# Message imports
-from protorpc.messages import Field
-from protorpc.messages import Variant
+from protorpc import messages as pmessages
+from protorpc import message_types as pmessage_types
 
 # Service handlers
 from protorpc.webapp import service_handlers
@@ -41,24 +34,26 @@ from webapp2_extras import protorpc as proto
 # Util Imports
 from apptools.util import json
 from apptools.util import platform
-from apptools.util.debug import AppToolsLogger
+from apptools.util import _loadModule
 
 # Datastructure Imports
-from apptools.util.datastructures import DictProxy
+from apptools.util import debug
+from apptools.util import datastructures
+
+# Field Imports
+from apptools.services import fields as afields
+from apptools.services import decorators as adecorators
+from apptools.services import messages as amessages
 
 # Decorator Imports
 from apptools.services.decorators import audit
 from apptools.services.decorators import caching
 from apptools.services.decorators import security
 
-# New NDB Import
-from google.appengine.ext.ndb import key as nkey
-
-
 # Globals
+decorate = adecorators
 _global_debug = config.debug
-logging = AppToolsLogger('apptools.services', 'ServiceLayer')
-date_time_types = (datetime.datetime, datetime.date, datetime.time)
+logging = debug.AppToolsLogger('apptools.services', 'ServiceLayer')
 
 # Service layer middleware object cache
 _middleware_cache = {}
@@ -66,24 +61,26 @@ _middleware_cache = {}
 
 ## Service flags
 # Decorate remote methods with these flags to annotate them with specific policies/functionality.
-flags = DictProxy({
+flags = datastructures.DictProxy({
+
+    ''' Shortcut to remote method/service decorator flags. '''
 
     # Decorators related to logging/backend output
-    'audit': DictProxy({
+    'audit': datastructures.DictProxy({
         'monitor': audit.Monitor,
         'debug': audit.Debug,
         'loglevel': audit.LogLevel,
     }),
 
     # Decorators related to caching, for performance
-    'caching': DictProxy({
+    'caching': datastructures.DictProxy({
         'local': caching.LocalCacheable,
         'memcache': caching.MemCacheable,
         'cacheable': caching.Cacheable,
     }),
 
     # Decorators related to access & security
-    'security': DictProxy({
+    'security': datastructures.DictProxy({
         'authorize': security.Authorize,
         'authenticate': security.Authenticate,
         'admin': security.AdminOnly
@@ -91,400 +88,86 @@ flags = DictProxy({
 
 })
 
-
-## VariantField
-# A hack that allows a fully-variant field in ProtoRPC message classes.
-class VariantField(Field):
-
-    ''' Field definition for a completely variant field. '''
-
-    VARIANTS = frozenset([Variant.DOUBLE, Variant.FLOAT, Variant.BOOL,
-                          Variant.INT64, Variant.UINT64, Variant.SINT64,
-                          Variant.INT32, Variant.UINT32, Variant.SINT32,
-                          Variant.STRING, Variant.MESSAGE, Variant.BYTES, Variant.ENUM])
-
-    DEFAULT_VARIANT = Variant.STRING
-
-    type = (int, long, bool, basestring, dict, messages.Message)
-
-## Message Fields
+## Message Classes
 # A nice, universal mapping to all available ProtoRPC message field types.
-fields = DictProxy({
+messages = datastructures.DictProxy({
 
-    ''' Shortcut to all the available message fields. '''
+    ''' Shortcut to all available message classes. '''
 
-    'Variant': VariantField,
-    'Boolean': messages.BooleanField,
-    'Bytes': messages.BytesField,
-    'Enum': messages.EnumField,
-    'Float': messages.FloatField,
-    'Integer': messages.IntegerField,
-    'Message': messages.MessageField,
-    'String': messages.StringField
+    # AppTools-provided classes
+    'KeyMessage': amessages.KeyMessage,
+
+    # Builtin messages
+    'Message': pmessages.Message,
+    'VoidMessage': pmessage_types.VoidMessage,
+
+    # Specific types
+    'Enum': pmessages.Enum,
+    'Field': pmessages.Field,
+    'FieldList': pmessages.FieldList,
+
+    # Field shortcuts
+    'VariantField': afields.VariantField,
+    'BooleanField': pmessages.BooleanField,
+    'BytesField': pmessages.BytesField,
+    'EnumField': pmessages.EnumField,
+    'FloatField': pmessages.FloatField,
+    'IntegerField': pmessages.IntegerField,
+    'MessageField': pmessages.MessageField,
+    'StringField': pmessages.StringField
 
 })
 
 
-## Custom JSON encoder
-# This class overrides an internal ProtoRPC class so that we can properly package/unpackage API requests according to apptools' **wire format**.
-class _MessageJSONEncoder(protojson._MessageJSONEncoder):
-
-    ''' Custom JSON encoder for API request & response messages. '''
-
-    indent = None
-    encoding = 'utf-8'
-    sort_keys = True
-    allow_nan = True
-    ensure_ascii = True
-    check_circular = True
-    skipkeys = True
-    use_decimal = False
-
-    current_indent_level = 0
-
-    def __init__(self, *args, **kwargs):
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-
-    def default(self, value):
-
-        ''' Overrides JSONEncoder's default() method. '''
-
-        if isinstance(value, messages.Enum):
-            return str(value)
-
-        if isinstance(value, messages.Message):
-            result = {}
-            for field in value.all_fields():
-                item = value.get_assigned_value(field.name)
-                if item not in (None, [], ()):
-                    result[field.name] = self.jsonForValue(item)
-                    if isinstance(item, list):  # for repeated values...
-                        listvalue = [self.jsonForValue(x) for x in item]
-                        result[field.name] = listvalue
-
-            else:
-                return super(_MessageJSONEncoder, self).default(value)
-
-        elif isinstance(value, AppJSONRPCMapper.GenericResponse):
-            result = {}
-            for k, v in value.to_dict().items():
-                if v not in (None, [], ()):
-                    if isinstance(v, list):
-                        listvalue = [self.jsonForValue(x) for x in v]
-                        result[k] = listvalue
-                    else:
-                        result[k] = self.jsonForValue(v)
-                else:
-                    result[k] = super(_MessageJSONEncoder, self).default(v)
-        else:
-            return super(_MessageJSONEncoder, self).default(value)
-
-        return result
-
-    def jsonForValue(self, value):
-
-        ''' Return JSON for a given Python value. '''
-
-        if isinstance(value, (basestring, int, float, bool)):
-            return value
-
-        elif isinstance(value, date_time_types):
-            return str(value)
-
-        elif isinstance(value, messages.Message):
-            for item in value.all_fields():
-                self.jsonForValue(item)
-
-        else:
-            return str(value)
-
-
-## AppJSONRPCMapper
-# Custom RPC mapper that properly unpacks JSONRPC requests according to apptools' **wire format**.
-class AppJSONRPCMapper(service_handlers.JSONRPCMapper):
-
-    ''' Custom JSONRPC Mapper for managing JSON API requests. '''
-
-    handler = None
-    _request = {
-
-        'id': None,
-        'opts': {},
-        'agent': {}
-
-    }
-
-    def __init__(self):
-        super(AppJSONRPCMapper, self).__init__()
-
-    @webapp2.cached_property
-    def ServicesConfig(self):
-
-        ''' Return the project services config. '''
-
-        return config.config.get('apptools.project.services')
-
-    def encode_request(self, struct):
-
-        ''' Encode a request. '''
-
-        encoded = _MessageJSONEncoder().encode(struct)
-        return encoded
-
-    def build_response(self, handler, response, response_envelope=None, extra_response_content={}):
-
-        ''' Encode a response. '''
-
-        self.handler = handler
-        try:
-            if isinstance(response, messages.Message):
-                response.check_initialized()
-            else:
-                response = self.GenericResponse.from_struct(response)
-            if response_envelope is not None and handler is None:
-                envelope = self.envelope(response_envelope, response)
-                if extra_response_content is not None and isinstance(extra_response_content, dict):
-                    for k, v in extra_response_content.items():
-                        if k not in envelope['response']:
-                            envelope['response'][k] = v
-                encoded_response = _MessageJSONEncoder().encode(envelope)
-                return encoded_response
-            else:
-                envelope = _MessageJSONEncoder().encode(self.envelope(handler._response_envelope, response))
-
-        except messages.ValidationError, err:
-            raise service_handlers.RequestError('Unable to encode message: %s' % err)
-        else:
-            if handler is not None:  # so we can inject responses...
-                handler.response.headers['Content-Type'] = "application/json"
-                handler.response.write(envelope)
-            return envelope
-
-    def envelope(self, wrap, response):
-
-        ''' Wrap the result of the request in a descriptive, helpful envelope. '''
-
-        sysconfig = config.config.get('apptools.project')
-        svsconfig = config.config.get('apptools.project.services')
-
-        ## Compile signature
-        signature = [
-            svsconfig.get('secret_key', self.ServicesConfig.get('secret_key', '__development__')),  # HMAC key
-            str(response),  # message
-            svsconfig.get('hmac_hash', hashlib.md5)
-        ]
-
-        ## Start building response
-        response_envelope = {
-
-            'id': wrap.get('id'),
-            'status': wrap.get('status'),
-            'response': {},
-            'flags': wrap.get('flags'),
-            'platform': {
-                'name': config.config.get('apptools.project').get('name', 'AppTools'),
-                'version': '.'.join(map(lambda x: str(x), [sysconfig['version']['major'], sysconfig['version']['minor'], sysconfig['version']['micro']]))
-            }
-
-        }
-
-        ## Add debug info
-        if config.debug or self.ServicesConfig.get('debug', False):
-            response_envelope['platform']['debug'] = config.debug
-            response_envelope['platform']['build'] = sysconfig['version']['build']
-            response_envelope['platform']['release'] = sysconfig['version']['release']
-            response_envelope['platform']['engine'] = 'AppTools/ProtoRPC'
-
-            if self.ServicesConfig.get('debug', False):
-                response_envelope['platform']['info'] = {
-
-                    'datacenter': self.handler.request.environ.get('DATACENTER'),
-                    'instance': self.handler.request.environ.get('INSTANCE_ID'),
-                    'request_id': self.handler.request.environ.get('REQUEST_ID_HASH'),
-                    'server': self.handler.request.environ.get('SERVER_SOFTWARE'),
-                    'runtime': self.handler.request.environ.get('APPENGINE_RUNTIME'),
-                    'multithread': self.handler.request.environ.get('wsgi.multithread'),
-                    'multiprocess': self.handler.request.environ.get('wsgi.multiprocess')
-
-                }
-                if self.api.backends.get_backend() is not None:
-                    response_envelope['platform']['info']['layer'] = 'backend'
-                    response_envelope['platform']['info']['instance'] = self.api.backends.get_instance()
-                else:
-                    response_envelope['platform']['info']['layer'] = 'frontend'
-
-        ## Add actual response
-        response_envelope['response'] = {
-
-            'type': str(response.__class__.__name__),
-            'content': response,
-            'signature': hmac.new(*signature).hexdigest()
-
-        }
-
-        ## Done!
-        return response_envelope
-
-    def decode_request(self, message_type, dictionary):
-
-        ''' Decode a request. '''
-
-        def decode_dictionary(message_type, dictionary):
-
-            ''' Decode a dictionary of items (recursive). '''
-
-            message = message_type()
-            if isinstance(dictionary, dict):
-                for key, value in dictionary.iteritems():
-                    if value is None:
-                        message.reset(key)
-                    continue
-
-                    try:
-                        field = message.field_by_name(key)
-                    except KeyError:
-                        # TODO(rafek): Support saving unknown values.
-                        continue
-
-                    # Normalize values in to a list.
-                    if isinstance(value, list):
-                        if not value:
-                            continue
-                        else:
-                            value = [value]
-
-                        valid_value = []
-                        for item in value:
-                            if isinstance(field, messages.EnumField):
-                                item = field.type(item)
-                            elif isinstance(field, messages.BytesField):
-                                item = base64.b64decode(item)
-                            elif isinstance(field, messages.MessageField):
-                                item = decode_dictionary(field.type, item)
-                            elif (isinstance(field, messages.FloatField) and
-                                    isinstance(item, (int, long))):
-                                item = float(item)
-                            valid_value.append(item)
-
-                    if field.repeated:
-                        getattr(message, field.name)
-                        setattr(message, field.name, valid_value)
-                    else:
-                        setattr(message, field.name, valid_value[-1])
-            return message
-
-        message = message_type()
-        if isinstance(dictionary, list):
-            return message
-        elif isinstance(dictionary, dict):
-            for key, value in dictionary.iteritems():
-                if value is None:
-                    message.reset(key)
-                    continue
-
-                try:
-                    field = message.field_by_name(key)
-                except KeyError:
-                    # TODO(rafek): Support saving unknown values.
-                    continue
-
-                # Normalize values in to a list.
-                if isinstance(value, list):
-                    if not value:
-                        continue
-                else:
-                    value = [value]
-
-                valid_value = []
-                for item in value:
-                    if isinstance(field, messages.EnumField):
-                        item = field.type(item)
-                    elif isinstance(field, messages.BytesField):
-                        item = base64.b64decode(item)
-                    elif isinstance(field, messages.MessageField):
-                        item = decode_dictionary(field.type, item)
-                    elif (isinstance(field, messages.FloatField) and
-                            isinstance(item, (int, long))):
-                        item = float(item)
-                    valid_value.append(item)
-
-                if field.repeated:
-                    getattr(message, field.name)
-                    setattr(message, field.name, valid_value)
-                else:
-                    setattr(message, field.name, valid_value[-1])
-
-        return message
-
-    def build_request(self, handler, request_type):
-
-        ''' Build a request object. '''
-
-        try:
-            if hasattr(handler, 'interpreted_body') and handler.interpreted_body is not None:
-                request_object = handler.interpreted_body
-            else:
-                request_object = protojson._load_json_module().loads(handler.request.body)
-
-            try:
-                request_id = request_object['id']
-                request_agent = request_object['agent']
-                request_body = request_object['request']
-                request_opts = request_object['opts']
-            except AttributeError:
-                raise service_handlers.RequestError('Request is missing a valid ID, agent, request opts or request body.')
-
-            self._request['id'] = request_id
-            self._request['agent'] = request_agent
-            self._request['opts'] = request_opts
-
-            handler._request_envelope['id'] = self._request['id']
-            handler._request_envelope['opts'] = self._request['opts']
-            handler._request_envelope['agent'] = self._request['agent']
-
-            handler._response_envelope['id'] = self._request['id']
-
-            logging.info('Decoding request...')
-
-            return self.decode_request(request_type, request_body['params'])
-
-        except (messages.ValidationError, messages.DecodeError), err:
-            raise service_handlers.RequestError('Unable to parse request content: %s' % err)
-
-
+## RemoteServiceFactory
 # Class for generating/preparing new RemoteService objects
 class RemoteServiceFactory(object):
 
+    ''' Responsible for manufacturing BaseService classes. '''
+
     @classmethod
     def new(self, service):
+
+        ''' Return the service, unmodified (this will be used later). '''
+
         return service
 
 
 ## BaseService
 # Top-level base class for remote services classes.
-@platform.PlatformInjector
-class BaseService(remote.Service):
+@platform.PlatformInjector(shortcuts=True, config=True, context=True)
+class BaseService(remote.Service, datastructures.StateManager):
 
     ''' Top-level parent class for ProtoRPC-based API services. '''
 
     # General stuff
     handler = None
-    request = DictProxy({})
+    request = datastructures.DictProxy({})
     middleware = {}
 
-    # State + config
+    # Template stuff
+    context = {}
+    context_injectors = []
+
+    # Service state
     state = {
         'request': {},
         'opts': {},
         'service': {}
     }
 
+    # Service config
     config = {
         'global': {},
         'module': {},
         'service': {}
     }
+
+    def __init__(self, *args, **kwargs):
+
+        ''' Pass init up the chain. '''
+
+        super(BaseService, self).__init__(*args, **kwargs)
 
     @webapp2.cached_property
     def logging(self):
@@ -494,25 +177,60 @@ class BaseService(remote.Service):
         global logging
         return logging.extend(path='apptools.services.ServiceLayer.RemoteService', name=self.__class__.__name__)
 
-    @webapp2.cached_property
-    def globalConfig(self):
+    def __repr__(self):
 
-        ''' Cached shortcut to services config. '''
+        ''' Cleaner string representation. '''
 
-        return config.config.get('apptools.services')
+        return '<RemoteService::' + '.'.join(self.__module__.split('.') + [self.__class__.__name__]) + '>'
 
-    @webapp2.cached_property
-    def serviceConfig(self):
+    def setflag(self, name, value):
 
-        ''' Cached shortcut to project services config. '''
+        ''' Set a flag to be returned in the response envelope. '''
 
-        return config.config.get('apptools.project.services')
+        if self.handler is not None:
+            return self.handler.setflag(name, value)
 
-    def __init__(self, *args, **kwargs):
+    def getflag(self, name):
 
-        ''' Pass init up the chain. '''
+        ''' Get the value of a flag set to be returned in the response envelope. '''
 
-        super(BaseService, self).__init__(*args, **kwargs)
+        if self.handler is not None:
+            return self.handler.getflag(name)
+
+    def set_response(self, response):
+
+        ''' Add the response message model to the internal service state, so it can be passed to a followup task. This gives the task proper context and allows the task to push a regular response asynchronously. '''
+
+        self._setstate('rmodel', response)
+        return
+
+    def set_followup(self, tid=None, pid=None):
+
+        ''' Manually set the TID and/or PID response header. '''
+
+        if tid is None:
+            self.setflag('tid', str(tid))
+        if pid is None:
+            self.setflag('pid', str(pid))
+        return
+
+    def go_async(self):
+
+        ''' Go into async mode. '''
+
+        return self.handler.go_async()
+
+    def can_async(self):
+
+        ''' Check if async mode is possible. '''
+
+        return self.handler.can_async()
+
+    def get_request_body(self):
+
+        ''' Interpret the request body and cache it for later. '''
+
+        return self.handler.get_request_body()
 
     def initiate_request_state(self, state):
 
@@ -525,7 +243,7 @@ class BaseService(remote.Service):
         ''' Internal method for initializing a service and injecting it's config. '''
 
         # Copy over global, module, and service configuration
-        self.config['global'] = self.globalConfig
+        self.config['global'] = self._globalServicesConfig
 
         if hasattr(self, 'moduleConfigPath'):
             self.config['module'] = config.config.get(getattr(self, 'moduleConfigPath', '__null__'), {})
@@ -564,73 +282,6 @@ class BaseService(remote.Service):
         if hasattr(self, 'initialize'):
             self.initialize()
 
-    def _setstate(self, key, value):
-
-        ''' Set an item in service state. '''
-
-        self.state['service'][key] = value
-
-    def _getstate(self, key, default):
-
-        ''' Get an item from service state. '''
-
-        if key in self.state['service']:
-            return self.state['service'][key]
-        else:
-            return default
-
-    def _delstate(self, key):
-
-        ''' Delete an item from service state. '''
-
-        if key in self.state['service']:
-            del self.state['service'][key]
-
-    def __setitem__(self, key, value):
-
-        ''' `service[key] = value` syntax to set an item in service state. '''
-
-        self._setstate(key, value)
-
-    def __getitem__(self, key):
-
-        ''' `var = service[key]` syntax to get an item from service state. '''
-
-        return self._getstate(key, None)
-
-    def __delitem__(self, key):
-
-        ''' `del service[key] syntax` to delete an item from service state. '''
-
-        self._delstate(key)
-
-    def __repr__(self):
-
-        ''' Cleaner string representation. '''
-
-        return '<RemoteService::' + '.'.join(self.__module__.split('.') + [self.__class__.__name__]) + '>'
-
-    def setflag(self, name, value):
-
-        ''' Set a flag to be returned in the response envelope. '''
-
-        if self.handler is not None:
-            return self.handler.setflag(name, value)
-
-    def getflag(self, name):
-
-        ''' Get the value of a flag set to be returned in the response envelope. '''
-
-        if self.handler is not None:
-            return self.handler.getflag(name)
-
-    def set_response(self, response):
-
-        ''' Add the response message model to the internal service state, so it can be passed to a followup task. This gives the task proper context and allows the task to push a regular response asynchronously. '''
-
-        self._setstate('rmodel', response)
-        return
-
     def prepare_followup(self, task=None, pipeline=None, start=False, queue_name=None, idempotence_key='', *args, **kwargs):
 
         ''' Prepare and set a followup task or pipeline, for async functionality. '''
@@ -638,7 +289,7 @@ class BaseService(remote.Service):
         global _global_debug
 
         result_return = []
-        if self.servicesConfig.get('debug', False):
+        if self._serviceConfig.get('debug', False):
             self.logging.debug('Loading remote method followup.')
             self.logging.debug('Task: "' + str(task) + '".')
             self.logging.debug('Pipeline: "' + str(pipeline) + '".')
@@ -648,7 +299,7 @@ class BaseService(remote.Service):
 
         if task is not None:
 
-            if self.servicesConfig.get('debug', False):
+            if self._serviceConfig.get('debug', False):
                 self.logging.debug('Loading followup task.')
 
             if 'params' not in kwargs:
@@ -665,18 +316,18 @@ class BaseService(remote.Service):
 
             t = task(*args, **kwargs)
 
-            if self.servicesConfig.get('debug', False):
+            if self._serviceConfig.get('debug', False):
                 self.logging.debug('Instantiated task: "%s".' % t)
 
             if start:
-                if self.servicesConfig.get('debug', False):
+                if self._serviceConfig.get('debug', False):
                     self.logging.debug('Starting followup task.')
                 if queue_name is not None:
                     self.logging.debug('Adding to queue "%s".' % queue_name)
                     self._setstate('followup', t.add(queue_name=queue_name))
                 else:
                     self._setstate('followup', t.add())
-                if self.servicesConfig.get('debug', False):
+                if self._serviceConfig.get('debug', False):
                     self.logging.info('Resulting task: "%s".' % t)
                 self.setflag('tid', str(t))
 
@@ -684,7 +335,7 @@ class BaseService(remote.Service):
 
         if pipeline is not None:
 
-            if self.servicesConfig.get('debug', False):
+            if self._serviceConfig.get('debug', False):
                 self.logging.debug('Loading followup pipeline.')
 
             kwargs['async_config'] = {
@@ -696,18 +347,18 @@ class BaseService(remote.Service):
             }
 
             p = pipeline(*args, **kwargs)
-            if self.servicesConfig.get('debug', False):
+            if self._serviceConfig.get('debug', False):
                 self.logging.debug('Instantiated pipeline: "%s".' % p)
 
             if start:
-                if self.servicesConfig.get('debug', False):
+                if self._serviceConfig.get('debug', False):
                     self.logging.debug('Starting followup pipeline.')
                 if queue_name is not None:
                     self._setstate('followup', p.start(queue_name=queue_name, idempotence_key=idempotence_key))
                 else:
                     self._setstate('followup', p.start(idempotence_key=idempotence_key))
 
-            if self.servicesConfig.get('debug', False):
+            if self._serviceConfig.get('debug', False):
                 self.logging.info('Resulting pipeline: "%s".' % p)
             self.setflag('pid', str(p.pipeline_id))
 
@@ -715,38 +366,11 @@ class BaseService(remote.Service):
 
         return tuple(result_return)
 
-    def set_followup(self, tid=None, pid=None):
-
-        ''' Manually set the TID and/or PID response header. '''
-
-        if tid is None:
-            self.setflag('tid', str(tid))
-        if pid is None:
-            self.setflag('pid', str(pid))
-        return
-
-    def go_async(self):
-
-        ''' Go into async mode. '''
-
-        return self.handler.go_async()
-
-    def can_async(self):
-
-        ''' Check if async mode is possible. '''
-
-        return self.handler.can_async()
-
-    def get_request_body(self):
-
-        ''' Interpret the request body and cache it for later. '''
-
-        return self.handler.get_request_body()
-
 
 ## RemoteServiceHandler
 # This class is responsible for bridging a request to a remote service class, dispatching/executing to get the response, and returning it to the client.
-class RemoteServiceHandler(service_handlers.ServiceHandler):
+@platform.PlatformInjector(config=True)
+class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.StateManager):
 
     ''' Handler for responding to remote API requests. '''
 
@@ -756,7 +380,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
     interpreted_body = None
     enable_async_mode = False
 
-    _request_envelope = DictProxy({
+    _request_envelope = datastructures.DictProxy({
 
         'id': None,
         'opts': {},
@@ -764,7 +388,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
     })
 
-    _response_envelope = DictProxy({
+    _response_envelope = datastructures.DictProxy({
 
         'id': None,
         'flags': {},
@@ -774,14 +398,6 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
     # Exception Mappings
     ApplicationError = remote.ApplicationError
-
-    # Config
-    @webapp2.cached_property
-    def servicesConfig(self):
-
-        ''' Cached shortcut to services config. '''
-
-        return config.config.get('apptools.services')
 
     @webapp2.cached_property
     def logging(self):
@@ -796,7 +412,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
         ''' Logging shortcut. '''
 
-        if self.servicesConfig['logging'] is True:
+        if self._serviceConfig['logging'] is True:
             if config.debug:
                 self.logging.info(str(message))
             else:
@@ -868,7 +484,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
         global global_debug
         global _middleware_cache
 
-        middleware = self.servicesConfig.get('middleware', False)
+        middleware = self._serviceConfig.get('middleware', False)
         if middleware is not False and len(middleware) > 0:
 
             for name, middleware_object in service.middleware.items():
@@ -928,7 +544,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
         ''' Check and return whether an async response is possible. '''
 
-        sdebug = self.servicesConfig.get('debug', False)
+        sdebug = self._serviceConfig.get('debug', False)
         if sdebug:
             self.logging.info('--- Beginning check for async compatibility.')
 
@@ -974,7 +590,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
         ''' Resolve a channel ID/seed from the client's token. '''
 
-        sdebug = self.servicesConfig.get('debug', False)
+        sdebug = self._serviceConfig.get('debug', False)
         if sdebug:
             self.logging.info('Getting channel ID from token "' + str(token) + '".')
 
@@ -991,6 +607,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
             ## try datastore if we can't find it in memcache
             from apptools.model.builtin import PushSession
+            from google.appengine.ext.ndb import key as nkey
 
             ups = nkey.Key(PushSession, token_key).get()
             if ups is not None:
@@ -1136,16 +753,10 @@ class RemoteServiceHandler(service_handlers.ServiceHandler):
 
 ## RemoteServiceHandlerFactory
 # Over here, we're responsible for creating and preparing remote service handlers, which dispatch a request to a service class.
+@platform.PlatformInjector(config=True)
 class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
     ''' Factory for preparing ServiceHandlers. '''
-
-    @webapp2.cached_property
-    def servicesConfig(self):
-
-        ''' Cached access to services config. '''
-
-        return config.config.get('apptools.services')
 
     @webapp2.cached_property
     def logging(self):
@@ -1155,15 +766,64 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
         global logging
         return logging.extend(name='RemoteServiceHandlerFactory')
 
+    @webapp2.cached_property
+    def installed_mappers(self):
+
+        ''' Return installed mappers, calculated from config. '''
+
+        global _global_debug
+
+        # Decide whether we should output logs
+        if self._servicesConfig.get('debug', False) == True:
+            output_debug = True
+            self.logging.info('Considering installed RPCMappers.')
+        else:
+            output_debug = False
+
+        mappers = []
+        for mapper in self._globalServicesConfig.get('mappers', []):
+            if output_debug:
+                self.logging.info('Considering installed mapper "%s".' % mapper)
+            if mapper.get('enabled', False) is not True:
+                if output_debug:
+                    self.logging.info('Mapper at name "' + str(mapper.get('name', 'UnknownMapper')) + '" skipped according to config.')
+                continue
+
+            try:
+                mapper_cls = _loadModule(tuple('.'.join(mapper.get('path').split('.')[0:-1]), mapper.get('path').split('.')[-1]))
+                mapper = mapper_cls()
+
+            except ImportError:
+                self.logging.warning('Invalid path to RPCMapper of name "%s". Given path: "%s" does not exist or otherwise could not be imported.' % (str(mapper.get('name', 'UnknownMapper')), str(mapper.get('path', 'UnknownPath'))))
+                if _global_debug:
+                    raise
+                else:
+                    continue
+
+            except Exception, e:
+                self.logging.error('Unknown exception encountered when trying to install the RPC mapper at name "%s" with path "%s". Exception: "%s".' % (str(mapper.get('name', 'UnknownMapper')), str(mapper.get('path', 'UnknownPath')), str(e)))
+                if _global_debug:
+                    raise
+                else:
+                    continue
+
+            else:
+                mappers.append(mapper)
+
+        if (output_debug or _global_debug) and len(mappers) == 0:
+            self.logging.warning(' === NO VALID RPCMAPPERS FOUND. ===')
+
+        return mappers
+
     def log(self, message):
 
         ''' Logging shortcut. '''
 
-        if self.servicesConfig['logging'] is True:
+        if self._serviceConfig['logging'] is True:
             if config.debug:
                 self.logging.info(str(message))
             else:
-                logging.debug(str(message))
+                self.logging.debug(str(message))
         return
 
     def error(self, message):
@@ -1177,13 +837,12 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
         ''' Prepare the default setup for a service, including the appropriate RPC mappers. This is where we inject our custom JSONRPC mapper. '''
 
+        ## Create Service
         factory = cls(service_factory)
 
-        # our nifty mapper, for correctly interpreting & providing our envelope schema
-        factory.add_request_mapper(AppJSONRPCMapper())
-
-        factory.add_request_mapper(service_handlers.ProtobufRPCMapper())
-        factory.add_request_mapper(service_handlers.URLEncodedRPCMapper())
+        ## Add request mappers
+        for mapper in factory.installed_mappers:
+            factory.add_request_mapper(mapper)
 
         return factory
 
@@ -1203,7 +862,7 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
         service._initializeRemoteService()
 
         # Consider service middleware
-        middleware = self.servicesConfig.get('middleware', False)
+        middleware = self._serviceConfig.get('middleware', False)
         if middleware is not False and len(middleware) > 0:
 
             for name, cfg in middleware:
@@ -1215,7 +874,7 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
                         else:
                             middleware_class = _middleware_cache[name]
 
-                        middleware_object = middleware_class(debug=cfg['debug'], config=self.servicesConfig, opts=cfg.get('args', {}))
+                        middleware_object = middleware_class(debug=cfg['debug'], config=self._serviceConfig, opts=cfg.get('args', {}))
                         service.middleware[name] = middleware_object
 
                         if hasattr(middleware_object, 'before_request'):

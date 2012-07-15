@@ -35,6 +35,9 @@ from apptools.model.builtin import UploadSession
 
 
 #+#+#+ ==== System API Service ==== +#+#+#
+
+## SystemService
+# Offers programmatic access to system services, info, and audit data.
 class SystemService(BaseService):
 
     ''' Builtin API service for useful info/utility methods. Only exposed to logged-in app administrators by default (see config/services.py). '''
@@ -117,6 +120,9 @@ class SystemService(BaseService):
 
 
 #+#+#+ ==== Asset API Service ==== +#+#+#
+
+## AssetsService
+# Provides programmatic access to dynamic assets and URLs to registered/unregistered static assets.
 class AssetsService(BaseService, AssetsMixin):
 
     ''' Builtin API service for retrieving asset URLs. Exposed publicly by default (see config/services.py). '''

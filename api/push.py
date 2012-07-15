@@ -25,6 +25,8 @@ from apptools.util import datastructures
 from apptools.api import HandlerMixin
 
 
+## PushMixin
+# Used as an addon class to base classes to bridge in access to Push API functionality.
 class PushMixin(HandlerMixin):
 
     ''' Bridges the AppEngine Channel API and base classes. '''

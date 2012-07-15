@@ -12,7 +12,6 @@ into a contiguous structure that resembles a framework. Also hosts BaseHandler.
 '''
 
 # Base Imports
-import os
 import config
 import webapp2
 
@@ -53,7 +52,7 @@ logging = AppToolsLogger('apptools.core')
 
 ## BaseHandler
 # Base request handler class, with shortcuts, utilities, and base template context.
-@platform.PlatformInjector
+@platform.PlatformInjector(shortcuts=True, config=True, context=True)
 class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, OutputMixin, PushMixin):
 
     ''' Top-level parent class for request handlers in AppTools. '''
@@ -72,46 +71,10 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
     @webapp2.cached_property
     def logging(self):
 
-        ''' Log pipe. '''
+        ''' Named log pipe. '''
 
         global logging
         return logging.extend('RequestHandler', self.__class__.__name__)
-
-    ## Config Shortcuts
-    @webapp2.cached_property
-    def config(self):
-
-        ''' Cached shortcut to global config '''
-
-        return config.config
-
-    @webapp2.cached_property
-    def _globalServicesConfig(self):
-
-        ''' Cached shortcut to the global services config. '''
-
-        return config.config.get('apptools.services')
-
-    @webapp2.cached_property
-    def _servicesConfig(self):
-
-        ''' Cached shortcut to the project services config. '''
-
-        return self.config.get('.'.join(self.configPath.split('.') + ['services']))
-
-    @webapp2.cached_property
-    def _sysConfig(self):
-
-        ''' Cached shortcut to handler config. '''
-
-        return self.config.get('apptools.system')
-
-    @webapp2.cached_property
-    def _projectConfig(self):
-
-        ''' Cached shortcut to project config. '''
-
-        return self.config.get(self.configPath)
 
     ## Dispatch
     def dispatch(self):

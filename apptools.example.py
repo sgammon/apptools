@@ -21,10 +21,12 @@ There's also an **integrated [Output API](api/output.html)**, and a hybrid **reg
 - **BaseService**, in [services.py](services.html): base remote service class, with a suite of handy decorators for easily annotating remote methods with caching, security & audit policy
 '''
 
-from apptools.core import BaseHandler		 # BaseHandler for request dispatching, with API shortcuts and sessions and much more
+from apptools.core import BaseHandler        # BaseHandler for request dispatching, with API shortcuts and sessions and much more
 from apptools.model import BaseModel         # BaseModel for data modelling, with serialization tools and much more (powered by NDB by default)
 from apptools.services import BaseService    # BaseService for simple RPC services, integrated with ProtoRPC
 from apptools.pipelines import BasePipeline  # BasePipeline for easy backend processing
+from apptools import messages, remote        # Things are easy to find and import
+
 
 ## Getting started
 
@@ -37,5 +39,16 @@ class MyHandler(BaseHandler):
             'message': 'hello world!'
         }
         key = self.api.memcache.get('<somekey>')      # easy access to AppEngine APIs
-        key = self.ext.ndb.key.Key(urlsafe=key)	      # easy access to NDB, Map/Reduce and Pipelines
+        key = self.ext.ndb.key.Key(urlsafe=key)       # easy access to NDB, Map/Reduce and Pipelines
         self.render('<sampletemplate>', **context)    # built-in jinja2 integration, with an awesome global context
+
+
+# Then, **build your first API service** by extending BaseService:
+class MyService(BaseService):
+
+    @remote.method(messages.Echo, messages.Echo)  # Map your request & response messages (see: ProtoRPC). AppTools comes built-in with a useful handful of 'em
+    def helloworld(self, request):
+
+        response = messages.Echo()          # Easy, OOP-style interaction everywhere
+        response.message = request.message  # I am rubber and you are glue...
+        return response                     # Automatic serialization to/from JSON, XML, ATOM, RSS, Protobuf or URLEncoded Forms

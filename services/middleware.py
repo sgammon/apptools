@@ -45,36 +45,60 @@ class ServiceGatewayMiddleware(object):
         raise NotImplemented
 
 
+## MonitoringMiddleware
 # Middleware for monitoring individual and aggregate request statistics
 class MonitoringMiddleware(ServiceGatewayMiddleware):
 
     """ Middleware for monitoring and reporting errors or auth failures. """
 
     def before_request(self, service, request, response):
+
+        ''' Not Implemented '''
+
+        ## @TODO (Implement Service Monitoring Middleware)
+
         return (service, request, response)
 
     def after_request(self, service, request, response):
+
+        ''' Not Implemented '''
+
+        ## @TODO (Implement Service Monitoring Middleware)
+
         return (service, request, response)
 
 
+## AsyncPushMiddleware
 # Async Middleware for intercepting responses and returning them via Channel API
 class AsyncPushMiddleware(ServiceGatewayMiddleware):
 
     """ Middleware for intercepting an asynchronous response from an API method. """
 
     def after_request(self, service, request, response):
+
+        ''' Not Implemented '''
+
+        ## @TODO (Implement Service AsyncPush Middleware)
+
         return (service, request, response)
 
 
+## RecordingMiddleware
 # Middleware for recording monitored data to datastore or memcache
 class RecordingMiddleware(ServiceGatewayMiddleware):
 
     """ Middleware for recording individual or aggregate information about remote service request load. """
 
     def before_request(self, service, request, response):
+
+        ''' Not Implemented '''
+
+        ## @TODO (Implement Service Recording Middleware)
+
         return (service, request, response)
 
 
+## CachingMiddleware
 # Middleware for caching response messages & raw JSON responses
 class CachingMiddleware(ServiceGatewayMiddleware):
 
@@ -117,23 +141,36 @@ class CachingMiddleware(ServiceGatewayMiddleware):
 
         """ Store the request in the cache for later return. """
 
-        pass
+        ## @TODO (Implement Service Authentication Middleware)
+
+        return (service, request, response)
 
 
+## AuthenticationMiddleware
 # Middleware for authenticating a remote client
 class AuthenticationMiddleware(ServiceGatewayMiddleware):
 
     """ Middleware for enforcing the policy that a user (maybe only admins) must be authenticated. """
 
     def before_request(self, service, request, response):
+
+        ''' Not Implemented '''
+
+        ## @TODO (Implement Service Authentication Middleware)
+
         return (service, request, response)
 
 
+## AuthorizationMiddleware
 # Middleware for authorizing a remote client
 class AuthorizationMiddleware(ServiceGatewayMiddleware):
 
     """ Middleware for enforcing the policy that a user must be part of a group or have a certain privilege. """
 
     def before_request(self, service, request, response):
+
+        ''' Not Implemented '''
+
+        ## @TODO (Implement Service Authorization Middleware)
 
         return (service, request, response)

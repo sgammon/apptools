@@ -85,34 +85,42 @@ class _AppToolsModel(object):
 
 ## AppTools Model
 # This is the root base model for all AppTools-based models.
-@platform.PlatformInjector
+@platform.PlatformInjector(shortcuts=True)
 class BaseModel(_AppToolsModel, ldb.Model):
 
     ''' This is the root base model for all AppTools-based models. '''
 
+    pass
+
 
 ## NDBModel
 # This is the root base model for all NDB-based models.
-@platform.PlatformInjector
+@platform.PlatformInjector(shortcuts=True)
 class NDBModel(_AppToolsModel, model.Model):
 
     ''' This is the root base model for all NDB-based models '''
 
+    pass
+
 
 ## BaseExpando
 # This is the root base expando for all expando-based models.
-@platform.PlatformInjector
+@platform.PlatformInjector(shortcuts=True)
 class BaseExpando(_AppToolsModel, ldb.Expando):
 
     ''' This is the root base model for all AppTools-based expandos. '''
 
+    pass
+
 
 ## NDBExpando
 # This is the root base expando for all NDB-based expandos.
-@platform.PlatformInjector
+@platform.PlatformInjector(shortcuts=True)
 class NDBExpando(_AppToolsModel, model.Expando):
 
     ''' This is the root base model for all NDB & Expando-based models. '''
+
+    pass
 
 
 ## Property, Key & Model Classes
