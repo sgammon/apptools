@@ -64,19 +64,26 @@ class ModuleLoader(object):
     ''' Loads templates that have been compiled into Python modules. '''
 
     @cached_property
+    def loaderConfig(self):
+
+        ''' Cached template loader configuration. '''
+
+        return config.config.get('apptools.project.output.template_loader')
+
+    @cached_property
     def logging(self):
 
         ''' Log pipe. '''
 
         global logging
-        return logging.extend(name='ModuleLoader')
+        return logging.extend(name='ModuleLoader')._setcondition(self.loaderConfig.get('loaders', {}).get('logging', False))
 
     def __init__(self, templatemodule):
 
         ''' Loads a template from a module. '''
 
         self.modules = {}
-        self.logging.debug('Loading templatemodule: "%s".' % templatemodule)
+        self.logging.info('Loading templatemodule: "%s".' % templatemodule)
         self.templatemodule = templatemodule
 
     def load(self, environment, filename, globals=None):
@@ -126,7 +133,7 @@ class ModuleLoader(object):
         prefix, obj = module_name.rsplit('.', 1)
 
         try:
-            self.logging.debug('Template module at path "%s" for template path "%s" was found and is valid.' % (module_name, template))
+            self.logging.info('Template module at path "%s" for template path "%s" was found and is valid.' % (module_name, template))
             return getattr(__import__(prefix, None, {'environment': environment}, [obj]), obj)
         except (ImportError, AttributeError):
             t = TemplateNotFound(template)
@@ -143,7 +150,7 @@ def get_tdata_from_fastcache(name, do_log):
     global t_data
     if name in t_data:
         if do_log:
-            logging.debug('OUTPUT_LOADER: Found bytecode in fastcache memory under key \'' + str(base64.b64encode(name)) + '\'.')
+            logging.info('OUTPUT_LOADER: Found bytecode in fastcache memory under key \'' + str(base64.b64encode(name)) + '\'.')
         return t_data[name]
     else:
         return None
@@ -156,7 +163,7 @@ def set_tdata_to_fastcache(name, data, do_log):
     global t_data
     t_data[name] = data
     if do_log:
-        logging.debug('OUTPUT_LOADER: Set template \'' + str(name) + '\' to fastcache memory.')
+        logging.info('OUTPUT_LOADER: Set template \'' + str(name) + '\' to fastcache memory.')
 
 
 # Memcache API loader
@@ -168,7 +175,7 @@ def get_tdata_from_memcache(name, do_log):
     data = _apibridge.memcache.get('Core//Output//Template-' + name)
     if data is not None:
         if do_log:
-            logging.debug('OUTPUT_LOADER: Found bytecode in memcache under key \'tdata-' + str(name) + '\'.')
+            logging.info('OUTPUT_LOADER: Found bytecode in memcache under key \'tdata-' + str(name) + '\'.')
         return data
     else:
         return None
@@ -181,7 +188,7 @@ def set_tdata_to_memcache(name, data, do_log):
     from apptools.core import _apibridge
     _apibridge.memcache.set('Core//Output//Template-' + name, data)
     if do_log:
-        logging.debug('OUTPUT_LOADER: Set template \'' + str(name) + '\' to memcache under key \'Core//Output//Template-' + str(name) + '\'.')
+        logging.info('OUTPUT_LOADER: Set template \'' + str(name) + '\' to memcache under key \'Core//Output//Template-' + str(name) + '\'.')
 
 
 ## CoreOutputLoader
@@ -192,8 +199,11 @@ class CoreOutputLoader(JFileSystemLoader):
 
     @cached_property
     def logging(self):
+
+        ''' Log pipe. '''
+
         global logging
-        return logging.extend(name='FileSystemLoader')
+        return logging.extend(name='FileSystemLoader')._setcondition(self.loaderConfig.get('loaders', {}).get('logging', False))
 
     @cached_property
     def devConfig(self):

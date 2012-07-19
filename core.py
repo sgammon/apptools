@@ -149,29 +149,25 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
 
             # Detect if we're handling a request from IE, and if we are, tell the template context
             if 'MSIE' in self.uagent.get('browser', {}).get('name', ''):
-                if config.debug:
-                    self.logging.debug('Uagent detected as Microsoft Internet Explorer.')
+                self.logging.info('Uagent detected as Microsoft Internet Explorer.')
                 context['page']['ie'] = True
                 context['page']['legacy'] = True
 
             # Detect Android clients
             elif 'Android' in self.uagent.get('browser', {}).get('name', ''):
-                if config.debug:
-                    self.logging.debug('Uagent detected as Android.')
+                self.logging.info('Uagent detected as Android.')
                 context['page']['mobile'] = True
                 context['page']['android'] = True
 
             # Detect iPhone clients
             elif 'iPhone' in self.uagent.get('browser', {}).get('name', ''):
-                if config.debug:
-                    self.logging.debug('Uagent detected as iPhone.')
+                self.logging.info('Uagent detected as iPhone.')
                 context['page']['mobile'] = True
                 context['page']['ios'] = True
 
             # Detect iPad clients
             elif 'iPad' in self.uagent.get('browser', {}).get('name', ''):
-                if config.debug:
-                    self.logging.debug('Uagent detected as iPad.')
+                self.logging.info('Uagent detected as iPad.')
                 context['page']['mobile'] = True
                 context['page']['tablet'] = True
                 context['page']['ios'] = True
