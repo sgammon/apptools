@@ -43,9 +43,9 @@ from webapp2_extras import jinja2
 from jinja2 import FileSystemLoader as JFileSystemLoader
 from jinja2.exceptions import TemplateNotFound
 
-logging = AppToolsLogger('apptools.core', 'OutputAPI')
-
+## Globals
 t_data = {}
+logging = AppToolsLogger('apptools.core', 'OutputAPI')
 
 
 ## CoreOutputAPIException
@@ -62,6 +62,8 @@ class CoreOutputAPIException(AppException):
 class ModuleLoader(object):
 
     ''' Loads templates that have been compiled into Python modules. '''
+
+    has_source_access = False
 
     @cached_property
     def loaderConfig(self):
@@ -86,7 +88,28 @@ class ModuleLoader(object):
         self.logging.info('Loading templatemodule: "%s".' % templatemodule)
         self.templatemodule = templatemodule
 
-    def load(self, environment, filename, globals=None):
+    def prepare_template(self, environment, filename, tpl_vars, globals):
+
+        ''' Prepare a template to be returned after it has been loaded. '''
+
+        t = object.__new__(environment.template_class)
+        t.environment = environment
+        t.globals = globals
+        t.name = tpl_vars['name']
+        t.filename = filename
+        t.blocks = tpl_vars['blocks']
+
+        # render function and module
+        t.root_render_func = tpl_vars['root']
+        t._module = None
+
+        # debug and loader helpers
+        t._debug_info = tpl_vars['debug_info']
+        t._uptodate = lambda: True
+
+        return t
+
+    def load(self, environment, filename, globals=None, prepare=True):
 
         ''' Loads a pre-compiled template, stored as Python code in a template module. '''
 
@@ -102,27 +125,18 @@ class ModuleLoader(object):
                 # Store module to avoid unnecessary repeated imports.
                 self.modules[filename] = self.get_module(environment, filename)
 
-            tpl_vars = self.modules[filename].run(environment)
+            if prepare:
+                tpl_vars = self.modules[filename].run(environment)
 
-            t = object.__new__(environment.template_class)
-            t.environment = environment
-            t.globals = globals
-            t.name = tpl_vars['name']
-            t.filename = filename
-            t.blocks = tpl_vars['blocks']
-
-            # render function and module
-            t.root_render_func = tpl_vars['root']
-            t._module = None
-
-            # debug and loader helpers
-            t._debug_info = tpl_vars['debug_info']
-            t._uptodate = lambda: True
-
-            return t
         except Exception, e:
             self.logging.exception('Encountered exception during template module import: "%s".' % e)
             raise e
+
+        else:
+            if prepare:
+                return self.prepare_template(environment, filename, tpl_vars, globals)
+            else:
+                return self.modules[filename]
 
     def get_module(self, environment, template):
 
@@ -196,6 +210,8 @@ def set_tdata_to_memcache(name, data, do_log):
 class CoreOutputLoader(JFileSystemLoader):
 
     ''' Loads templates and automatically inserts bytecode caching logic for both fastcache (instance memory) and memcache. '''
+
+    has_source_access = True
 
     @cached_property
     def logging(self):
