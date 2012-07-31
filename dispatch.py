@@ -16,7 +16,7 @@ import config
 import webapp2
 import logging
 
-from openfire.routing import get_rules
+from fatcatmap.routing import get_rules
 
 from apptools.util import runtools
 

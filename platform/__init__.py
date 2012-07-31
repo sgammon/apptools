@@ -50,7 +50,7 @@ class PlatformBridge(object):
         try:
             module = _loadModule(module)
         except ImportError:
-            self.logging.warning('Could not resolve shortcutted module "' + module + '". Encountered ImportError, returning False.')
+            self.logging.warning('Could not resolve shortcutted module "' + str(module) + '". Encountered ImportError, returning False.')
             if config.debug:
                 raise
             return False
