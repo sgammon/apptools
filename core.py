@@ -67,6 +67,13 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
     configPath = 'apptools.project'
     context_injectors = []
 
+    # AppFactory Integration
+    frontline = None
+    entrypoint = None
+    force_hostname = False
+    force_https_assets = False
+    force_absolute_assets = False
+
     # Base HTTP Headers
     @webapp2.cached_property
     def logging(self):
@@ -94,14 +101,19 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
             self.logging.info('Incoming request was proxied through the AppFactory Frontline.')
             if not hasattr(self, '_response_headers'):
                 self._response_headers = {}
-            self._response_headers['X-Platform'] = self.request.headers.get('x-appfactory-frontline')
+            self._response_headers['X-Platform'] = self.frontline = self.request.headers.get('x-appfactory-frontline')
             if self.request.headers.get('x-appfactory-entrypoint', None) is not None:
                 self.force_absolute_assets = True
+                self.logging.info('Detected X-AppFactory-Entrypoint header. Forcing absolute assets.')
+                self.entrypoint = self.request.headers.get('x-appfactory-entrypoint')
             if self.request.headers.get('x-appfactory-protocol', 'HTTP') == 'HTTPS':
                 self.logging.info('Detected X-AppFactory-Protocol header. Forcing SSL/HTTPS assets.')
                 self.force_https_assets = True
+            if self.request.headers.get('x-appfactory-hostname', None) is not None:
+                self.logging.info('Detected X-AppFactory-Hostname header. Setting local hostname override.')
+                self.force_hostname = self.request.headers.get('x-appfactory-hostname')
         else:
-            self.logging.debug('Incoming request comes directly from a client browser.')
+            self.logging.info('Incoming request comes directly from a client browser.')
 
         # Dispatch method (GET/POST/etc.)
         return super(BaseHandler, self).dispatch()

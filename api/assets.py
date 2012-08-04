@@ -136,12 +136,23 @@ class CoreAssetsAPI(CoreAPI):
                     url_fragments.append('https://')
                 else:
                     url_fragments.append('//')
-                if isinstance(self._OutputConfig['assets']['cdn_prefix'], list):
+                if hasattr(handler, 'force_hostname') and getattr(handler, 'force_hostname'):
+                    cdnprefix = getattr(handler, 'force_hostname')
+                elif isinstance(self._OutputConfig['assets']['cdn_prefix'], list):
                     cdnprefix = random.choice(self._OutputConfig['assets']['cdn_prefix'])
                 else:
                     cdnprefix = self._OutputConfig['assets']['cdn_prefix']
                 url_fragments.append([cdnprefix, 'assets', 'img', 'static'] + [i for i in path.split('/')] + [''])
             else:
+                if hasattr(handler, 'force_hostname') and getattr(handler, 'force_hostname'):
+                    if hasattr(handler, 'force_https_assets') and getattr(handler, 'force_https_assets') is True:
+                        url_fragments.append('https://')
+                    else:
+                        if handler.request.environ.get('HTTP_SCHEME', 'http').lower() == 'https':
+                            url_fragments.append('https://')
+                        else:
+                            url_fragments.append('http://')
+                    url_fragments.append(handler.force_hostname)
                 url_fragments.append('/')
                 url_fragments.append(['assets', 'img', 'static'] + [i for i in path.split('/')] + [''])
 
@@ -154,7 +165,7 @@ class CoreAssetsAPI(CoreAPI):
         ''' Return a URL for an asset, according to the current configuration. '''
 
         global _asset_url_cache
-        identifier = (handler.force_https_assets, _type, name, module, prefix, version, minify, version_by_getvar)
+        identifier = (handler.force_https_assets, handler.force_hostname, _type, name, module, prefix, version, minify, version_by_getvar)
         if identifier in _asset_url_cache:
             return _asset_url_cache[identifier]
         else:
@@ -192,10 +203,7 @@ class CoreAssetsAPI(CoreAPI):
                 # Start building asset URL
                 filename = []
                 query_string = {}
-                if self._OutputConfig['assets']['serving_mode'] == 'local':
-                    asset_url = ['assets', _type, prefix, module_path, ('.', filename)]
-                else:
-                    asset_url = ['assets', _type, prefix, module_path, ('.', filename)]
+                asset_url = ['assets', _type, prefix, module_path, ('.', filename)]
                 minify = minify or self._OutputConfig['assets'].get('minified', False)
 
                 ## 1: Consider absolute assets
@@ -354,8 +362,6 @@ class AssetsMixin(HandlerMixin):
     ''' Bridge the Core Assets API to methods on a handler. '''
 
     _assets_api = _api
-    force_https_assets = False
-    force_absolute_assets = False
 
     def get_img_asset(self, *args, **kwargs):
 
