@@ -16,13 +16,16 @@ import config
 import webapp2
 import logging
 
-from fatcatmap.routing import get_rules
+rule_builders = []
+installed_apps = config.config.get('webapp2').get('apps_installed', ['project'])
+for app in installed_apps:
+    rule_builders.append(webapp2.import_string('.'.join([app, 'routing', 'get_rules'])))
 
 from apptools.util import runtools
 
 from apptools.services import gateway as servicelayer_dispatch
 
-app_rules = get_rules()
+app_rules = reduce(lambda x, y: x + y, [ruleset() for ruleset in rule_builders])
 sys_config = config.config.get('apptools.system', {})
 
 
