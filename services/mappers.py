@@ -283,7 +283,7 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
                 for key, value in dictionary.iteritems():
                     if value is None:
                         message.reset(key)
-                    continue
+                        continue
 
                     try:
                         field = message.field_by_name(key)
@@ -295,21 +295,21 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
                     if isinstance(value, list):
                         if not value:
                             continue
-                        else:
-                            value = [value]
+                    else:
+                        value = [value]
 
-                        valid_value = []
-                        for item in value:
-                            if isinstance(field, messages.EnumField):
-                                item = field.type(item)
-                            elif isinstance(field, messages.BytesField):
-                                item = base64.b64decode(item)
-                            elif isinstance(field, messages.MessageField):
-                                item = decode_dictionary(field.type, item)
-                            elif (isinstance(field, messages.FloatField) and
-                                    isinstance(item, (int, long))):
-                                item = float(item)
-                            valid_value.append(item)
+                    valid_value = []
+                    for item in value:
+                        if isinstance(field, messages.EnumField):
+                            item = field.type(item)
+                        elif isinstance(field, messages.BytesField):
+                            item = base64.b64decode(item)
+                        elif isinstance(field, messages.MessageField):
+                            item = decode_dictionary(field.type, item)
+                        elif (isinstance(field, messages.FloatField) and
+                                isinstance(item, (int, long))):
+                            item = float(item)
+                        valid_value.append(item)
 
                     if field.repeated:
                         getattr(message, field.name)
