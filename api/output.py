@@ -393,6 +393,7 @@ class OutputMixin(HandlerMixin):
 
             'util': {  # Utility stuff
 
+                'handler': self,
                 'logging': self.logging.extend('apptools.templates', 'Context'),  # Handy logging bridge
 
                 'request': {  # Request Object
