@@ -112,6 +112,9 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
             if self.request.headers.get('x-appfactory-hostname', None) is not None:
                 self.logging.info('Detected X-AppFactory-Hostname header. Setting local hostname override.')
                 self.force_hostname = self.request.headers.get('x-appfactory-hostname')
+                self.hostname = self.force_hostname
+            else:
+                self.hostname = self.request.headers.get('host')
         else:
             self.logging.info('Incoming request comes directly from a client browser.')
 
