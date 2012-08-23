@@ -417,6 +417,7 @@ class OutputMixin(HandlerMixin):
 
                     'get': config.config.get,
                     'debug': config.debug,
+                    'strict': config.strict,
                     'system': self._sysConfig,
                     'project': self._projectConfig,
 
