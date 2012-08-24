@@ -545,6 +545,7 @@ class OutputMixin(HandlerMixin):
 
         # **Ever wanted your favorite Python builtins available in your template?** Look ma!
         j2cfg['globals'] = self.baseContext
+        j2cfg['filters'] = {'json': json.dumps}
 
         environment = jinja2.Jinja2(app, config=j2cfg)  # Make & return template environment
         return environment
