@@ -170,6 +170,11 @@ class BaseService(remote.Service, datastructures.StateManager):
     handler = None
     request = datastructures.DictProxy({})
     middleware = {}
+    exceptions = datastructures.DictProxy({
+
+        'ApplicationError': remote.ApplicationError
+
+    })
 
     # Template stuff
     context = {}
@@ -476,7 +481,6 @@ class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.State
     def setstatus(self, status):
 
         ''' Set the status of a response. Good choices would be things like 'success' and 'error'. '''
-
         self._response_envelope['status'] = status
         return
 
