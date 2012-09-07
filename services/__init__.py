@@ -691,7 +691,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.State
             self.service.initialize()
 
         if not content_type:
-            self.setstatus('fail')
+            self.setstatus('failure')
             self.__send_simple_error(400, 'Invalid RPC request: missing content-type')
             return
 
@@ -700,13 +700,13 @@ class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.State
             if content_type in mapper.content_types:
                 break
         else:
-            self.setstatus('fail')
+            self.setstatus('failure')
             self._ServiceHandler__send_simple_error(415, 'Unsupported content-type: %s' % content_type)
             return
 
         try:
             if http_method not in mapper.http_methods:
-                self.setstatus('fail')
+                self.setstatus('failure')
                 self._ServiceHandler__send_simple_error(405, 'Unsupported HTTP method: %s' % http_method)
                 return
 
@@ -715,21 +715,21 @@ class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.State
                     method = getattr(self.service, remote_method)
                     method_info = method.remote
                 except AttributeError, err:
-                    self.setstatus('fail')
+                    self.setstatus('failure')
                     self._ServiceHandler__send_error(400, remote.RpcState.METHOD_NOT_FOUND_ERROR, 'Unrecognized RPC method: %s' % remote_method, mapper)
                     return
 
                 request = mapper.build_request(self, method_info.request_type)
 
             except (RequestError, pmessages.DecodeError), err:
-                self.setstatus('fail')
+                self.setstatus('failure')
                 self._ServiceHandler__send_error(400, remote.RpcState.REQUEST_ERROR, 'Error parsing RPC request (%s)' % err, mapper)
                 return
 
             try:
                 response = method(request)
             except self.ApplicationError, err:
-                self.setstatus('fail')
+                self.setstatus('failure')
                 self._ServiceHandler__send_error(400, remote.RpcState.APPLICATION_ERROR, err.message, mapper, err.error_name)
                 return
 
@@ -739,7 +739,7 @@ class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.State
                 self.service.after_request_hook()
 
         except Exception, err:
-            self.setstatus('fail')
+            self.setstatus('failure')
             self.logging.error('An unexpected error occured when handling RPC: %s' % err, exc_info=1)
             self.logging.exception('Unexpected service exception of type "%s": "%s".' % (type(err), str(err)))
             self._ServiceHandler__send_error(500, remote.RpcState.SERVER_ERROR, 'Internal Server Error', mapper)
