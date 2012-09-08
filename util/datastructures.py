@@ -83,6 +83,11 @@ class DictProxy(UtilStruct):
         else:
             raise AttributeError
 
+    def extend(self, obj):
+        for name, value in obj.items():
+            setattr(self, name, value)
+        return
+
     def __setitem__(self, name, value):
         setattr(self, name, value)
 

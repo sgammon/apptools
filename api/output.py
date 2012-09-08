@@ -430,7 +430,8 @@ class OutputMixin(HandlerMixin):
                 'converters': {  # Converters
 
                     'json': json,  # SimpleJSON or Py2.7 JSON
-                    'hashlib': hashlib,
+                    'hashlib': hashlib,  # Hash utilities (MD5/SHA etc)
+                    'base64': base64,  # Utilities for B64 encoding/decoding
                     'timesince': self.util.timesince,  # Util library for "15 minutes ago"-type text from datetimes
                     'byteconvert': self.util.byteconvert  # Util library for formatting data storage amounts
 
