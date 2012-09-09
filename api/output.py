@@ -40,6 +40,7 @@ from webapp2 import cached_property
 from webapp2_extras import jinja2
 
 ## Jinja2 Imports
+from jinja2 import runtime
 from jinja2 import FileSystemLoader as JFileSystemLoader
 from jinja2.exceptions import TemplateNotFound
 
@@ -319,6 +320,18 @@ class OutputMixin(HandlerMixin):
     _output_api = _api
     _response_headers = {}
 
+    class AppToolsJSONEncoder(json.JSONEncoder):
+
+        ''' Extends the stock JSON encoder to support custom AppTools types. '''
+
+        def default(self, obj):
+
+            ''' Convert `Undefined` to None. '''
+
+            if isinstance(obj, runtime.Undefined):
+                return None
+            return json.JSONEncoder.default(self, obj)
+
     # Cached access to Jinja2
     @cached_property
     def jinja2(self):
@@ -545,7 +558,7 @@ class OutputMixin(HandlerMixin):
 
         # **Ever wanted your favorite Python builtins available in your template?** Look ma!
         j2cfg['globals'] = self.baseContext
-        j2cfg['filters'] = {'json': json.dumps}
+        j2cfg['filters'] = {'json': lambda f: self.AppToolsJSONEncoder().encode(f)}
 
         environment = jinja2.Jinja2(app, config=j2cfg)  # Make & return template environment
         return environment
