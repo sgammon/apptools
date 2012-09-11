@@ -235,28 +235,6 @@ class BaseService(remote.Service, datastructures.StateManager):
         self._setstate('rmodel', response)
         return
 
-    def set_followup(self, tid=None, pid=None):
-
-        ''' Manually set the TID and/or PID response header. '''
-
-        if tid is None:
-            self.setflag('tid', str(tid))
-        if pid is None:
-            self.setflag('pid', str(pid))
-        return
-
-    def go_async(self):
-
-        ''' Go into async mode. '''
-
-        return self.handler.go_async()
-
-    def can_async(self):
-
-        ''' Check if async mode is possible. '''
-
-        return self.handler.can_async()
-
     def get_request_body(self):
 
         ''' Interpret the request body and cache it for later. '''
@@ -310,91 +288,6 @@ class BaseService(remote.Service, datastructures.StateManager):
                 # If we have nothing, copy over defaults...
                 self.config['service'] = self.config['global']['defaults']['service']
 
-    def prepare_followup(self, task=None, pipeline=None, start=False, queue_name=None, idempotence_key='', *args, **kwargs):
-
-        ''' Prepare and set a followup task or pipeline, for async functionality. '''
-
-        global _global_debug
-
-        result_return = []
-        if self._servicesConfig.get('debug', False):
-            self.logging.debug('Loading remote method followup.')
-            self.logging.debug('Task: "' + str(task) + '".')
-            self.logging.debug('Pipeline: "' + str(pipeline) + '".')
-            self.logging.debug('Start: "' + str(start) + '".')
-            self.logging.debug('Args: "' + str(args) + '".')
-            self.logging.debug('Kwargs: "' + str(kwargs) + '".')
-
-        if task is not None:
-
-            if self._servicesConfig.get('debug', False):
-                self.logging.debug('Loading followup task.')
-
-            if 'params' not in kwargs:
-                kwargs['params'] = {}
-
-            kwargs['params']['_token'] = self._getstate('token')
-            kwargs['params']['_channel'] = self._getstate('channel')
-            kwargs['params']['_rhash'] = self._getstate('rhash')
-            kwargs['params']['_rhash'] = self._getstate('rid')
-            kwargs['params']['_rmodel'] = '.'.join(self._getstate('rmodel').__module__.split('.') + [self._getstate('rmodel').__class__.__name__])
-
-            if _global_debug:
-                self.logging.dev('Injected token "%s", channel "%s", rhash "%s" and model path "%s".' % (self._getstate('token'), self._getstate('channel'), self._getstate('rhash'), kwargs['params']['_rmodel']))
-
-            t = task(*args, **kwargs)
-
-            if self._servicesConfig.get('debug', False):
-                self.logging.debug('Instantiated task: "%s".' % t)
-
-            if start:
-                if self._servicesConfig.get('debug', False):
-                    self.logging.debug('Starting followup task.')
-                if queue_name is not None:
-                    self.logging.debug('Adding to queue "%s".' % queue_name)
-                    self._setstate('followup', t.add(queue_name=queue_name))
-                else:
-                    self._setstate('followup', t.add())
-                if self._serviceConfig.get('debug', False):
-                    self.logging.info('Resulting task: "%s".' % t)
-                self.setflag('tid', str(t))
-
-            result_return.append(t)
-
-        if pipeline is not None:
-
-            if self._servicesConfig.get('debug', False):
-                self.logging.debug('Loading followup pipeline.')
-
-            kwargs['async_config'] = {
-                'token': self._getstate('token'),
-                'channel': self._getstate('channel'),
-                'rid': self._getstate('rid'),
-                'rhash': self._getstate('rhash'),
-                'rmodel': '.'.join(self._getstate('rmodel').__module__.split('.') + [self._getstate('rmodel').__class__.__name__])
-            }
-
-            p = pipeline(*args, **kwargs)
-            if self._servicesConfig.get('debug', False):
-                self.logging.debug('Instantiated pipeline: "%s".' % p)
-
-            if start:
-                if self._servicesConfig.get('debug', False):
-                    self.logging.debug('Starting followup pipeline.')
-                if queue_name is not None:
-                    self._setstate('followup', p.start(queue_name=queue_name, idempotence_key=idempotence_key))
-                else:
-                    self._setstate('followup', p.start(idempotence_key=idempotence_key))
-
-            if self._servicesConfig.get('debug', False):
-                self.logging.info('Resulting pipeline: "%s".' % p)
-            self.setflag('pid', str(p.pipeline_id))
-
-            result_return.append(p)
-
-        return tuple(result_return)
-
-
 ## RemoteServiceHandler
 # This class is responsible for bridging a request to a remote service class, dispatching/executing to get the response, and returning it to the client.
 @platform.PlatformInjector
@@ -408,24 +301,31 @@ class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.State
     interpreted_body = None
     enable_async_mode = False
 
-    _request_envelope = datastructures.DictProxy({
+    _request_envelope_template = {
 
         'id': None,
         'opts': {},
         'agent': {}
 
-    })
+    }
 
-    _response_envelope = datastructures.DictProxy({
+    _response_envelope_template = {
 
         'id': None,
         'flags': {},
         'status': 'success'
 
-    })
+    }
 
     # Exception Mappings
     ApplicationError = remote.ApplicationError
+
+    def __init__(self, *args, **kwargs):
+
+        ''' Init - manufactures a new request and response envelope. '''
+
+        self._request_envelope = datastructures.DictProxy(self._request_envelope_template)
+        self._response_envelope = datastructures.DictProxy(self._response_envelope_template)
 
     @webapp2.cached_property
     def logging(self):
@@ -534,24 +434,6 @@ class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.State
         else:
             self.log('Middleware is none or 0.')
 
-    def go_async(self):
-
-        ''' Indicate that a response will be delivered via Channel API. '''
-
-        self.setflag('alt', 'socket')
-        self.setflag('token', self.state['token'])
-        self.setflag('rhash', self.state['rhash'])
-        self.setstatus('wait')
-
-        self.service._setstate('token', self.state['token'])
-        self.service._setstate('channel', self.state['channel'])
-        self.service._setstate('rid', self._request_envelope.id)
-        self.service._setstate('rhash', self.state['rhash'])
-
-        self.enable_async_mode = True
-
-        return True, self.state['token'], self.state['channel'], self.state['rhash']
-
     def get_request_body(self):
 
         ''' Interpret the request body early, so it can be manipulated/read. '''
@@ -566,98 +448,6 @@ class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.State
                 return False
             else:
                 return self.interpreted_body
-
-    def can_async(self):
-
-        ''' Check and return whether an async response is possible. '''
-
-        sdebug = self._servicesConfig.get('debug', False)
-        if sdebug:
-            self.logging.info('--- Beginning check for async compatibility.')
-
-        if 'alt' in self._request_envelope.opts:
-
-            if sdebug:
-                self.logging.debug('1. `alt` flag found. value: "' + str(self._request_envelope.opts['alt']) + '".')
-
-            if self._request_envelope.opts['alt'] == 'socket':
-
-                if 'token' in self._request_envelope.opts:
-
-                    if sdebug:
-                        self.logging.debug('2. `token` flag found. value: "' + str(self._request_envelope.opts['token']) + '".')
-
-                    if self._request_envelope.opts['token'] not in set(['', '_null_']):
-
-                        if sdebug:
-                            self.logging.debug('3. `token` is not null or invalid. proceeding.')
-
-                        channel_token = self._get_channel_from_token(self._request_envelope.opts['token'])
-
-                        if sdebug:
-                            self.logging.debug('4. pulled `channel_token`: "' + str(channel_token) + '".')
-
-                        if channel_token is not False:
-                            if sdebug:
-                                self.logging.debug('ASYNC CAPABLE! :)')
-
-                            self.state['token'] = self._request_envelope.opts['token']
-                            self.state['channel'] = channel_token
-                            self.state['rhash'] = base64.b64encode(self.state['channel'] + str(self._request_envelope['id']))
-                            return True
-                        else:
-                            self.logging.warning('Could not pull channel ID.')
-
-                            self.setflag('alt', 'denied')
-                            self.setflag('pushcmd', 'reconnect')
-                            return False
-        return False
-
-    def _get_channel_from_token(self, token):
-
-        ''' Resolve a channel ID/seed from the client's token. '''
-
-        sdebug = self._servicesConfig.get('debug', False)
-        if sdebug:
-            self.logging.info('Getting channel ID from token "' + str(token) + '".')
-
-        ## try memcache first
-        token_key = self._get_token_key(token)
-        if sdebug:
-            self.logging.info('Token key calculated: "' + str(token_key) + '".')
-
-        channel_id = self.api.memcache.get(token_key)
-        if channel_id is None:
-
-            if sdebug:
-                self.logging.warning('Channel ID not found in memcache.')
-
-            ## try datastore if we can't find it in memcache
-            from apptools.model.builtin import PushSession
-            from google.appengine.ext.ndb import key as nkey
-
-            ups = nkey.Key(PushSession, token_key).get()
-            if ups is not None:
-
-                if sdebug:
-                    self.logging.info('PushSession found in datastore. Found seed "' + str(ups.seed) + '".')
-
-                ## if the model's found, set it in memecache
-                self.api.memcache.set(token_key, {'seed': ups.seed, 'key': ups.key.urlsafe()})
-                return ups.seed
-            else:
-                self.logging.error('PushSession not found in datastore. Invalid or discarded seed.')
-                return False
-        else:
-            if sdebug:
-                self.logging.info('Channel ID found in memcache. Returning!')
-            return channel_id['seed']
-
-    def _get_token_key(self, token):
-
-        ''' Encode and prefix a channel token, suitable for use as a key in memcache/megastore. '''
-
-        return 'push_token::' + base64.b64encode(hashlib.sha256(token).hexdigest())
 
     def handle(self, http_method, service_path, remote_method):
 
