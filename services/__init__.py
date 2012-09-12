@@ -594,6 +594,13 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
         return logging.extend(name='RemoteServiceHandlerFactory')
 
     @webapp2.cached_property
+    def outputConfig(self):
+
+        ''' Config channel for output config. '''
+
+        return config.config.get('apptools.project.output')
+
+    @webapp2.cached_property
     def installed_mappers(self):
 
         ''' Return installed mappers, calculated from config. '''
@@ -670,11 +677,24 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
         return factory
 
+    def options(self):
+
+        ''' Return a response to an HTTP OPTIONS request, enabling CORS and outputting supported methods. '''
+
+        response = webapp2.Response()
+        for k, v in self.outputConfig.get('headers').items():
+            response.headers[k] = v
+        response.write('POST,OPTIONS,HEAD')
+        return response
+
     def __call__(self, request, remote_path, remote_method):
 
         ''' Handle a remote service call. '''
 
         global _middleware_cache
+
+        if request.method.lower() == 'options':
+            return self.options()
 
         # Extract response
         request.clock = {}
