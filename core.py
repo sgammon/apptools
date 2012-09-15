@@ -88,8 +88,6 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
 
         ''' Sniff the Uagent header, then pass off to Webapp2. '''
 
-        import pdb; pdb.set_trace()
-
         # Sniff Uagent
         if self.request.headers.get('User-Agent', None) is not None:
             try:
@@ -160,8 +158,6 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
             },  # enable API services
 
         }
-
-        import pdb; pdb.set_trace()
 
         ## Consider Uagent stuff
         if self.uagent is not None and len(self.uagent) > 0:
