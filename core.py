@@ -88,6 +88,8 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
 
         ''' Sniff the Uagent header, then pass off to Webapp2. '''
 
+        import pdb; pdb.set_trace()
+
         # Sniff Uagent
         if self.request.headers.get('User-Agent', None) is not None:
             try:
@@ -159,6 +161,8 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
 
         }
 
+        import pdb; pdb.set_trace()
+
         ## Consider Uagent stuff
         if self.uagent is not None and len(self.uagent) > 0:
 
@@ -186,5 +190,58 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
                 context['page']['mobile'] = True
                 context['page']['tablet'] = True
                 context['page']['ios'] = True
+
+            # Mobile and legacy clients are not bleeding-edge
+            if not context['page'].get('mobile', False) and not context['page'].get('legacy', False):
+
+                try:
+                    vsplit = self.uagent.get('browser', {}).get('version', '').split('.')
+
+                    # Chrome detection
+                    if self.uagent.get('browser', {}).get('name', '').lower() == 'chrome':
+
+                        if int(vsplit[0]) >= 15:
+                            ## Chrome 15 or better gets bleeding-edge status
+                            context['page']['robust'] = True
+
+                        else:
+                            context['page']['robust'] = False
+
+                    # Safari detection
+                    elif self.uagent.get('browser', {}).get('name', '').lower() == 'safari':
+
+                        if int(vsplit[0]) >= 5:
+                            ## Safari 5 or better gets bleeding-edge status
+                            context['page']['robust'] = True
+
+                        else:
+                            context['page']['robust'] = False
+
+                    # Firefox detection
+                    elif self.uagent.get('browser', {}).get('name', '').lower() == 'firefox':
+
+                        if int(vsplit[0]) >= 15:
+                            ## Firefox 15 or better gets bleeding-edge status
+                            context['page']['robust'] = True
+
+                        else:
+                            context['page']['robust'] = False
+
+                    # Opera detection
+                    elif self.uagent.get('browser', {}).get('name', '').lower() == 'opera':
+
+                        if int(vsplit[0]) >= 9:
+                            ## Opera 9 or better gets bleeding-edge status
+                            context['page']['robust'] = True
+
+                        else:
+                            context['page']['robust'] = False
+
+                except:
+                    context['page']['robust'] = False
+            else:
+                context['page']['robust'] = False
+
+            context['page']['agent'] = self.uagent
 
         return context
