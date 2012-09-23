@@ -88,6 +88,9 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
 
         ''' Sniff the Uagent header, then pass off to Webapp2. '''
 
+        # Collect super dispatch
+        s_dispatch = super(BaseHandler, self).dispatch
+
         # Sniff Uagent
         if self.request.headers.get('User-Agent', None) is not None:
             try:
@@ -97,29 +100,38 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
                 self.logging.warning('Exception encountered parsing uagent: ' + str(e))
                 pass
 
-        if self.request.headers.get('x-appfactory-frontline', None) is not None:
-            self.logging.info('Incoming request was proxied through the AppFactory Frontline.')
-            if not hasattr(self, '_response_headers'):
-                self._response_headers = {}
-            self._response_headers['X-Platform'] = self.frontline = self.request.headers.get('x-appfactory-frontline')
-            if self.request.headers.get('x-appfactory-entrypoint', None) is not None:
-                self.force_absolute_assets = True
-                self.logging.info('Detected X-AppFactory-Entrypoint header. Forcing absolute assets.')
-                self.entrypoint = self.request.headers.get('x-appfactory-entrypoint')
-            if self.request.headers.get('x-appfactory-protocol', 'HTTP') == 'HTTPS':
-                self.logging.info('Detected X-AppFactory-Protocol header. Forcing SSL/HTTPS assets.')
-                self.force_https_assets = True
-            if self.request.headers.get('x-appfactory-hostname', None) is not None:
-                self.logging.info('Detected X-AppFactory-Hostname header. Setting local hostname override.')
-                self.force_hostname = self.request.headers.get('x-appfactory-hostname')
-                self.hostname = self.force_hostname
-            else:
-                self.hostname = self.request.headers.get('host')
-        else:
-            self.logging.info('Incoming request comes directly from a client browser.')
+        # Check platforms for pre-dispatch hooks
+        if (hasattr(self, 'platforms') and isinstance(self.platforms, list)) and len(self.platforms) > 0:
+            callchain = filter(lambda x: hasattr(x, 'pre_dispatch'), self.platforms[:])
+            if len(callchain) > 0:
+                for platform in callchain:
+                    try:
+                        platform.pre_dispatch(self)
+                    except Exception, e:
+                        self.logging.error('Encountered unhandled exception "%s" in platform pre_dispatch hook for installed platform "%s".' % (e, platform))
+                        if config.debug:
+                            raise
+                        else:
+                            continue
 
         # Dispatch method (GET/POST/etc.)
-        return super(BaseHandler, self).dispatch()
+        result = super(BaseHandler, self).dispatch()
+
+        # Check platforms for post-dispatch hooks
+        if (hasattr(self, 'platforms') and isinstance(self.platforms, list)) and len(self.platforms) > 0:
+            callchain = filter(lambda x: hasattr(x, 'post_dispatch'), self.platforms[:])
+            if len(callchain) > 0:
+                for platform in callchain:
+                    try:
+                        result = platform.post_dispatch(self, result)
+                    except Exception, e:
+                        self.logging.error('Encountered unhandled exception "%s" in platform post_dispatch hook for installed platform "%s".' % (e, platform))
+                        if config.debug:
+                            raise
+                        else:
+                            continue
+
+        return result
 
     ## Exceptions
     def handle_exception(self, exception, debug):

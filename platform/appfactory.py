@@ -202,3 +202,19 @@ class AppFactory(Platform):
             ('controllerConfig', self.appfactory.controller.config)
 
         ]
+
+    def pre_dispatch(self, handler):
+
+        ''' Hook into apptools before dispatch is run, and modify the request if Frontline-added HTTP headers are present. '''
+
+        # Try to detect appfactory headers, added from the frontline
+        self.appfactory.frontline.sniff(handler)
+
+    def post_dispatch(self, handler, result):
+
+        ''' Hook into apptools after dispatch has run, and read stats from the response to dump to memcache. '''
+
+        self.logging.info('RESPONSE DUMP:')
+        self.logging.info(str(handler.response.headers))
+
+        return result
