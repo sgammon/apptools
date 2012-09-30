@@ -11,6 +11,8 @@ Holds useful classes and code for managing/manipulating/using specialized datast
 '''
 
 import logging
+#from util import json
+import json
 
 
 ## UtilStruct
@@ -309,7 +311,6 @@ class ObjectDictBridge(UtilStruct):
             return default_value
         return default_value
 
-
 class StateManager(object):
 
     ''' Addon class for managing a self.state property. '''
@@ -354,3 +355,96 @@ class StateManager(object):
         ''' `del service[key] syntax` to delete an item from service state. '''
 
         self._delstate(key)
+
+class ProxiedStructure(type):
+
+	''' Metaclass for property-gather-enabled classes. '''
+
+	def __new__(cls, name, chain, mappings):
+
+		''' Read mapped properties, store on the object, along with a reverse mapping. '''
+
+		# Init calculated data attributes
+		mappings['_pmap'] = {}
+		mappings['_plookup'] = []
+
+		# Define __contains__ proxy
+		def _contains(proxied_o, flag_or_value):
+
+			''' Bidirectionally-compatible __contains__ replacement. '''
+
+			return flag_or_value in proxied_o._plookup
+
+		# Define __getitem__ proxy
+		def _getitem(proxied_o, fragment):
+
+			''' Attempt to resolve the fragment by a forward, then reverse resolution chain. '''
+
+			if proxied_o.__contains__(fragment):
+				return proxied_o._pmap.get(fragment)
+
+		# Define __setitem__ proxy
+		def _setitem(proxied_o, n, v):
+
+			''' Block setitem calls, because this is a complicated object that is supposed to be a modelling tool only. '''
+
+			raise NotImplemented
+
+		# Map properties into data and lookup attributes
+		map(lambda x: [mappings['_pmap'].update(dict(x)), mappings['_plookup'].append([x[0][0], x[1][0]])],
+			(((attr, value), (value, attr)) for attr, value in mappings.items() if not attr.startswith('_')))
+
+		# Map methods
+		mappings.update({
+			'__getitem__': _getitem,
+			'__setitem__': _setitem,
+			'__contains__': _contains
+		})
+
+		return type(name, chain, mappings)
+
+class BidirectionalEnum(object):
+
+	''' Small and simple datastructure for mapping static flags to smaller values. '''
+
+	__metaclass__ = ProxiedStructure
+
+	def reverse_resolve(self, code):
+
+		''' Resolve a mapping, by it's integer/string code. '''
+
+		if code in self:
+			return self._pmap[code]
+		return False
+
+	def forward_resolve(self, flag):
+
+		''' Resolve a mapping, by it's string property name. '''
+
+		if flag in self.__dict__.keys():
+			return self.__getattr__(flag)
+		return False
+
+	def __serialize__(self):
+
+		''' Flatten down into a structure suitable for storage/transport. '''
+
+		return dict([(k, v) for k, v in self.__dict__ if not k.startswith('_')])
+
+	def __json__(self):
+
+		''' Flatten down and serialize into JSON. '''
+
+		return json.dumps(self.__serialize__())
+
+	def __repr__(self):
+
+		''' Display a string representation of a flattened self. '''
+
+		return '::'.join([
+			"<%s" % self.__class__.__name__,
+			','.join([
+				block for block in ('='.join([str(k), str(v)]) for k, v in self.__serialize__().items())]),
+			"BiDirectional>"
+			])
+

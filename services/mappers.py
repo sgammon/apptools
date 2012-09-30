@@ -210,7 +210,7 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
 
         ''' Wrap the result of the request in a descriptive, helpful envelope. '''
 
-        sysconfig = config.config.get('apptools.project')
+        sysconfig = config.config.get('apptools.project', {})
 
         ## Compile signature
         signature = [
@@ -227,8 +227,8 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
             'response': {},
             'flags': wrap.get('flags'),
             'platform': {
-                'name': config.config.get('apptools.project').get('name', 'AppTools'),
-                'version': '.'.join(map(lambda x: str(x), [sysconfig['version']['major'], sysconfig['version']['minor'], sysconfig['version']['micro']]))
+                'name': config.config.get('apptools.project', {}).get('name', 'AppTools'),
+                'version': '.'.join(map(lambda x: str(x), [sysconfig.get('version', {}).get('major', 1), sysconfig.get('version', {}).get('minor', 0), sysconfig.get('version', {}).get('micro', 0)]))
             }
 
         }
@@ -236,8 +236,8 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
         ## Add debug info
         if config.debug or self.ServicesConfig.get('debug', False):
             response_envelope['platform']['debug'] = config.debug
-            response_envelope['platform']['build'] = sysconfig['version']['build']
-            response_envelope['platform']['release'] = sysconfig['version']['release']
+            response_envelope['platform']['build'] = sysconfig.get('version', {}).get('build', 'RELEASE')
+            response_envelope['platform']['release'] = sysconfig.get('version', {}).get('release', 'PRODUCITON')
             response_envelope['platform']['engine'] = 'AppTools/ProtoRPC'
 
             if self.ServicesConfig.get('debug', False):

@@ -55,7 +55,7 @@ class PlatformInjector(object):
         adapters = {}
         platforms = []
         environ = os.environ
-        config = sysconfig.config.get('apptools.system.platform')
+        config = sysconfig.config.get('apptools.system.platform', {})
 
         # If we have everything cached, just return it
         if len(_adapters) > 0 and len(_platforms) > 0:
