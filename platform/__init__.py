@@ -11,6 +11,7 @@ for each one that can be identified in the environment.
 
 '''
 
+import sys
 import config
 import webapp2
 
@@ -20,13 +21,38 @@ from apptools.util import _loadModule
 logging = debug.AppToolsLogger('apptools.platform')
 
 
+def _lazyloader(self, module):
+
+    ''' Lazy load a module, or return False if it cannot be found/imported. '''
+
+    if not config.debug:
+        if module in sys.modules:
+            return sys.modules[module]
+    try:
+        module = _loadModule(module)
+
+    except ImportError:
+        self.logging.warning('Could not resolve shortcutted module "' + str(module) + '". Encountered ImportError, assigning to empty DictProxy.')
+        if config.debug:
+            raise
+
+    return module
+
 ## Platform
 # Represents a group of features/hooks/utils that can be used as a platform to run AppTools.
 class Platform(object):
 
     ''' Specifies a platform that AppTools can sit upon. '''
 
-    pass
+    @webapp2.cached_property
+    def logging(self):
+
+        ''' Named log pipe. '''
+
+        global logging
+        return logging.extend(path='bridge', name=self.__class__.__name__)
+
+    lazyload = _lazyloader
 
 
 ## PlatformInjector
@@ -43,16 +69,4 @@ class PlatformBridge(object):
         global logging
         return logging.extend(path='bridge', name=self.__class__.__name__)
 
-    def lazyload(self, module):
-
-        ''' Lazy load a module, or return False if it cannot be found/imported. '''
-
-        try:
-            module = _loadModule(module)
-        except ImportError:
-            self.logging.warning('Could not resolve shortcutted module "' + str(module) + '". Encountered ImportError, returning False.')
-            if config.debug:
-                raise
-            return False
-        else:
-            return module
+    lazyload = _lazyloader

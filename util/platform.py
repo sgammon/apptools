@@ -80,7 +80,7 @@ class PlatformInjector(object):
 
                     # Check if the platform is compatible
                     if hasattr(platform_adapter, 'check_environment'):
-                        assert platform_adapter.check_environment(environ, config) == True
+                        assert platform_adapter.check_environment(environ, sysconfig) == True
 
                 # Couldn't find the platform...
                 except ImportError:

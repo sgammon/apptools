@@ -362,27 +362,36 @@ class AssetsMixin(HandlerMixin):
     ''' Bridge the Core Assets API to methods on a handler. '''
 
     _assets_api = _api
+    _gathered_assets = []
+
+    def _record_asset(self, asset):
+
+        ''' Note the asset as being part of the page, for later use in the handler. '''
+
+        if asset:
+            self._gathered_assets.append(asset)
+        return asset
 
     def get_img_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.img_url(self, *args, **kwargs)
+        return self._record_asset(self._assets_api.img_url(self, *args, **kwargs))
 
     def get_style_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.style_url(self, *args, **kwargs)
+        return self._record_asset(self._assets_api.style_url(self, *args, **kwargs))
 
     def get_script_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.script_url(self, *args, **kwargs)
+        return self._record_asset(self._assets_api.script_url(self, *args, **kwargs))
 
     def get_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.asset_url(self, *args, **kwargs)
+        return self._record_asset(self._assets_api.asset_url(self, *args, **kwargs))
