@@ -30,8 +30,13 @@ except:
 from apptools.core import BaseHandler
 from apptools.model import BaseModel
 from apptools.services import BaseService
-from apptools.pipelines import BasePipeline
 from apptools.exceptions import AppException
+
+try:
+	from apptools.pipelines import BasePipeline
+
+except ImportError:
+	BasePipeline = type('BasePipeline', (object,), {})
 
 ## Service Layer Exports
 from apptools.services import fields

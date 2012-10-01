@@ -17,9 +17,22 @@ import webapp2
 import logging
 
 rule_builders = []
-installed_apps = config.config.get('webapp2').get('apps_installed', ['project'])
+installed_apps = config.config.get('webapp2', {}).get('apps_installed', [])
+if len(installed_apps) == 0:
+	installed_apps.append(None)
 for app in installed_apps:
-    rule_builders.append(webapp2.import_string('.'.join([app, 'routing', 'get_rules'])))
+	try:
+		if app is not None:
+		    rule_builders.append(webapp2.import_string('.'.join([app, 'routing', 'get_rules'])))
+		else:
+			rule_builders.append(webapp2.import_string('.'.join(['routing', 'get_rules'])))
+	except ImportError, e:
+		continue
+
+## @TODO: Export this class to exceptions
+class NoURLRules(Exception): pass
+if len(rule_builders) == 0:
+	raise NoURLRules("Could not resolve a URL rule builder.")
 
 from apptools.util import runtools
 
