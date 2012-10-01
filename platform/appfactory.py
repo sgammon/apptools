@@ -64,7 +64,7 @@ class TransportBusManager(object):
             return getattr(self, key)
 
         except AttributeError:
-            raise
+            raise KeyError("Key '%s' does not exist on transport integration bus '%s'." % (key, self.__class__))
 
 
 ## UpstreamBridge
@@ -85,7 +85,7 @@ class UpstreamBridge(PlatformBridge, TransportBusManager):
 
         ''' Named logging pipe. '''
 
-        return _logger.extend(name='UpstreamBridge')._setcondition(self._l9config.get('logging', False))
+        return _logger.extend(name='UpstreamBridge')._setcondition(self._l9config.get('debug', False))
 
 
 ## FrontlineBridge
@@ -99,14 +99,14 @@ class FrontlineBridge(PlatformBridge, TransportBusManager):
 
         ''' Named config pipe to frontline L9AF config. '''
 
-        return config.config.get('.'.join([self.l9_config_path, self.upstream_config_key]), {})
+        return config.config.get('.'.join([self.l9_config_path, self.frontline_config_key]), {})
 
     @webapp2.cached_property
     def logging(self):
 
         ''' Named logging pipe. '''
 
-        return _logger.extend(name='FrontlineBridge')._setcondition(self._l9config.get('logging', False))
+        return _logger.extend(name='FrontlineBridge')._setcondition(self._l9config.get('debug', False))
 
 
 ## ControllerBridge
@@ -120,14 +120,14 @@ class ControllerBridge(PlatformBridge, TransportBusManager):
 
         ''' Named config pipe to controller L9AF config. '''
 
-        return config.config.get('.'.join([self.l9_config_path, self.upstream_config_key]), {})
+        return config.config.get('.'.join([self.l9_config_path, self.controller_config_key]), {})
 
     @webapp2.cached_property
     def logging(self):
 
         ''' Named logging pipe. '''
 
-        return _logger.extend(name='ControllerBridge')._setcondition(self._l9config.get('logging', False))
+        return _logger.extend(name='ControllerBridge')._setcondition(self._l9config.get('debug', False))
 
 
 ## Layer9AppFactory
@@ -203,6 +203,13 @@ class AppFactory(Platform):
 
         ]
 
+    def _log_dispatch(self, data):
+
+        ''' Save processed Layer9 data into memcache, for statistics gathering. '''
+
+        self.logging.info('LOG DISPATCH CALLED: "%s".' % data)
+        return data
+
     def pre_dispatch(self, handler):
 
         ''' Hook into apptools before dispatch is run, and modify the request if Frontline-added HTTP headers are present. '''
@@ -210,11 +217,22 @@ class AppFactory(Platform):
         # Try to detect appfactory headers, added from the frontline
         self.appfactory.frontline.sniff(handler)
 
+        # Try to detect partial content requests, added from the upstream
+        self.appfactory.upstream.sniff(handler)
+        return
+
     def post_dispatch(self, handler, result):
 
         ''' Hook into apptools after dispatch has run, and read stats from the response to dump to memcache. '''
 
-        self.logging.info('RESPONSE DUMP:')
-        self.logging.info(str(handler.response.headers))
+        # Consider asset headers for upstream
+        result = self.appfactory.upstream.hint(handler, result)
+
+        # Dump data to memcache
+        data = []
+        for i in [self.appfactory.frontline, self.appfactory.upstream, self.appfactory.controller]:
+            data.append(i.dump(handler, result))
+
+        self._log_dispatch(data)
 
         return result

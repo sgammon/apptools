@@ -18,6 +18,7 @@ import webapp2
 # Datastructures
 from apptools.util import platform
 from apptools.util import AppToolsLogger
+from apptools.util import datastructures
 
 ## Webapp2
 # AppTools uses [Webapp2](webapp-improved.appspot.com) for WSGI internals, session handling, request dispatching, etc.
@@ -68,11 +69,15 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
     context_injectors = []
 
     # AppFactory Integration
+    flags = datastructures.DictProxy({'OPT': False, 'SPDY': False})
+    broker = None
     frontline = None
     entrypoint = None
     force_hostname = False
     force_https_assets = False
     force_absolute_assets = False
+
+    _appfactory_version = (0, 0)
 
     # Base HTTP Headers
     @webapp2.cached_property
@@ -91,15 +96,6 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
         # Collect super dispatch
         s_dispatch = super(BaseHandler, self).dispatch
 
-        # Sniff Uagent
-        if self.request.headers.get('User-Agent', None) is not None:
-            try:
-                # Pass through httpagentparser
-                self.uagent = self.util.httpagentparser(self.request.headers.get('User-Agent'))
-            except Exception, e:
-                self.logging.warning('Exception encountered parsing uagent: ' + str(e))
-                pass
-
         # Check platforms for pre-dispatch hooks
         if (hasattr(self, 'platforms') and isinstance(self.platforms, list)) and len(self.platforms) > 0:
             callchain = filter(lambda x: hasattr(x, 'pre_dispatch'), self.platforms[:])
@@ -113,6 +109,14 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
                             raise
                         else:
                             continue
+        # Sniff Uagent
+        if self.request.headers.get('User-Agent', None) is not None and len(self.uagent) == 0:
+            try:
+                # Pass through httpagentparser
+                self.uagent = self.util.httpagentparser(self.request.headers.get('User-Agent'))
+            except Exception, e:
+                self.logging.warning('Exception encountered parsing uagent: ' + str(e))
+                pass
 
         # Dispatch method (GET/POST/etc.)
         result = super(BaseHandler, self).dispatch()

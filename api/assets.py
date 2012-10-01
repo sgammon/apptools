@@ -38,30 +38,15 @@ _asset_url_cache = {}
 
 ## AssetException
 # Top level exception for all Asset API-related exceptions.
-class AssetException(CoreOutputAPIException):
-
-    ''' Top-level exception for all Asset API-related exceptions. '''
-
-    pass
-
+class AssetException(CoreOutputAPIException): ''' Top-level exception for all Asset API-related exceptions. '''
 
 ## InvalidAssetType
 # Raised when an asset type is invalid.
-class InvalidAssetType(AssetException):
-
-    ''' Raised when a given asset type is not recognized. '''
-
-    pass
-
+class InvalidAssetType(AssetException): ''' Raised when a given asset type is not recognized. '''
 
 ## InvalidAssetEntry
 # Raised when an asset entry is invalid.
-class InvalidAssetEntry(AssetException):
-
-    ''' Raised when a given asset type is valid, but an asset could not be found at the given identifier. '''
-
-    pass
-
+class InvalidAssetEntry(AssetException): ''' Raised when a given asset type is valid, but an asset could not be found at the given identifier. '''
 
 ## CoreAssetsAPI
 # Brokers access and provides generated URLs to registered and unregistered assets.
@@ -126,9 +111,9 @@ class CoreAssetsAPI(CoreAPI):
         ''' Return a simple URL for an image. (Note: does not use assets config - images are not registered assets) '''
 
         global _img_url_cache
-
-        if (path, name) in _img_url_cache:
-            return _img_url_cache[(path, name)]
+        identifier = (path, name, handler.force_https_assets, handler.force_absolute_assets, handler.force_hostname)
+        if identifier in _img_url_cache:
+            return _img_url_cache[identifier]
         else:
             url_fragments = []
             if self._OutputConfig.get('assets', {}).get('serving_mode', 'local') == 'cdn':
@@ -165,7 +150,7 @@ class CoreAssetsAPI(CoreAPI):
         ''' Return a URL for an asset, according to the current configuration. '''
 
         global _asset_url_cache
-        identifier = (handler.force_https_assets, handler.force_hostname, _type, name, module, prefix, version, minify, version_by_getvar)
+        identifier = (handler.force_https_assets, handler.force_hostname, handler.force_absolute_assets, _type, name, module, prefix, version, minify, version_by_getvar)
         if identifier in _asset_url_cache:
             return _asset_url_cache[identifier]
         else:
@@ -311,9 +296,7 @@ class CoreAssetsAPI(CoreAPI):
 
                     ## 2.4: Build relative asset URL
                     if len(query_string) > 0 and self._OutputConfig['assets']['serving_mode'] != 'cdn':
-
                         compiled_url = reduce(lambda x, y: x + y, ['/', '/'.join(map(lambda x: isinstance(x, tuple) and x[0].join(x[1]) or x, filter(lambda x: x not in [True, False, None], asset_url))), '?', '&'.join([str(k) + '=' + str(v) for k, v in query_string.items()])])
-
                     else:
                         compiled_url = reduce(lambda x, y: x + y, ['/', '/'.join(map(lambda x: isinstance(x, tuple) and x[0].join(x[1]) or x, filter(lambda x: x not in [True, False, None], asset_url)))])
 
@@ -342,7 +325,6 @@ class CoreAssetsAPI(CoreAPI):
                                     return ''.join(['https://', cdnprefix] + [compiled_url])
                                 else:
                                     return ''.join(['//', cdnprefix] + [compiled_url])
-
                         return compiled_url
 
             else:
@@ -362,27 +344,45 @@ class AssetsMixin(HandlerMixin):
     ''' Bridge the Core Assets API to methods on a handler. '''
 
     _assets_api = _api
+    _gathered_assets = []
+    _gathered_asset_lookup = {}
+
+    def _record_linked_asset(self, type, ref, priority=None):
+
+        ''' Record a dependent asset for the requested resource in the _gathered_assets list. '''
+
+        if type is not None and ref is not None:
+            if ref in self._gathered_asset_lookup.get('seen', set([])):
+                return ref
+            else:
+                asset_id = (type, ref, priority)
+                self._gathered_assets.append(asset_id)
+                if self._gathered_asset_lookup.get('seen') is None:
+                    self._gathered_asset_lookup['seen'] = set([])
+                self._gathered_asset_lookup['seen'].add(ref)
+                self._gathered_asset_lookup[ref] = self._gathered_assets.index(asset_id)
+        return ref
 
     def get_img_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.img_url(self, *args, **kwargs)
+        return self._record_linked_asset('image', self._assets_api.img_url(self, *args, **kwargs))
 
     def get_style_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.style_url(self, *args, **kwargs)
+        return self._record_linked_asset('style', self._assets_api.style_url(self, *args, **kwargs))
 
     def get_script_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.script_url(self, *args, **kwargs)
+        return self._record_linked_asset('script', self._assets_api.script_url(self, *args, **kwargs))
 
     def get_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.asset_url(self, *args, **kwargs)
+        return self._record_linked_asset('unknown', self._assets_api.asset_url(self, *args, **kwargs))
