@@ -83,6 +83,7 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
     broker = None
     frontline = None
     entrypoint = None
+    force_https = False
     request_hash = None
     push_channel = None
     force_remoteip = False

@@ -366,17 +366,18 @@ class OutputMixin(HandlerMixin):
         self._response_headers.update(filter(lambda x: x[1] is not None, {
             'Cache-Control': self._outputConfig.get('headers', {}).get('Cache-Control', 'no-cache'),  # Stop caching of responses from Python, by default
             'X-Powered-By': self._outputConfig.get('headers', {}).get('X-Powered-By', ' '.join(filter(lambda x: x is not None, [
-                'Google AppEngine/1.7.1',
+                'Google AppEngine/1.7.2',
                 'AppFactory/%s' % self.appfactory.version if hasattr(self, 'appfactory') else None,
                 '%s/%s' % (self._projectConfig['name'], '.'.join(map(str, [
                     self._projectConfig.get('version', {}).get('major', 0),
-                    self._projectConfig.get('version', {}).get('minor', 0),
+                    self._projectConfig.get('version', {}).get('minor ', 0),
                     self._projectConfig.get('version', {}).get('micro', 1)
                 ])))
             ]))),
             'X-UA-Compatible': self._outputConfig.get('headers', {}).get('X-UA-Compatible', 'IE=edge,chrome=1'),
             'Access-Control-Allow-Origin': self._outputConfig.get('headers', {}).get('Access-Control-Allow-Origin', None),
-            'X-Debug': 'True' if config.debug else None
+            'X-Debug': 'True' if config.debug else None,
+            'Vary': 'Accept,Cookie'
         }.items()))
 
         return self._response_headers
