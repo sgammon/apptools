@@ -69,10 +69,23 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
     context_injectors = []
 
     # AppFactory Integration
-    flags = datastructures.DictProxy({'OPT': False, 'SPDY': False})
+    flags = datastructures.DictProxy({
+        'OPT': False,   # Optimizations (On/Off)
+        'SPDY': False,  # SPDY mode (On/Off)
+        'PS': False,    # Pagespeed mode (On/Off)
+        'PRI': False,   # Partial Response Hash (String)
+        'OFR': False,   # Omit Frame (On/Off)
+        'AP': False,    # Agent Privilege (On/Off)
+        'INS': False,   # Instrumentation (On/Off)
+        'WSP': False    # Socket Push (On/Off)
+    })
+
     broker = None
     frontline = None
     entrypoint = None
+    request_hash = None
+    push_channel = None
+    force_remoteip = False
     force_hostname = False
     force_https_assets = False
     force_absolute_assets = False
@@ -114,6 +127,7 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
             try:
                 # Pass through httpagentparser
                 self.uagent = self.util.httpagentparser(self.request.headers.get('User-Agent'))
+                self.uagent['original'] = self.request.headers.get('User-Agent')
             except Exception, e:
                 self.logging.warning('Exception encountered parsing uagent: ' + str(e))
                 pass

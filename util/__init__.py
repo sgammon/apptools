@@ -19,8 +19,8 @@ import logging as std_logging
 from apptools.util.debug import AppToolsLogger
 
 ## Exported Datastructures
-from apptools.util.datastructures import UtilStruct
 from apptools.util.datastructures import DictProxy
+from apptools.util.datastructures import UtilStruct
 from apptools.util.datastructures import ObjectProxy
 from apptools.util.datastructures import CallbackProxy
 
@@ -38,12 +38,11 @@ except ImportError:
             if config.debug:
                 raise
         else:
-            json = djson  # apparently, simplejson is NOT installed and we're running on py < 2.7, on appengine (probably)
+            libjson = djson  # apparently, simplejson is NOT installed and we're running on py < 2.7, on appengine (probably)
     else:
-        json = sjson  # apparently, simplejson is installed and we're running on py < 2.7
+        libjson = sjson  # apparently, simplejson is installed and we're running on py < 2.7
 else:
-    json = std_json  # we're running on >= py 2.7. life is gewd
-
+    libjson = std_json  # we're running on >= py 2.7. life is gewd
 
 ## Globals
 _api_cache = {}
@@ -72,4 +71,60 @@ def _loadModule(entry):
 
     return _api_cache[entry]
 
-__all__ = [UtilStruct, DictProxy, ObjectProxy, CallbackProxy, AppToolsLogger, json]
+## Custom JSON Encoder/Decoder
+class AppToolsJSONEncoder(libjson.JSONEncoder):
+
+    ''' Custom encoder that implements the __json__ method interface. '''
+
+    def default(self, target):
+
+        ''' Invoked when the JSON encoder can't encode something. '''
+
+        if hasattr(target, '__json__'):
+            return libjson.JSONEncoder.default(target)
+
+## Splice in custom JSON codec
+class JSONWrapper(object):
+
+    ''' Utility wrapper for json.dumps/loads that proxies to AppTools' custom JSON codec. '''
+
+    JSONDecoder = libjson.JSONDecoder
+    JSONEncoder = libjson.JSONEncoder
+
+    scanner = libjson.scanner
+    _default_decoder = libjson._default_decoder
+    _default_encoder = libjson._default_encoder
+
+    @classmethod
+    def dump(cls, iterator):
+
+        ''' Streaming serialization to JSON strings. '''
+
+        for i in interator:
+            yield AppToolsJSONEncoder().encode(i)
+
+    @classmethod
+    def load(cls, iterator):
+
+        ''' Streaming deserialization from JSON strings. '''
+
+        for i in iterator:
+            yield jsonlib.loads(i)
+
+    @classmethod
+    def dumps(cls, struct):
+
+        ''' Dump a structure to a JSON string. '''
+
+        return AppToolsJSONEncoder().encode(struct)
+
+    @classmethod
+    def loads(cls, string):
+
+        ''' Load via libjson. '''
+
+        return libjson.loads(string)
+
+json = JSONWrapper
+
+__all__ = [UtilStruct, DictProxy, ObjectProxy, CallbackProxy, AppToolsLogger, json, JSONWrapper, AppToolsJSONEncoder]

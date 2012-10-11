@@ -145,15 +145,18 @@ class AppFactory(Platform):
     frontline_config_key = 'frontline'
     controller_config_key = 'controller'
 
+    version = property(lambda self: self.lib.__version__, None)
+
     def __init__(self):
 
         ''' Lazy-load the AppFactory integration library. '''
 
         self.lib = self.lazyload('appfactory')
         self.appfactory = datastructures.DictProxy({
-            'upstream': UpstreamBridge(bus=self.lib.upstream),
-            'frontline': FrontlineBridge(bus=self.lib.frontline),
-            'controller': ControllerBridge(bus=self.lib.controller)
+            self.upstream_config_key: UpstreamBridge(bus=self.lib.upstream),
+            self.frontline_config_key: FrontlineBridge(bus=self.lib.frontline),
+            self.controller_config_key: ControllerBridge(bus=self.lib.controller),
+            'version': self.version
         })
 
     @webapp2.cached_property
@@ -197,9 +200,9 @@ class AppFactory(Platform):
 
         return [
 
-            ('upstreamConfig', self.appfactory.upstream.config),
-            ('frontlineConfig', self.appfactory.frontline.config),
-            ('controllerConfig', self.appfactory.controller.config)
+            (''.join([self.upstream_config_key, 'Config']), self.appfactory.upstream.config),
+            (''.join([self.frontline_config_key, 'Config']), self.appfactory.frontline.config),
+            (''.join([self.controller_config_key, 'Config']), self.appfactory.controller.config)
 
         ]
 

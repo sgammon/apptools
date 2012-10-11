@@ -10,9 +10,11 @@ Holds useful classes and code for managing/manipulating/using specialized datast
 
 '''
 
+import abc
 import logging
-#from util import json
-import json
+
+# Sentinels
+_EMPTY, _TOMBSTONE = object(), object()
 
 
 ## UtilStruct
@@ -113,6 +115,9 @@ class DictProxy(UtilStruct):
         return [(k, v) for k, v in self.__dict__.items()]
 
     def get(self, name, default_value=None):
+
+        ''' Retrieve the named item, returning default_value if it cannot be found. '''
+
         if name in self.__dict__:
             return self.__dict__[name]
         else:
@@ -298,6 +303,9 @@ class ObjectDictBridge(UtilStruct):
             raise KeyError('No object target set for ObjectDictBridge.')
 
     def __contains__(self, name):
+
+        ''' Indicates whether this ObjectDictBridge contains the given key. '''
+
         try:
             getattr(self.target, name)
         except AttributeError:
@@ -311,6 +319,9 @@ class ObjectDictBridge(UtilStruct):
             return default_value
         return default_value
 
+
+## StateManager
+# Used in the service layer as a mixin for tracking object-level state.
 class StateManager(object):
 
     ''' Addon class for managing a self.state property. '''
@@ -356,6 +367,9 @@ class StateManager(object):
 
         self._delstate(key)
 
+
+## ProxiedStructure
+# Metaclass for doubly-indexed mappings. Used in BidirectionalEnum.
 class ProxiedStructure(type):
 
 	''' Metaclass for property-gather-enabled classes. '''
@@ -403,6 +417,9 @@ class ProxiedStructure(type):
 
 		return type(name, chain, mappings)
 
+
+## BidirectionalEnum
+# Simple datastructure for mapping small / useful values to larger ones.
 class BidirectionalEnum(object):
 
 	''' Small and simple datastructure for mapping static flags to smaller values. '''
@@ -435,7 +452,7 @@ class BidirectionalEnum(object):
 
 		''' Flatten down and serialize into JSON. '''
 
-		return json.dumps(self.__serialize__())
+		return self.__serialize__()
 
 	def __repr__(self):
 
@@ -448,3 +465,191 @@ class BidirectionalEnum(object):
 			"BiDirectional>"
 			])
 
+
+## TrackedDictionary
+# Used in the upcoming Core Sessions API. Keeps track of an objects "dirtyness" (whether it has been modified since first population).
+class TrackedDictionary(object):
+
+	''' Keeps track of modifications and modified state for a dictionary. '''
+
+	__metaclass__ = abc.ABCMeta
+
+	__data = {}
+	__seen = set([])
+	__dirty = None
+	__mutations = []
+
+	def __init__(self, initial=None):
+
+		''' Prepare internal data storage. '''
+
+		self.__data, self.__dirty, self.__seen, self.__mutations = initial if initial != None else {}, None, set([]), []
+
+	def __getitem__(self, key):
+
+		''' Retrieve from internal storage. '''
+
+		value = self.__data.get(key, _EMPTY)
+		if value == _EMPTY:
+			raise KeyError(key)
+		return value
+
+	def __setitem__(self, key, value):
+
+		''' Set a value in internal storage. '''
+
+		self.__data[key] = value
+		self.__seen.add(key)
+
+		if self.__dirty is None:
+			self.__dirty = False
+		else:
+			self.__mutations.append((key, value))
+			self.__dirty = True
+		return
+
+	def __delitem__(self, key):
+
+		''' Remove an item from internal storage. '''
+
+		if self.__contains__(key):
+			self.__mutations.append((key, _TOMBSTONE))
+			del self.__data[key]
+			self.__dirty = True
+			return
+		raise KeyError(key)
+
+	def __nonzero__(self):
+
+		''' Indicates whether this dictionary is empty or not. '''
+
+		return False if self.__dirty is None else True
+
+	def __contains__(self, key):
+
+		''' Indicate whether we have a key or not. '''
+
+		return key in self.__seen
+
+	def __len__(self):
+
+		''' Return the length of this TrackedDictionary. '''
+
+		return len(self.__data.keys())
+
+	def __repr__(self):
+
+		''' Properly allow serialization. '''
+
+		return self.__data.__repr__()
+
+	def __iter__(self):
+
+		''' Iterate over keys in internal storage. '''
+
+		for k in self.__data.iterkeys():
+			yield k
+
+	def __json__(self):
+
+		''' JSON hook. '''
+
+		return self.__data
+
+	@classmethod
+	def __subclasshook__(cls, other):
+
+		''' Check if the provided object is TrackedDictionary. '''
+
+		if cls is TrackedDictionary:
+			if any("reconcile" in i.__dict__ for i in other.__mro__):
+				return True
+		return NotImplemented
+
+	@abc.abstractmethod
+	def reconcile(self, target):
+
+		''' Flatten this object's mutation pool onto the target object. '''
+
+		raise NotImplementedError
+
+	def dirty(self):
+
+		''' Return this object's `dirty` status. '''
+
+		return self.__dirty
+
+	def mutations(self):
+
+		''' Return this object's mutation pool. '''
+
+		return self.__mutations[:]
+
+	def update(self, mapping):
+
+		''' Update internal values. '''
+
+		if isinstance(mapping, list):
+			mapping = dict(mapping)
+
+		if self.__dirty is None:
+			self.__data.update(mapping)
+			map(lambda x: self.__seen.add(x), filter(lambda y: y not in self.__seen, mapping.iterkeys()))
+			self.__dirty = False
+		else:
+			for k, v in mapping.items():
+				self.__data[k] = v
+
+				if k not in self.__seen:
+					self.__seen.add(k)
+
+				self.__mutations.append((k, v))
+			self.__dirty = True
+		return self.__data
+
+	def items(self):
+
+		''' Return a list of (keys, values). '''
+
+		return self.__data.items()
+
+	def keys(self):
+
+		''' Return a list of all available keys. '''
+
+		return self.__data.keys()
+
+	def values(self):
+
+		''' Return a list of all available values. '''
+
+		return self.__data.values()
+
+	def iteritems(self):
+
+		''' Yield (keys, values) one at a time. '''
+
+		for k, v in self.__data.iteritems():
+			yield k, v
+
+	def iterkeys(self):
+
+		''' Yield keys one at a time. '''
+
+		for k in self.__data.iterkeys():
+			yield k
+
+	def itervalues(self):
+
+		''' Yield values one at a time. '''
+
+		for v in self.__data.itervalues():
+			yield v
+
+	def get(self, key, default=None):
+
+		''' Retrieve an item, safely, optionally returning `default` if no item could be found. '''
+
+		if self.__contains__(key):
+			return self.__data.get(key, default)
+		return default

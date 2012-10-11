@@ -363,20 +363,22 @@ class OutputMixin(HandlerMixin):
         if 'X-AppFactory-Frontline' in self.request.headers:
             self._response_headers['X-Platform'] = self.request.headers.get('X-AppFactory-Frontline')
 
-        if config.debug:
-            self._response_headers.update({
-                'X-Debug': 'True',
-                'Cache-Control': self._outputConfig.get('headers', {}).get('Cache-Control', 'no-cache'),  # Stop caching of responses from Python, by default
-                'X-Powered-By': self._outputConfig.get('headers', {}).get('X-Powered-By', 'Google AppEngine/1.6.5 %s/%s' % (self._projectConfig['name'], '.'.join(map(str, [self._projectConfig['version']['major'], self._projectConfig['version']['minor'], self._projectConfig['version']['micro']])))),  # Indicate the SDK version
-                'X-UA-Compatible': self._outputConfig.get('headers', {}).get('X-UA-Compatible', 'IE=edge,chrome=1'),  # Enable compatibility with Chrome Frame, and force IE to render with the latest engine
-                'Access-Control-Allow-Origin': self._outputConfig.get('headers', {}).get('Access-Control-Allow-Origin', '*')  # Enable Cross Origin Resource Sharing (CORS)
-            })
-        else:
-            self._response_headers.update({
-                'Cache-Control': self._outputConfig.get('headers', {}).get('Cache-Control', 'private; max-age=600'),  # Stop caching of responses from Python, by default
-                'X-UA-Compatible': self._outputConfig.get('headers', {}).get('X-UA-Compatible', 'IE=edge,chrome=1'),  # Enable compatibility with Chrome Frame, and force IE to render with the latest engine
-                'Access-Control-Allow-Origin': self._outputConfig.get('headers', {}).get('Access-Control-Allow-Origin', '*')  # Enable Cross Origin Resource Sharing (CORS)
-            })
+        self._response_headers.update(filter(lambda x: x[1] is not None, {
+            'Cache-Control': self._outputConfig.get('headers', {}).get('Cache-Control', 'no-cache'),  # Stop caching of responses from Python, by default
+            'X-Powered-By': self._outputConfig.get('headers', {}).get('X-Powered-By', ' '.join(filter(lambda x: x is not None, [
+                'Google AppEngine/1.7.1',
+                'AppFactory/%s' % self.appfactory.version if hasattr(self, 'appfactory') else None,
+                '%s/%s' % (self._projectConfig['name'], '.'.join(map(str, [
+                    self._projectConfig.get('version', {}).get('major', 0),
+                    self._projectConfig.get('version', {}).get('minor', 0),
+                    self._projectConfig.get('version', {}).get('micro', 1)
+                ])))
+            ]))),
+            'X-UA-Compatible': self._outputConfig.get('headers', {}).get('X-UA-Compatible', 'IE=edge,chrome=1'),
+            'Access-Control-Allow-Origin': self._outputConfig.get('headers', {}).get('Access-Control-Allow-Origin', None),
+            'X-Debug': 'True' if config.debug else None
+        }.items()))
+
         return self._response_headers
 
     # Base template context - available to every template, including macros (injected into Jinja2 globals)
