@@ -12,12 +12,19 @@ into a contiguous structure that resembles a framework. Also hosts BaseHandler.
 '''
 
 # Base Imports
+import os
 import config
 import webapp2
 
+# AppFactory Integration
+try:
+    import appfactory
+except:
+    appfactory = False
+
 # Datastructures
+from apptools.util import debug
 from apptools.util import platform
-from apptools.util import AppToolsLogger
 from apptools.util import datastructures
 
 ## Webapp2
@@ -48,13 +55,36 @@ from apptools.api.push import PushMixin
 
 ## Logging Controller
 # This will soon replace PY's builtin logging system.
-logging = AppToolsLogger('apptools.core')
+logging = debug.AppToolsLogger('apptools.core')
+
+
+## AbstractPlatformHandler
+# Injects abstract root platform mixins, where appripriate.
+if appfactory and isinstance(appfactory, type(os)):
+
+    from appfactory import integration
+
+    ## Root Abstract Platform - AppFactory
+    class AbstractPlatformHandler(BaseObject, RequestHandler, integration.AppFactoryMixin):
+    
+        ''' Injects AppFactory configuration, shortcut, and state properties. '''
+
+        _appfactory_enabled = True
+
+else:
+
+    ## Vanilla Root Abstract Platform
+    class AbstractPlatformHandler(BaseObject, RequestHandler):
+    
+        ''' Used as a base platform handler when no platform integration is enabled. '''
+
+        _appfactory_enabled = False
 
 
 ## BaseHandler
 # Base request handler class, with shortcuts, utilities, and base template context.
 @platform.PlatformInjector
-class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, OutputMixin, PushMixin):
+class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMixin, PushMixin):
 
     ''' Top-level parent class for request handlers in AppTools. '''
 
@@ -67,31 +97,6 @@ class BaseHandler(BaseObject, RequestHandler, AssetsMixin, ServicesMixin, Output
     response = Response
     configPath = 'apptools.project'
     context_injectors = []
-
-    # AppFactory Integration
-    flags = datastructures.DictProxy({
-        'OPT': False,   # Optimizations (On/Off)
-        'SPDY': False,  # SPDY mode (On/Off)
-        'PS': False,    # Pagespeed mode (On/Off)
-        'PRI': False,   # Partial Response Hash (String)
-        'OFR': False,   # Omit Frame (On/Off)
-        'AP': False,    # Agent Privilege (On/Off)
-        'INS': False,   # Instrumentation (On/Off)
-        'WSP': False    # Socket Push (On/Off)
-    })
-
-    broker = None
-    frontline = None
-    entrypoint = None
-    force_https = False
-    request_hash = None
-    push_channel = None
-    force_remoteip = False
-    force_hostname = False
-    force_https_assets = False
-    force_absolute_assets = False
-
-    _appfactory_version = (0, 0)
 
     # Base HTTP Headers
     @webapp2.cached_property

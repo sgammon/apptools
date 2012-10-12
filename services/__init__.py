@@ -13,11 +13,18 @@ this module is very configurable using the "config/services.py" file.
 '''
 
 # Basic Imports
+import os
 import time
 import base64
 import config
 import hashlib
 import webapp2
+
+# AppFactory Integration
+try:
+    import appfactory
+except:
+    appfactory = False
 
 # ProtoRPC imports
 from protorpc import remote
@@ -30,6 +37,9 @@ from protorpc.webapp.service_handlers import RequestError
 
 # Extras import
 from webapp2_extras import protorpc as proto
+
+# AppTools APIs
+from apptools.api import BaseObject
 
 # Util Imports
 from apptools.util import json
@@ -288,15 +298,40 @@ class BaseService(remote.Service, datastructures.StateManager):
                 # If we have nothing, copy over defaults...
                 self.config['service'] = self.config['global']['defaults']['service']
 
+
+## AbstractPlatformServiceHandler
+# Injects abstract root platform mixins, where appripriate.
+if appfactory and isinstance(appfactory, type(os)):
+
+    from appfactory import integration
+
+    ## Root Abstract Platform - AppFactory
+    class AbstractPlatformServiceHandler(BaseObject, service_handlers.ServiceHandler, integration.AppFactoryMixin):
+    
+        ''' Injects AppFactory configuration, shortcut, and state properties. '''
+
+        _appfactory_enabled = True
+
+else:
+
+    ## Vanilla Root Abstract Platform
+    class AbstractPlatformServiceHandler(BaseObject, service_handlers.ServiceHandler):
+    
+        ''' Used as a base platform service handler when no platform integration is enabled. '''
+
+        _appfactory_enabled = False
+
+
 ## RemoteServiceHandler
 # This class is responsible for bridging a request to a remote service class, dispatching/executing to get the response, and returning it to the client.
 @platform.PlatformInjector
-class RemoteServiceHandler(service_handlers.ServiceHandler, datastructures.StateManager):
+class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateManager):
 
     ''' Handler for responding to remote API requests. '''
 
     # Request/Response Containers
     state = {}
+    uagent = {}
     service = None
     interpreted_body = None
     enable_async_mode = False
