@@ -378,6 +378,9 @@ class ProxiedStructure(type):
 
 		''' Read mapped properties, store on the object, along with a reverse mapping. '''
 
+		if name == 'ProxiedStructure':
+			return type(name, chain, mappings)
+
 		# Init calculated data attributes
 		mappings['_pmap'] = {}
 		mappings['_plookup'] = []
@@ -395,6 +398,7 @@ class ProxiedStructure(type):
 			''' Attempt to resolve the fragment by a forward, then reverse resolution chain. '''
 
 			if proxied_o.__contains__(fragment):
+
 				return proxied_o._pmap.get(fragment)
 
 		# Define __setitem__ proxy
@@ -653,3 +657,53 @@ class TrackedDictionary(object):
 		if self.__contains__(key):
 			return self.__data.get(key, default)
 		return default
+
+
+## PropertyDescriptor - utility class for wrapping a value + type pair, with options
+class PropertyDescriptor(object):
+
+	''' Utility class used to encapsulate a name, type, and set of options for a property on a data model. '''
+
+	__name = _EMPTY
+	__type = _EMPTY
+	__opts = _EMPTY
+	__value = _EMPTY
+
+	def __init__(self, name, proptype, options, **kwargs):
+
+		''' Property initialized and descriptor class. '''
+
+		options.update(kwargs)
+		self.__name, self.__type, self.__opts = name, proptype, DictProxy(options)
+
+	def __set__(self, instance, value):
+
+		''' Set this property's internal value. '''
+
+		# check type
+		if 'validate' not in self.__opts and 'typeless' not in self.__opts and self.__opts.get('typeless', False) != True:
+			if not isinstance(value, self.__type):
+				raise ValueError('Property "%s" on model instance "%s" only accepts values of type "%s".' % (self.__name, instance, self.__type))
+		else:
+			if not self.__opts.get('typeless', False):
+				value = self.__opts.validate(value)
+
+		self.__value = value
+		return
+
+	def __get__(self, instance, owner):
+
+		''' Get this property's internal value. '''
+
+		# if empty, return None
+		if self.__value == _EMPTY:
+			return None
+		else:
+			return self.__value
+
+	def __delete__(self, instance):
+
+		''' Delete this property's internal value. '''
+
+		# set value to empty
+		self.__value = _EMPTY
