@@ -152,10 +152,11 @@ class ThinModelFactory(type):
                 else:
                     propname, proptype, opts = k, v, dict([(k, v) for k, v in _DEFAULT_PROP_OPTS.items()[:]])
 
-                obj['__lookup__'].append(propname)
-                obj['__pmap__'].append((propname, proptype, opts))
-                obj[propname] = datastructures.PropertyDescriptor(propname, proptype, opts)
-                obj['__pclass__'].append(weakref.ref(obj[propname]))
+                if propname not in obj['__lookup__']:
+                    obj['__lookup__'].append(propname)
+                    obj['__pmap__'].append((propname, proptype, opts))
+                    obj[propname] = datastructures.PropertyDescriptor(propname, proptype, opts)
+                    obj['__pclass__'].append(weakref.ref(obj[propname]))
 
             # freeze property lookup
             obj['__internal__'] = collections.namedtuple(name, obj['__lookup__'])
@@ -269,6 +270,7 @@ try:
 except ImportError:
 
     _NDB = False
+    _GAE = False
 
     class _ModelPathProperty(str):
         pass
@@ -416,6 +418,40 @@ else:
             'RatingProperty': ldb.RatingProperty
 
     }, case_sensitive=False)
+
+
+    try:
+        from apptools import services
+        from protorpc import messages as pmessages
+
+        _PROTORPC = True
+
+        # Message Field Mappings
+        _message_fields = frozenset([
+
+            ((basestring, str, unicode, model.StringProperty), pmessages.StringField),
+            ((int, model.IntegerProperty), pmessages.IntegerField),
+            ((float, model.FloatProperty), pmessages.FloatField),
+            ((bool, model.BooleanProperty), pmessages.BooleanField),
+            ((bytearray, model.ByteStringProperty), pmessages.BytesField),
+            ((datetime.datetime, model.DateTimeProperty), pmessages.StringField, lambda x: x.isoformat()),
+            ((datetime.date, model.DateProperty), pmessages.StringField, lambda x: x.isoformat()),
+            ((datetime.time, model.TimeProperty), pmessages.StringField, lambda x: x.isoformat()),
+            ((model.GeoPt, model.GeoPtProperty), pmessages.StringField, lambda x: str(x)),
+            ((key.Key, model.KeyProperty), pmessages.StringField, lambda x: x.urlsafe()),
+            ((blobstore.BlobKey, model.BlobKeyProperty), pmessages.StringField, lambda x: x.urlsafe()),
+            (model.UserProperty, pmessages.StringField, lambda x: x.email()),
+            ((ThinModel, model.StructuredProperty, model.LocalStructuredProperty), pmessages.MessageField, lambda x: x.to_message()),
+            ((object, dict, model.JsonProperty), pmessages.StringField, json.dumps),
+            ((object, dict, model.PickleProperty), pmessages.StringField, pickle.dumps),
+            ((None, model.GenericProperty, model.ComputedProperty), services.VariantField)
+
+        ])
+    except ImportError, e:
+
+        _PROTORPC = False
+
+        _message_fields = frozenset([])
 
     _MODEL_PROP_TO_BASETYPE = frozenset([
 
