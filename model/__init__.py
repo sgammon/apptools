@@ -22,9 +22,6 @@ import inspect
 import datetime
 import collections
 
-## Google Imports
-from google.appengine.ext import ndb as nndb
-
 ## AppTools Util
 from apptools.util import json
 from apptools.util import ObjectProxy
@@ -103,13 +100,14 @@ class ThinModelFactory(type):
                 c_special.append((k, v))
                 continue
 
-            if isinstance(v, nndb.Property):
-                thinmode = False
-                break
+            if _NDB:
+                if isinstance(v, nndb.Property):
+                    thinmode = False
+                    break
             c_properties.append((k, v))
 
         # if we're not in thinmode, send it over to NDB
-        if not thinmode:
+        if not thinmode and _NDB:
             return nndb.Model.__metaclass__.__new__(name, bases, properties)
 
         # otherwise, generate an internal schema and midway object
@@ -131,8 +129,6 @@ class ThinModelFactory(type):
 
             if '__metaclass__' in properties:
                 obj['__metaclass__'] = properties.get('__metaclass__')
-
-            import pdb; pdb.set_trace()
 
             for k, v in c_properties:
 
@@ -190,6 +186,8 @@ class ThinModel(_AppToolsModel):
 
         ''' Convert this model to an NDB model class. '''
 
+        if not _NDB:
+            raise RuntimeError("NDB is not supported in this environment.")
         if exclude:
             property_set = [k for k in cls.__pmap__ if k[0] not in exclude]
         elif include:
@@ -202,6 +200,7 @@ class ThinModel(_AppToolsModel):
             return cls.__ndb__.get(lookup_s)
 
         ndb_props = map(lambda g: (g[0], convert_basetype_to_ndb(g[1], g[2])) if 'impl' not in g[2] else (g[0], resolve_proptype(g[1], g[2])), property_set)
+
         ndb_impl = nndb.Model.__metaclass__(*[
             cls.__name__, tuple([nndb.Model] + [c for c in cls.__bases__]), dict([(k, v) for k, v in ndb_props])])
 
@@ -212,6 +211,8 @@ class ThinModel(_AppToolsModel):
 
         ''' Convert this model to an NDB model object. '''
 
+        if not _NDB:
+            raise RuntimeError("NDB is not supported in this environment.")
         if exclude:
             property_set = [k for k in cls.__pmap__ if k[0] not in exclude]
         elif include:
@@ -220,8 +221,6 @@ class ThinModel(_AppToolsModel):
             property_set = self.__pmap__[:]
 
         model_class = self.to_ndb_model(None, None, property_set)
-
-        import pdb; pdb.set_trace()
 
         n_props = {}
         for k in property_set:
@@ -232,10 +231,12 @@ class ThinModel(_AppToolsModel):
 
         try:
             m_obj = model_class()
-            for k, v in n_props:
+            for k, v in n_props.items():
                 setattr(m_obj, k, v)
+        except Exception, e:
+            raise
 
-        return 
+        return m_obj
 
     @classmethod
     def get(self, *args, **kwargs):
@@ -260,9 +261,14 @@ try:
     # App Engine Imports
     from google.appengine.ext import db as ldb
     from google.appengine.ext import blobstore
+
+    # NDB Imports (New DataBase)
+    from google.appengine.ext import ndb as nndb
     from google.appengine.ext.ndb import key, model
 
 except ImportError:
+
+    _NDB = False
 
     class _ModelPathProperty(str):
         pass
@@ -279,6 +285,8 @@ except ImportError:
         pass
 
 else:
+
+    _NDB = True
 
     ## _ModelPathProperty
     # This property is used in PolyPro to store the model's type inheritance path.
@@ -355,26 +363,26 @@ else:
 
             'key': key.Key,
             'model': ThinModel,
-            'Property': model.Property,
-            'StringProperty': model.StringProperty,
-            'TextProperty': model.TextProperty,
-            'BlobProperty': model.BlobProperty,
-            'IntegerProperty': model.IntegerProperty,
-            'FloatProperty': model.FloatProperty,
-            'BooleanProperty': model.BooleanProperty,
-            'BlobKeyProperty': model.BlobKeyProperty,
-            'DateTimeProperty': model.DateTimeProperty,
-            'TimeProperty': model.TimeProperty,
-            'GeoPt': model.GeoPt,
-            'GeoPtProperty': model.GeoPtProperty,
-            'KeyProperty': model.KeyProperty,
-            'UserProperty': model.UserProperty,
-            'JsonProperty': model.JsonProperty,
-            'PickleProperty': model.PickleProperty,
-            'StructuredProperty': model.StructuredProperty,
-            'LocalStructuredProperty': model.LocalStructuredProperty,
-            'ComputedProperty': model.ComputedProperty,
-            'GenericProperty': model.GenericProperty
+            'Property': nndb.Property,
+            'StringProperty': nndb.StringProperty,
+            'TextProperty': nndb.TextProperty,
+            'BlobProperty': nndb.BlobProperty,
+            'IntegerProperty': nndb.IntegerProperty,
+            'FloatProperty': nndb.FloatProperty,
+            'BooleanProperty': nndb.BooleanProperty,
+            'BlobKeyProperty': nndb.BlobKeyProperty,
+            'DateTimeProperty': nndb.DateTimeProperty,
+            'TimeProperty': nndb.TimeProperty,
+            'GeoPt': nndb.GeoPt,
+            'GeoPtProperty': nndb.GeoPtProperty,
+            'KeyProperty': nndb.KeyProperty,
+            'UserProperty': nndb.UserProperty,
+            'JsonProperty': nndb.JsonProperty,
+            'PickleProperty': nndb.PickleProperty,
+            'StructuredProperty': nndb.StructuredProperty,
+            'LocalStructuredProperty': nndb.LocalStructuredProperty,
+            'ComputedProperty': nndb.ComputedProperty,
+            'GenericProperty': nndb.GenericProperty
 
     }, case_sensitive=False)
 
@@ -411,24 +419,24 @@ else:
 
     _MODEL_PROP_TO_BASETYPE = frozenset([
 
-        ((basestring, str, unicode), (ndb.StringProperty, ndb.TextProperty), lambda x: ndb.StringProperty if len(x) < 500 else ndb.TextProperty),
-        (int, ndb.IntegerProperty),
-        (float, ndb.FloatProperty),
-        (bool, ndb.BooleanProperty),
-        (bytearray, ndb.BlobProperty),
-        (datetime.datetime, ndb.DateTimeProperty),
-        (datetime.date, ndb.DateProperty),
-        (datetime.time, ndb.TimeProperty),
-        (ndb.GeoPt, ndb.GeoPtProperty),
-        (ndb.Key, ndb.KeyProperty),
-        (blobstore.BlobKey, ndb.BlobKeyProperty),
-        (None, ndb.UserProperty),
-        (ThinModel, ndb.StructuredProperty),
-        (ThinModel, ndb.LocalStructuredProperty),
-        (object, ndb.JsonProperty, json.loads),
-        (object, ndb.PickleProperty, pickle.loads),
-        (None, ndb.GenericProperty, None),
-        (None, ndb.ComputedProperty, None)
+        ((basestring, str, unicode), (model.StringProperty, model.TextProperty), lambda x: model.StringProperty if len(x) < 500 else ndb.TextProperty),
+        (int, model.IntegerProperty),
+        (float, model.FloatProperty),
+        (bool, model.BooleanProperty),
+        (bytearray, model.BlobProperty),
+        (datetime.datetime, model.DateTimeProperty),
+        (datetime.date, model.DateProperty),
+        (datetime.time, model.TimeProperty),
+        (model.GeoPt, model.GeoPtProperty),
+        (key.Key, model.KeyProperty),
+        (blobstore.BlobKey, model.BlobKeyProperty),
+        (None, model.UserProperty),
+        (ThinModel, model.StructuredProperty),
+        (ThinModel, model.LocalStructuredProperty),
+        (object, model.JsonProperty, json.loads),
+        (object, model.PickleProperty, pickle.loads),
+        (None, model.GenericProperty, None),
+        (None, model.ComputedProperty, None)
 
     ])
 
@@ -493,11 +501,11 @@ else:
         else:
             basetype = name
         if name in ndb:
-            return ndb[name](**options)
+            return getattr(nndb, name)(**options)
         elif name in db:
-            return db[name](**options)
+            return getattr(ldb, name)(**options)
         else:
-            return ndb.GenericProperty(**options)
+            return nndb.GenericProperty(**options)
 
 
     def convert_basetype_to_ndb(basetype, options):
@@ -521,8 +529,6 @@ else:
                 basetypes = (basetypes,)
             if basetype in basetypes:
                 candidate_p.append(proptypes)
-
-        import pdb; pdb.set_trace()
 
         # if we only have one candidate
         if len(candidate_p) == 1:
