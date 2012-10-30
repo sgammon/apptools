@@ -122,13 +122,18 @@ class ThinModelFactory(type):
                 '__lookup__': [],
                 '__pclass__': [],
                 '__ndb__': {},
-                '__internal__': None
+                '__impl__': [],
+                '__internal__': None,
+                '__messages__': None
             }
 
             obj.update(c_special)
 
             if '__metaclass__' in properties:
                 obj['__metaclass__'] = properties.get('__metaclass__')
+
+            if '_message_class' in properties or '_pipeline_class':
+                obj['__impl__'] = tuple([i for i in obj['__impl__'] + [properties.get('_message_class', False), properties.get('_pipeline_class', False)]])
 
             for k, v in c_properties:
 
@@ -161,6 +166,8 @@ class ThinModelFactory(type):
             # freeze property lookup
             obj['__internal__'] = collections.namedtuple(name, obj['__lookup__'])
             obj['__slots__'] = tuple()
+
+            import pdb; pdb.set_trace()
 
             return type(name, bases, obj)
 
@@ -238,6 +245,33 @@ class ThinModel(_AppToolsModel):
             raise
 
         return m_obj
+
+    @classmethod
+    def to_message_model(cls, exclude=None, include=None, property_set=None):
+
+        ''' Convert this model to a ProtoRPC message class. '''
+
+        if not _PROTORPC:
+            raise RuntimeError("ProtoRPC is not supported in this environment.")
+        if exclude:
+            property_set = [k for k in cls.__pmap__ if k[0] not in exclude]
+        elif include:
+            property_set = [k for k in cls.__pmap__ if k[0] in include]
+        elif property_set is None:
+            property_set = cls.__pmap__[:]
+        lookup_s = tuple([k[0] for k in property_set])
+
+        if lookup_s in cls.__messages__:
+            return cls.__messages__.get(lookup_s)
+
+        field_props = map(lambda g: (g[0], convert_basetype_to_field(g[1], g[2])) if 'impl' not in g[2] else (g[0], resolve_fieldtype(g[1], g[2])), property_set)
+
+        msg_impl = nndb.Model.__metaclass__(*[
+            cls.__name__, tuple([nndb.Model] + [c for c in cls.__bases__]), dict([(k, v) for k, v in field_props])])
+
+        cls.__messages__[lookup_s] = msg_impl
+        return msg_impl
+
 
     @classmethod
     def get(self, *args, **kwargs):
@@ -427,7 +461,7 @@ else:
         _PROTORPC = True
 
         # Message Field Mappings
-        _message_fields = frozenset([
+        _MESSAGE_FIELD_TO_BASETYPE = frozenset([
 
             ((basestring, str, unicode, model.StringProperty), pmessages.StringField),
             ((int, model.IntegerProperty), pmessages.IntegerField),
@@ -447,11 +481,89 @@ else:
             ((None, model.GenericProperty, model.ComputedProperty), services.VariantField)
 
         ])
+
+
+        def get_fields():
+
+            ''' Build a set of all available ProtoRPC message fields. '''
+
+            names_to_classes, lookup = {}, set([])
+            for bundle in _MESSAGE_FIELD_TO_BASETYPE:
+                if len(bundle) == 2:
+                    basetypes, field = bundle
+                elif len(bundle) == 3:
+                    basetypes, field, converter = bundle
+                names_to_classes[field.__name__] = field
+                lookup.add(field.__name__)
+            return names_to_classes, lookup
+
+        _MESSAGE_FIELDS, _MESSAGE_FIELD_LOOKUP = get_fields()
+
+
+        def resolve_fieldtype(name, options, fail=False):
+
+            ''' Resolve a field type by name, usually from an `impl` property. '''
+
+            if 'impl' in options:
+                # resolve by an explicity-declared NDB implementation property
+                proptype = resolve_proptype(name, options, True)
+                if proptype is not False:
+                    return proptype
+
+            if 'field' in options:
+                # resolve by an explicitly-declared ProtoRPC message field
+                if options['field'] in _MESSAGE_FIELD_LOOKUP:
+                    return _MESSAGE_FIELDS.get(options['field'])
+
+            if not fail:
+                return services.VariantField
+            else:
+                return False
+
+
+        def convert_basetype_to_field(basetype, options, fail=False):
+
+            ''' Convert a basetype to a suitable ProtoRPC message field. '''
+
+
+            candidate_f = []
+            for basegroup in _MESSAGE_FIELD_TO_BASETYPE:
+                if basegroup is None:
+                    continue  # this field has no basetype conversion path
+
+                if len(basegroup) == 2:
+                    basetypes, field = basegroup
+
+                elif len(basegroup) == 3:
+                    basetypes, field, converter = basegroup
+
+                if not isinstance(basetypes, tuple):
+                    basetypes = (basetypes,)
+                if basetype in basetypes:
+                    candidate_f.append(field)
+
+            # if we have no candidates
+            if not candidate_f and candidate_f == []:
+                if not fail:
+                    return services.VariantField
+                else:
+                    return False  # :( indicate we couldn't resolve the message field
+
+            # if we only have one candidate
+            elif len(candidate_f) == 1:
+                return candidate_f[0]
+
+            # if there are many candidates
+            else:
+                # return the first, the specification order goes compatible => restrictive
+                return candidate_f[0][1]
+
+
     except ImportError, e:
 
-        _PROTORPC = False
+        # Empty out our globals and indicate ProtoRPC isn't supported in the current environment.
+        _PROTORPC, _MESSAGE_FIELDS, _MESSAGE_FIELD_LOOKUP, _MESSAGE_FIELD_TO_BASETYPE = False, frozenset([]), frozenset([]), frozenset([])
 
-        _message_fields = frozenset([])
 
     _MODEL_PROP_TO_BASETYPE = frozenset([
 
@@ -527,7 +639,7 @@ else:
         return p_list
 
 
-    def resolve_proptype(name, options):
+    def resolve_proptype(name, options, fail=False):
 
         ''' Resolve a property type by name, usually from an `impl` option. '''
 
@@ -541,10 +653,13 @@ else:
         elif name in db:
             return getattr(ldb, name)(**options)
         else:
-            return nndb.GenericProperty(**options)
+            if fail is False:
+                return nndb.GenericProperty(**options)
+            else:
+                return False
 
 
-    def convert_basetype_to_ndb(basetype, options):
+    def convert_basetype_to_ndb(basetype, options, fail=False):
 
         ''' Convert a basetype to an NDB property. '''
 
@@ -556,6 +671,9 @@ else:
             if not isinstance(basegroup, tuple):
                 basegroup = (basegroup,)
             else:
+                if basegroup[0] == None:
+                    continue # this prop has no basetype conversion path
+
                 if len(basegroup) == 2:
                     basetypes, proptypes = basegroup
                 else:
@@ -566,8 +684,15 @@ else:
             if basetype in basetypes:
                 candidate_p.append(proptypes)
 
+        # if we have no candidates
+        if not candidate_p and candidate_p == []:
+            if not fail:
+                return nndb.GenericProperty(**options)
+            else:
+                return False  # :( indicate we couldn't resolve the property type
+
         # if we only have one candidate
-        if len(candidate_p) == 1:
+        elif len(candidate_p) == 1:
             if isinstance(candidate_p[0], tuple):
                 if len(candidate_p[0]) == 3:
                     # if there's a converter, use it
