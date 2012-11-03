@@ -11,6 +11,27 @@ class RedisKey(ModelKeyAdapter):
 
 	''' Provides models with keys for use in Redis. '''
 
+	## == AppTools Model Hooks == ##
+	@classmethod
+	def __inflate__(cls, struct):
+
+		''' Inflate a raw structure from Redis into a key. '''
+
+		pass
+
+	def __message__(self, exclude=None, include=None):
+
+		''' Convert this model into a structure suitable for transmission. '''
+
+		pass
+
+	def __json__(self):
+
+		''' Encode a structured representation of this model in JSON. '''
+
+		pass
+
+	## == Datastore Methods == ##
 	def get(self):
 
 		''' Retrieve an entity from Redis by its key. '''
@@ -35,6 +56,7 @@ class RedisKey(ModelKeyAdapter):
 
 		pass
 
+	## == Internal Key Methods == ##
 	def id(self):
 
 		''' Retrieve this key's string/integer ID. '''
@@ -83,9 +105,12 @@ class RedisAdapter(ModelAdapter):
 
 	''' Adapts ThinModels to use Redis for storage. '''
 
-	def __json__(self):
 
-		''' Return a JSON representation of this model. '''
+	## == AppTools Model Hooks == ##
+	@classmethod
+	def __inflate__(cls, struct):
+
+		''' Inflate a raw Redis structure into a model. '''
 
 		pass
 
@@ -95,31 +120,40 @@ class RedisAdapter(ModelAdapter):
 
 		pass
 
-        def key(self):
-		
-		''' Retrieve this entity's key. '''
+	def __json__(self):
+
+		''' Return a JSON representation of this model. '''
 
 		pass
 
-        def get(self):
+	## == Datastore Methods == ##
+    def get(self):
 
 		''' Retrieve an entity from storage. '''
 
 		pass
 
-        def put(self):
+    def put(self):
 
 		''' Store/save an entity in storage. '''
 
 		pass
 
-        def delete(self):
+    def delete(self):
 
 		''' Delete a model from storage. '''
 
 		pass
 
-        def query(self):
+	## == Internal Model Methods == ##
+	@property
+    def key(self):
+
+		''' Retrieve this entity's key. '''
+
+		pass
+
+    def query(self):
 
 		''' Start a query from this ThinModel. '''
 

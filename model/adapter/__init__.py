@@ -10,21 +10,21 @@ class ModelKeyAdapter(object):
 	__metaclass__ = abd.ABCMeta
 
 	## == External Key Methods == ##
-        @abc.abstractmethod
-        def get(self): ''' Retrieve an entity from the datastore, by key. '''
+    @abc.abstractmethod
+    def get(self, spec=None): ''' Retrieve an entity from the datastore, by key. '''
 
-        @abc.abstractmethod
-        def get_async(self): ''' Asynchronously retrieve an entity from the datastore, by key. '''
+    @abc.abstractmethod
+    def get_async(self, spec=None): ''' Asynchronously retrieve an entity from the datastore, by key. '''
 
-        @abc.abstractmethod
-        def delete(self): ''' Delete an entity from the datastore, by key. '''
+    @abc.abstractmethod
+    def delete(self): ''' Delete an entity from the datastore, by key. '''
 
-        @abc.abstractmethod
-        def delete_async(self): ''' Delete an entity from the datastore, asynchronously, by key. '''
+    @abc.abstractmethod
+    def delete_async(self): ''' Delete an entity from the datastore, asynchronously, by key. '''
 
 	## == Internal Key Methods == ##
-        @abc.abstractmethod
-        def id(self): ''' Return this key's ID, whether string or string-based. '''
+    @abc.abstractmethod
+    def id(self): ''' Return this key's ID, whether string or string-based. '''
 
 	@abc.abstractmethod
 	def kind(self): ''' Return the kind name of this key. '''
@@ -44,6 +44,16 @@ class ModelKeyAdapter(object):
 	@abc.abstractmethod
 	def flat(self): ''' Produce a flattened version of this key. '''
 
+	## == AppTools Hooks == ##
+	@abc.abstractmethod
+	def __json__(self): ''' Output a JSON-encoded representation of this key. '''
+
+	@abc.abstractmethod
+	def __inflate__(self, struct): ''' Construct a new key from a string. '''
+
+	@abc.abstractmethod
+	def __message__(self, exclude=None, include=None): ''' Output a struct representing this key that is suitable for transmission. '''
+
 
 ## ModelAdapter - adapts thinmodels to a given storage backend
 class ModelAdapter(object):
@@ -59,7 +69,7 @@ class ModelAdapter(object):
 	## == Datastore Methods == ##
 	@abc.abstractmethod
 	def get(self): ''' Retrieve an entity from storage. '''
-	
+
 	@abc.abstractmethod
 	def put(self): ''' Store/save an entity in storage. '''
 
@@ -76,3 +86,5 @@ class ModelAdapter(object):
 	@abc.abstractmethod
 	def __message__(self): ''' Output a structured representation of this model, suitable for transmission. '''
 
+	@abc.abstractmethod
+	def __inflate__(self): ''' Inflate a raw structure into an adapted model instance. '''
