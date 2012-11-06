@@ -1,9 +1,11 @@
 ## Base Imports
-import redis
 import base64
+import config
+import webapp2
 
 ## Model Imports
 from apptools.util import json
+from apptools.util import debug
 from apptools.services import KeyMessage
 from apptools.model.adapter import StorageAdapter
 from apptools.model.adapter import ThinKeyAdapter
@@ -213,25 +215,6 @@ class RedisModelAdapter(ThinModelAdapter):
 
         pass
 
-    ## == Datastore Methods == ##
-    def get(self):
-
-        ''' Retrieve an entity from storage. '''
-
-        pass
-
-    def put(self):
-
-        ''' Store/save an entity in storage. '''
-
-        pass
-
-    def delete(self):
-
-        ''' Delete a model from storage. '''
-
-        pass
-
     ## == Internal Model Methods == ##
     @property
     def key(self):
@@ -252,11 +235,78 @@ class Redis(StorageAdapter):
 
     ''' Controller for adapting models to Redis. '''
 
+    redis = redis
+
+    __db = 0
+    __host = None
+    __port = None
+    __socket = None
+    __compatible = False
+    __connection = None
+
     key = RedisKeyAdapter
     model = RedisModelAdapter
 
-    def get(self, key, **opts): ''' Retrieve one or multiple entities by key. '''
-    def put(self, entity, **opts): ''' Persist one or multiple entities. '''
-    def delete(self, target, **opts): ''' Delete one or multiple entities. '''
-    def query(self, kind=None, **opts): ''' Start building a query, optionally over a kind. '''
-    def kinds(self, **opts): ''' Retrieve a list of active kinds in this storage backend. '''
+    @webapp2.cached_property
+    def config(self):
+
+        ''' Named config shortcut. '''
+
+        return config.config.get('apptools.model.adapters.redis.Redis', {})
+
+    @webapp2.cached_property
+    def logging(self):
+
+        ''' Named logging shortcut. '''
+
+        return debug.AppToolsLogger(path='apptools.model.adapter.redis', name='Redis')._setcondition(self.config.get('debug', True))
+
+    def __init__(self, host=None, port=None, socket=None, db=0):
+
+        ''' Initialize a new Redis adapter. '''
+
+        if host or port:
+            self.__host, self.__port, self.__socket, self.__db = host, port, socket, db
+
+        else:
+            active = self.config.get('servers', {}).get(self.config.get('servers', {}).get('active'), None)
+            self.__host, self.__port, self.__socket, self.__db = active.get('host', None), active.get('port', None), active.get('socket', None), active.get('db', 0)
+
+        if ((not self.__host) or (not self.__port)) and not self.__socket:
+            self.__compatible = False
+            if config.debug:
+                raise RuntimeError("Redis is not supported by config/libraries in the current installation. Please disable the Redis adapter.")
+        return
+
+    def get(self, key, **opts):
+
+        ''' Retrieve one or multiple entities by key. '''
+
+        if isinstance(key, basestring):
+            key = self.key.__inflate__(key)
+
+        self.logging.info('RECEIVED GET REQUEST FOR KEY "%s".' % key)
+        return key
+
+    def put(self, entity, **opts):
+
+        ''' Persist one or multiple entities. '''
+
+        self.logging.info('RECEIVED PUT REQUEST: "%s".' % entity)
+        self.logging.info('RECEIVED PUT OPTS: "%s".' % opts)
+
+        return entity
+
+    def delete(self, target, **opts):
+
+        ''' Delete one or multiple entities. '''
+
+
+    def query(self, kind=None, **opts):
+
+        ''' Start building a query, optionally over a kind. '''
+
+
+    def kinds(self, **opts):
+
+        ''' Retrieve a list of active kinds in this storage backend. '''

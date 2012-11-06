@@ -1,4 +1,5 @@
 
+import config
 from google.appengine.ext import ndb
 
 from apptools.model import _NDB
@@ -13,13 +14,23 @@ class NDBKeyAdapter(ThinKeyAdapter):
 
     ''' Adapts NDB keys to ThinModel. '''
 
+    __ndb__ = None  # holds an NDB-based representation of this key
+
     ## == AppTools Model Hooks == ##
     @classmethod
     def __inflate__(cls, raw):
 
         ''' Inflate a raw string key into an NDB key. '''
 
-        return ndb.Key(urlsafe=raw)
+        if isinstance(raw, basestring):
+            nk = ndb.Key(urlsafe=raw)
+            value = raw
+        elif isinstance(raw, ndb.Key):
+            nk = raw
+            value = raw.urlsafe()
+
+        app, namespace, parent, kind, id = nk.app(), nk.namespace(), None if not nk.parent() else cls.__inflate__(nk.parent()), nk.kind(), nk.id()
+        return cls(namespace=namespace, kind=kind, parent=parent, id=id, adapter=NDB, raw=value, app=app)
 
 
 ## NDBModelAdapter
@@ -27,12 +38,6 @@ class NDBKeyAdapter(ThinKeyAdapter):
 class NDBModelAdapter(ThinModelAdapter):
 
     ''' Adapts ThinModels to AppEngine's NDB. '''
-
-    def key(self):
-
-        ''' Redirect to local key. '''
-
-        return getattr(super(NDBModelAdapter, self), 'key')
 
     def __json__(self):
 
@@ -52,7 +57,12 @@ class NDBModelAdapter(ThinModelAdapter):
         ''' Inflate to an NDB model from a raw structure. '''
 
         k = NDBKeyAdapter.__inflate__(key)
-        return cls(key=k, **struct)
+        if isinstance(struct, ndb.Model):
+            return cls(key=k, **struct.to_dict())
+        elif isinstance(struct, list):
+            return cls(key=k, **dict(struct))
+        elif isinstance(struct, dict):
+            return cls(key=k, **struct)
 
     @classmethod
     def to_ndb_model(cls, exclude=None, include=None, property_set=None):
@@ -136,6 +146,8 @@ class NDB(StorageAdapter):
 
         ''' Persist one or multiple entities. '''
 
+        if 'adapter' in opts:
+            del opts['adapter']  # there's no `adapter` in NDB
         if isinstance(entity, list):
             return self.ndb.put_multi_async(entity).get_result()
         return entity.to_ndb().put(**opts)

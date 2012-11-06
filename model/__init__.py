@@ -58,6 +58,18 @@ class _AppToolsModel(object):
 
     ''' Root, master, polymorphic-capable thin data model. Everything lives under this class. '''
 
+    def __init__(self, key=None, **kwargs):
+
+        ''' Copy kwarg properties in. '''
+
+        if key is not None:
+            self.__key__ = key
+
+        for k, v in kwargs.items():
+            if k in self.__lookup__:
+                setattr(self, k, v)
+        return
+
     def _getModelPath(self, seperator=None):
 
         ''' Retrieve a path for this model's polymorphic class chain. '''
@@ -364,10 +376,29 @@ else:
                 if lookup_s in cls.__messages__:
                     return cls.__messages__.get(lookup_s)
 
-                field_props = map(lambda g: (g[0], convert_basetype_to_field(g[1], g[2])) if 'impl' not in g[2] else (g[0], resolve_fieldtype(g[1], g[2])), property_set)
+                props = map(lambda g: (g[0], convert_basetype_to_field(g[1], g[2]), g[2]) if ('impl' not in g[2] and 'field' not in g[2]) else (g[0], resolve_fieldtype(g[1], g[2]), g[2]), property_set)
 
-                msg_impl = nndb.Model.__metaclass__(*[
-                    cls.__name__, tuple([nndb.Model] + [c for c in cls.__bases__]), dict([(k, v) for k, v in field_props])])
+                field_props = []
+                for i, group in enumerate(props):
+                    name, prop, opts = group
+
+                    if 'indexed' in opts:
+                        del opts['indexed']
+
+                    if 'required' in opts:
+                        del opts['required']
+
+                    if prop in frozenset([pmessages.MessageField, pmessages.EnumField]):
+
+                        ## TODO: Recursive generation of messages
+                        raise ValueError("Automatic model => message conversion does not currently support submessages or enums. Please author an explicit message class for the model '%s' and link it via the classmember '_message_class'." % cls.__name__)
+
+                    else:
+                        args = [i+1]  # ID's need to be 1-indexed
+                        field_props.append((name, prop, args, opts))
+
+                msg_impl = pmessages.Message.__metaclass__(*[
+                    cls.__name__, tuple([pmessages.Message]), dict([(k, v(*a, **o)) for k, v, a, o in field_props])])
 
                 cls.__messages__[lookup_s] = msg_impl
                 return msg_impl
@@ -450,15 +481,12 @@ else:
                         return _convert_prop(v)
 
                 # Convert each property and assign it to the response message.
+                msg_struct = {}
                 for k, v in self.to_dict(include=include, exclude=exclude).items():
                     if hasattr(response, k):
-                        response_field = response.field_by_name(k)
-                        if isinstance(response_field, MessageField):
-                            setattr(response, k, _convert_to_message_field(response_field.type, v))
-                        else:
-                            setattr(response, k, _convert_prop(v))
+                        msg_struct[k] = getattr(self, k)
 
-                return response
+                return response(**msg_struct)
 
             @classmethod
             def from_message(cls, message, key=None, **kwargs):
@@ -571,16 +599,17 @@ else:
 
             ''' Resolve a field type by name, usually from an `impl` property. '''
 
-            if 'impl' in options:
-                # resolve by an explicity-declared NDB implementation property
-                proptype = resolve_proptype(name, options, True)
-                if proptype is not False:
-                    return proptype
-
             if 'field' in options:
                 # resolve by an explicitly-declared ProtoRPC message field
                 if options['field'] in _MESSAGE_FIELD_LOOKUP:
                     return _MESSAGE_FIELDS.get(options['field'])
+
+            elif 'impl' in options:
+                # resolve by an explicity-declared NDB implementation property
+                proptype = resolve_proptype(name, options, True)
+                for prop_c, field_c in _MODEL_PROP_TO_FIELD:
+                    if prop_c.__name__ == proptype.__class__.__name__:
+                        return field_c
 
             if not fail:
                 return services.VariantField
@@ -647,6 +676,33 @@ else:
         (None, model.ComputedProperty, None)
 
     ])
+
+    if _PROTORPC:
+        _MODEL_PROP_TO_FIELD = frozenset([
+
+            (model.StringProperty, pmessages.StringField),
+            (model.TextProperty, pmessages.StringField),
+            (model.FloatProperty, pmessages.FloatField),
+            (model.IntegerProperty, pmessages.IntegerField),
+            (model.BooleanProperty, pmessages.BooleanField),
+            (model.DateTimeProperty, (pmessages.StringField, lambda x: str(x))),  # TODO: datetime/date/time conversion
+            (model.DateProperty, (pmessages.StringField, lambda x: str(x))),
+            (model.TimeProperty, (pmessages.StringField, lambda x: str(x))),
+            (model.GeoPtProperty, (pmessages.StringField, lambda x: str(x))),
+            (model.KeyProperty, (pmessages.StringField, lambda x: x.urlsafe())),
+            (model.BlobKeyProperty, (pmessages.StringField, lambda x: x.urlsafe())),
+            (model.UserProperty, (pmessages.StringField, lambda x: x.email())),
+            (model.StructuredProperty, pmessages.MessageField),
+            (model.LocalStructuredProperty, pmessages.MessageField),
+            (model.JsonProperty, pmessages.MessageField),
+            (model.PickleProperty, pmessages.MessageField),
+            (model.GenericProperty, None),
+            (model.ComputedProperty, None)
+
+        ])
+
+    else:
+        _MODEL_PROP_TO_FIELD = frozenset([])
 
     def get_basetypes():
 
@@ -821,7 +877,7 @@ class ThinModelFactory(AbstractModelFactory):
                 '__impl__': [],
                 '__adapt__': {},
                 '__internal__': None,
-                '__messages__': None,
+                '__messages__': {},
                 '__expando__': expando
             }
 
@@ -977,37 +1033,6 @@ class ThinModel(_AppToolsModel, MessageConverter, PipelineTrigger):
     ''' Base model class for all AppTools models. '''
 
     __metaclass__ = ThinModelFactory
-
-    def __init__(self, key=None, **kwargs):
-
-        ''' Copy kwarg properties in. '''
-
-        if key is not None:
-            self.key = key
-
-        for k, v in kwargs.items():
-            if k in self.__lookup__:
-                setattr(self, k, v)
-        return
-
-    @classmethod
-    def get(self, *args, **kwargs):
-
-        ''' Retrieve a ThinModel from the datastore. '''
-
-        return self.__adapter.get(*args, **kwargs)
-
-    def put(self, *args, **kwargs):
-
-        ''' Persist a ThinModel to the datastore. '''
-
-        return self.__adapter.put(*args, **kwargs)
-
-    def query(self, *args, **kwargs):
-
-        ''' Query across a ThinModel set in the datastore. '''
-
-        return self.__adapter.query(*args, **kwargs)
 
 
 ## BaseModel

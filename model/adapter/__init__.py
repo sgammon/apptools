@@ -26,7 +26,7 @@ class ThinKeyAdapter(object):
     __metaclass__ = abc.ABCMeta
 
     ## == External Key Methods == ##
-    def __init__(self, namespace, kind, id=None, adapter=None, raw=None):
+    def __init__(self, namespace, kind, parent=None, id=None, adapter=None, raw=None, app=None):
 
         ''' Init a new key, usually from cls.__inflate__. '''
 
@@ -34,8 +34,8 @@ class ThinKeyAdapter(object):
         if raw:
             self.__persisted__ = True
 
-        self.__adapter__, self.__value__ = adapter, raw
-        self.__namespace__, self.__kind__, self.__id__ = namespace, kind, id
+        self.__app__, self.__adapter__, self.__value__ = app, adapter, raw
+        self.__namespace__, self.__parent__, self.__kind__, self.__id__ = namespace, parent, kind, id
 
     def get(self, **opts):
 
@@ -56,35 +56,53 @@ class ThinKeyAdapter(object):
         return self.__adapter__.delete(self)
 
     ## == Internal Key Methods == ##
-    @abc.abstractmethod
-    def id(self): ''' Return this key's ID, whether string or string-based. '''
+    def id(self):
 
-    @abc.abstractmethod
-    def kind(self): ''' Return the kind name of this key. '''
+        ''' Return this key's ID, whether string or string-based. '''
 
-    @abc.abstractmethod
-    def parent(self): ''' Return the parent key to this key. '''
+        return self.__id__
 
-    @abc.abstractmethod
-    def pairs(self): ''' Return the raw pairs describing this key. '''
+    def kind(self):
 
-    @abc.abstractmethod
-    def app(self): ''' Return the application that created this key. Not used in an 'AppFactory' env. '''
+        ''' Return the kind name of this key. '''
 
-    @abc.abstractmethod
-    def urlsafe(self): ''' Produce a stringified representation of the key, suitable for use in a URL. '''
+        return self.__kind__
 
-    @abc.abstractmethod
-    def flat(self): ''' Produce a flattened version of this key. '''
+    def parent(self):
+
+        ''' Return the parent key to this key. '''
+
+        return self.__parent__
+
+    def pairs(self):
+
+        ''' Return the raw pairs describing this key. '''
+
+        return [(self.__kind__, self.__id__)]
+
+    def app(self):
+
+        ''' Return the application that created this key. Not used in an 'AppFactory' env. '''
+
+        return self.__app__
+
+    def urlsafe(self):
+
+        ''' Produce a stringified representation of the key, suitable for use in a URL. '''
+
+        raise NotImplemented
+
+    def flat(self):
+
+        ''' Produce a flattened version of this key. '''
+
+        raise NotImplemented
 
     ## == AppTools Hooks == ##
     @abc.abstractmethod
-    def __encode__(self): ''' Output an encoded representation of this key. '''
-
-    @abc.abstractmethod
     def __inflate__(self, struct): ''' Construct a new key from a string. '''
 
-    @abc.abstractmethod
+    def __encode__(self): ''' Output an encoded representation of this key. '''
     def __message__(self, exclude=None, include=None): ''' Output a struct representing this key that is suitable for transmission. '''
 
 
@@ -95,6 +113,7 @@ class ThinModelAdapter(object):
 
     __metaclass__ = abc.ABCMeta
 
+    __key__ = None
     __dirty__ = False
     __persisted__ = False
 
@@ -149,10 +168,30 @@ class ThinModelAdapter(object):
         return self.__adapter(opts).query(*args, **opts)
 
     ## == Special Properties == ##
-    @abc.abstractproperty
-    def key(self): ''' Retrieve this entity's key. '''
+    @property
+    def key(self):
+
+        ''' Retrieve this entity's key. '''
+
+        return self.__key__
 
     ## == Special Methods == ##
+    def to_dict(self, exclude=None, include=None):
+
+        ''' Export a dictionary representation of this ThinModel to a dictionary. '''
+
+        if exclude:
+            property_set = [p for p in self.__lookup__ if p not in exclude]
+        elif include and not exclude:
+            property_set = [p for p in self.__lookup__ if p in include]
+        else:
+            property_set = self.__lookup__
+
+        m_dict = {}
+        for k in property_set:
+            m_dict[k] = getattr(self, k)
+        return m_dict
+
     @abc.abstractmethod
     def __json__(self): ''' Output a JSON-encoded representation of this model. '''
 
