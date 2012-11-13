@@ -2,6 +2,8 @@
 import config
 from google.appengine.ext import ndb
 
+from apptools.util import datastructures
+
 from apptools.model import _NDB
 from apptools.model.adapter import StorageAdapter
 from apptools.model.adapter import ThinKeyAdapter
@@ -22,14 +24,21 @@ class NDBKeyAdapter(ThinKeyAdapter):
 
         ''' Inflate a raw string key into an NDB key. '''
 
+        import pdb; pdb.set_trace()
         if isinstance(raw, basestring):
             nk = ndb.Key(urlsafe=raw)
             value = raw
         elif isinstance(raw, ndb.Key):
             nk = raw
             value = raw.urlsafe()
+        else:
+            raise ValueError("__inflate__ accepts a urlsafe-d key or NDB key.")
 
-        app, namespace, parent, kind, id = nk.app(), nk.namespace(), None if not nk.parent() else cls.__inflate__(nk.parent()), nk.kind(), nk.id()
+        if nk.parent():
+            parent = cls.__inflate__(nk.parent())
+        else:
+            parent = None
+        app, namespace, parent, kind, id = nk.app(), nk.namespace(), parent, nk.kind(), nk.id()
         return cls(namespace=namespace, kind=kind, parent=parent, id=id, adapter=NDB, raw=value, app=app)
 
 
@@ -107,15 +116,26 @@ class NDBModelAdapter(ThinModelAdapter):
 
         model_class = self.to_ndb_model(None, None, property_set)
 
-        n_props = {}
-        for k in property_set:
-            prop_value = getattr(self, k[0])
+        with self:
+            n_props = {}
+            for k in property_set:
+                prop_value = getattr(self, k[0])
 
-            if prop_value is not None:
-                n_props[k[0]] = prop_value
+                if prop_value != datastructures._EMPTY:
+                    n_props[k[0]] = prop_value
+
+        import pdb; pdb.set_trace()
+
+        if hasattr(self, '__key__') and self.__key__ is not None:
+            key = self.__key__
+        else:
+            key = None
 
         try:
-            m_obj = model_class()
+            if key:
+                m_obj = model_class(key=key)
+            else:
+                m_obj = model_class()
             for k, v in n_props.items():
                 setattr(m_obj, k, v)
         except Exception, e:

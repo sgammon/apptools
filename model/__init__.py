@@ -60,15 +60,11 @@ class _AppToolsModel(object):
 
     def __init__(self, key=None, **kwargs):
 
-        ''' Copy kwarg properties in. '''
+        ''' Receive a newly inflated model. '''
 
-        if key is not None:
-            self.__key__ = key
-
-        for k, v in kwargs.items():
-            if k in self.__lookup__:
-                setattr(self, k, v)
-        return
+        self.__key__ = key
+        for k, v in kwargs.iteritems():
+            setattr(self, k, v)
 
     def _getModelPath(self, seperator=None):
 
@@ -94,6 +90,17 @@ class _AppToolsModel(object):
         else:
             return []
 
+    def __enter__(self):
+
+        ''' Sets an internal flag to indicate emptiness without `None`, when a model is used as a context manager. '''
+
+        self.__sentinel__ = True
+
+    def __exit__(self, *args, **kwargs):
+
+        ''' Resets internal flags. '''
+
+        self.__sentinel__ = False
 
 try:
     # App Engine Imports
@@ -484,7 +491,10 @@ else:
                 msg_struct = {}
                 for k, v in self.to_dict(include=include, exclude=exclude).items():
                     if hasattr(response, k):
-                        msg_struct[k] = getattr(self, k)
+                        v = getattr(self, k)
+                        if isinstance(v, (datetime.datetime, datetime.date, datetime.time)):
+                            v = v.isoformat()
+                        msg_struct[k] = v
 
                 return response(**msg_struct)
 
@@ -878,7 +888,8 @@ class ThinModelFactory(AbstractModelFactory):
                 '__adapt__': {},
                 '__internal__': None,
                 '__messages__': {},
-                '__expando__': expando
+                '__expando__': expando,
+                '__sentinel__': False
             }
 
             obj.update(c_special)
@@ -1037,20 +1048,15 @@ class ThinModel(_AppToolsModel, MessageConverter, PipelineTrigger):
 
 ## BaseModel
 # This is the root base model for all AppTools-based models.
-class BaseModel(ThinModel):
+class BaseModel(nndb.Model):
 
     ''' This is the root base model for all AppTools-based models. '''
 
-    __metaclass__ = ThinModelFactory
-
-
 ## BaseExpando
 # This is the root base expando for all expando-based models.
-class BaseExpando(ThinModel):
+class BaseExpando(nndb.Expando):
 
     ''' This is the root base model for all AppTools-based expandos. '''
-
-    __metclass__ = ThinModelFactory.expando
 
 
 if _GAE:
