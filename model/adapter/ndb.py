@@ -24,7 +24,6 @@ class NDBKeyAdapter(ThinKeyAdapter):
 
         ''' Inflate a raw string key into an NDB key. '''
 
-        import pdb; pdb.set_trace()
         if isinstance(raw, basestring):
             nk = ndb.Key(urlsafe=raw)
             value = raw
@@ -123,8 +122,6 @@ class NDBModelAdapter(ThinModelAdapter):
 
                 if prop_value != datastructures._EMPTY:
                     n_props[k[0]] = prop_value
-
-        import pdb; pdb.set_trace()
 
         if hasattr(self, '__key__') and self.__key__ is not None:
             key = self.__key__

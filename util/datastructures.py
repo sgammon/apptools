@@ -685,10 +685,11 @@ class PropertyDescriptor(object):
 
     ''' Utility class used to encapsulate a name, type, and set of options for a property on a data model. '''
 
-    __name = _EMPTY
-    __type = _EMPTY
-    __opts = _EMPTY
-    __value = _EMPTY
+    __null = True     # allow null values in this property
+    __name = _EMPTY   # name of the property
+    __type = _EMPTY   # basetype of the property
+    __opts = _EMPTY   # options for implementation classes
+    __value = _EMPTY  # the value of this property
 
     def __init__(self, name, proptype, options, **kwargs):
 
@@ -704,7 +705,10 @@ class PropertyDescriptor(object):
         # check type
         if 'validate' not in self.__opts and 'typeless' not in self.__opts and self.__opts.get('typeless', False) != True:
             if not isinstance(value, self.__type):
-                raise ValueError('Property "%s" on model instance "%s" only accepts values of type "%s".' % (self.__name, instance, self.__type))
+                if value == None and self.__null:
+                    pass
+                else:
+                    raise ValueError('Property "%s" on model instance "%s" only accepts values of type "%s".' % (self.__name, instance, self.__type))
         else:
             if not self.__opts.get('typeless', False):
                 value = self.__opts.validate(value)
