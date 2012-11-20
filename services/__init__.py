@@ -30,6 +30,7 @@ except:
 from protorpc import remote
 from protorpc import messages as pmessages
 from protorpc import message_types as pmessage_types
+from protorpc.message_types import VoidMessage
 
 # Service handlers
 from protorpc.webapp import service_handlers
@@ -463,6 +464,23 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
             else:
                 return self.interpreted_body
 
+    def __send_error(self, http_code, status_state, error_message, mapper, error_name=None):
+
+        ''' Send an error RPC response. '''
+
+        status = remote.RpcStatus(state=status_state, error_message=error_message, error_name=error_name)
+        mapper.build_response(self, status)
+
+        self.response.headers['Content-Type'] = mapper.default_content_type
+        self.logging.error(error_message)
+
+        response_content = self.response.body
+        padding = ' ' * max(0, 512 - len(response_content))
+
+        self.response.write(padding)
+        self.response.set_status(http_code, error_message)
+        return
+
     def handle(self, http_method, service_path, remote_method):
 
         ''' Handle a remote service request. '''
@@ -524,21 +542,21 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
                     method_info = method.remote
                 except AttributeError, err:
                     self.setstatus('failure')
-                    self._ServiceHandler__send_error(400, remote.RpcState.METHOD_NOT_FOUND_ERROR, 'Unrecognized RPC method: %s' % remote_method, mapper)
+                    self.__send_error(400, remote.RpcState.METHOD_NOT_FOUND_ERROR, 'Unrecognized RPC method: %s' % remote_method, mapper)
                     return
 
                 request = mapper.build_request(self, method_info.request_type)
 
             except (RequestError, pmessages.DecodeError), err:
                 self.setstatus('failure')
-                self._ServiceHandler__send_error(400, remote.RpcState.REQUEST_ERROR, 'Error parsing RPC request (%s)' % err, mapper)
+                self.__send_error(400, remote.RpcState.REQUEST_ERROR, 'Error parsing RPC request (%s)' % err, mapper)
                 return
 
             try:
                 response = method(request)
             except self.ApplicationError, err:
                 self.setstatus('failure')
-                self._ServiceHandler__send_error(400, remote.RpcState.APPLICATION_ERROR, err.message, mapper, err.error_name)
+                self.__send_error(400, remote.RpcState.APPLICATION_ERROR, err.message, mapper, err.error_name)
                 return
 
             mapper.build_response(self, response)
@@ -550,7 +568,7 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
             self.setstatus('failure')
             self.logging.error('An unexpected error occured when handling RPC: %s' % err, exc_info=1)
             self.logging.exception('Unexpected service exception of type "%s": "%s".' % (type(err), str(err)))
-            self._ServiceHandler__send_error(500, remote.RpcState.SERVER_ERROR, 'Internal Server Error', mapper)
+            self.__send_error(500, remote.RpcState.SERVER_ERROR, 'Internal Server Error', mapper)
             if config.debug:
                 raise
             else:
@@ -1006,3 +1024,37 @@ flags = datastructures.DictProxy({
     })
 
 })
+
+
+## rpcmethod - Wrap a classmethod for use with AppTools thimodels, optionally enforcing logon.
+def rpcmethod(input, output=None, authenticated=True):
+
+    ''' Protect a service method from anonymous access. '''
+
+    from apptools import model
+
+    # convert models to messages
+    if issubclass(input, model.ThinModel):
+        input = input.to_message_model()
+
+    if output is None:
+        output = input
+
+    def make_rpc_method(fn):
+
+        ''' Closure that makes a closured RPC method. '''
+
+        @remote.method(input, output)
+        def wrapped(self, request):
+
+            ''' Wrap remote method and throw an exception if no user is present. '''
+
+            # pull user
+            if authenticated:
+                user = self.api.users.get_current_user()
+                if not user:
+                    raise self.LoginRequired("Woops! Only logged in users can do that!")
+                return fn(self, request, user)
+            return fn(self, request)
+        return wrapped
+    return make_rpc_method
