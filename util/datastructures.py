@@ -442,7 +442,7 @@ class ProxiedStructure(type):
 
         new_cls = type(name, chain, mappings)
         if mappings.get('__singleton__') is True:
-            return new_cls.__new__(cls)
+            return object.__new__(cls)
         else:
             return new_cls
 
