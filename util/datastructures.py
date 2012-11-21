@@ -440,7 +440,11 @@ class ProxiedStructure(type):
             '__contains__': _contains
         })
 
-        return type(name, chain, mappings)
+        new_cls = type(name, chain, mappings)
+        if mappings.get('__singleton__') is True:
+            return new_cls()
+        else:
+            return new_cls
 
 
 ## BidirectionalEnum
@@ -449,6 +453,7 @@ class BidirectionalEnum(object):
 
     ''' Small and simple datastructure for mapping static flags to smaller values. '''
 
+    __singleton__ = True
     __metaclass__ = ProxiedStructure
 
     def reverse_resolve(self, code):
@@ -467,6 +472,7 @@ class BidirectionalEnum(object):
             return self.__getattr__(flag)
         return False
 
+    @classmethod
     def __serialize__(self):
 
         ''' Flatten down into a structure suitable for storage/transport. '''
