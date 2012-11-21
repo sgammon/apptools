@@ -441,10 +441,7 @@ class ProxiedStructure(type):
         })
 
         new_cls = type(name, chain, mappings)
-        if mappings.get('__singleton__') is True:
-            return object.__new__(new_cls)
-        else:
-            return new_cls
+        return new_cls
 
 
 ## BidirectionalEnum
