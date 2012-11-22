@@ -386,6 +386,7 @@ class ConfigProxy(object):
             self._lookup.add(item)
         self.logging.info("Config write: '%s'=>'%s'." % (item, value))
         self._config[item] = value
+        self._oc.append((item, value))
         return value
 
     def __contains__(self, item):
@@ -399,7 +400,7 @@ class ConfigProxy(object):
         ''' Recursively update config, from target `mapping`. '''
 
         if not isinstance(mapping, dict):
-            return b
+            return mapping
         if rov is None:
             rov = dict(self._config.items()[:])
         for k, v in mapping.iteritems():
@@ -421,3 +422,16 @@ class ConfigProxy(object):
 
         self.logging.info("Config access: '%s'." % name)
         return self._config.get(name, default)
+
+    def items(self):
+
+        ''' Retrieve a set of (key, value) tuples. '''
+
+        return [i for i in self._oc]
+
+    def iteritems(self):
+
+        ''' Generate a set of (key, value) tuples. '''
+
+        for i in self._oc:
+            yield i
