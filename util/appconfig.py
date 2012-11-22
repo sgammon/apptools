@@ -435,3 +435,29 @@ class ConfigProxy(object):
 
         for i in self._oc:
             yield i
+
+    def keys(self):
+
+        ''' Retrieve a set of this config's keys. '''
+
+        return self._lookup
+
+    def iterkeys(self):
+
+        ''' Generate a set of this config's keys. '''
+
+        for i in self._lookup:
+            yield i
+
+    def values(self):
+
+        ''' Retrieve a set of this config's values. '''
+
+        return [v for k, v in self._oc]
+
+    def itervalues(self):
+
+        ''' Generate a set of this config's values. '''
+
+        for k, v in self._oc:
+            yield v
