@@ -66,7 +66,7 @@ if appfactory and isinstance(appfactory, type(os)):
 
     ## Root Abstract Platform - AppFactory
     class AbstractPlatformHandler(BaseObject, RequestHandler, integration.AppFactoryMixin):
-    
+
         ''' Injects AppFactory configuration, shortcut, and state properties. '''
 
         _appfactory_enabled = True
@@ -75,7 +75,7 @@ else:
 
     ## Vanilla Root Abstract Platform
     class AbstractPlatformHandler(BaseObject, RequestHandler):
-    
+
         ''' Used as a base platform handler when no platform integration is enabled. '''
 
         _appfactory_enabled = False
