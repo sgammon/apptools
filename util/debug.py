@@ -173,7 +173,7 @@ class AppToolsLogger(AppToolsLoggingEngine):
             if module is not None:
                 out_message.append('[' + str(module) + ']')
             out_message.append(message)
-            return self.provider.get(severity)(' '.join(out_message))
+            print "%s: %s" % (severity.upper(), ' '.join(out_message))
 
     def dev(self, message, module=None):
 
