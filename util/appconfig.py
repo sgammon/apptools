@@ -15,9 +15,6 @@ import copy
 import webapp2
 import hashlib
 
-# AppTools Util
-from apptools.util import debug
-
 # Constants
 _DEFAULT_CONFIG = {
 
@@ -347,6 +344,7 @@ class ConfigProxy(object):
 
         ''' Named logging pipe. '''
 
+        from apptools.util import debug
         self.debug = self._config.get('apptools.system', {}).get('config', {}).get('debug', False)
         return debug.AppToolsLogger(path='app', name='Config')._setcondition(self.debug)
 
