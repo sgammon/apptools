@@ -12,13 +12,14 @@ sequence.
 '''
 
 # Base Imports
+import os
 import logging
 
 # Exceptions
 from apptools.exceptions import AppException
 
 # Debug mode
-debug = os.environ.get('SERVER_SOFTWARE').startswith('Dev')
+debug = os.environ.get('SERVER_SOFTWARE', 'Development/1.0').startswith('Dev')
 
 # Datastructures
 from apptools.util.datastructures import DictProxy
