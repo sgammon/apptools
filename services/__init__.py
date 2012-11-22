@@ -1027,7 +1027,7 @@ flags = datastructures.DictProxy({
 
 
 ## rpcmethod - Wrap a classmethod for use with AppTools thimodels, optionally enforcing logon.
-def rpcmethod(input, output=None, authenticated=True):
+def rpcmethod(input, output=None, authenticated=False):
 
     ''' Protect a service method from anonymous access. '''
 
@@ -1054,7 +1054,12 @@ def rpcmethod(input, output=None, authenticated=True):
                 user = self.api.users.get_current_user()
                 if not user:
                     raise self.LoginRequired("Woops! Only logged in users can do that!")
-                return fn(self, request, user)
-            return fn(self, request)
+                result = fn(self, request, user)
+            else:
+                result = fn(self, request)
+            if isinstance(result, model.ThinModel):
+                return result.to_message()
+            else:
+                return result
         return wrapped
     return make_rpc_method

@@ -55,7 +55,7 @@ _DEFAULT_CONFIG = {
         'default': 'ndb',  # default storage engine
 
         'engines': [
-            {'name': 'NDB', 'enabled': True, 'path': 'apptools.model.adapter.ndb.NDB'},
+            {'name': 'NDB', 'enabled': False, 'path': 'apptools.model.adapter.ndb.NDB'},
             {'name': 'Redis', 'enabled': False, 'path': 'apptools.model.adapter.redis.Redis'},
             {'name': 'Memcache', 'enabled': False, 'path': 'apptools.model.adapter.memcache.Memcache'}
         ]
