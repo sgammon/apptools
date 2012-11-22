@@ -11,45 +11,47 @@ Holds builtin models that are used by AppTools or AppTools extensions.
 '''
 
 
-from apptools.model import ndb
+import datetime
+from apptools import model
 
 ## Builtin Models
 
 
 ## StoredAsset
 # This model keeps track of StoredAssets.
-class StoredAsset(ndb.Model):
+class StoredAsset(model.ThinModel):
 
     ''' This model keeps track of a single item uploaded to the Blobstore or Cloud Storage. '''
 
-    filename = ndb.StringProperty()
-    blobkey = ndb.BlobKeyProperty()
-    serve_url = ndb.StringProperty()
-    cdn_url = ndb.StringProperty()
-    content_type = ndb.StringProperty()
+    filename = basestring
+    blobkey = basestring, {'impl': 'BlobKeyProperty'}
+    serve_url = basestring
+    cdn_url = basestring
+    content_type = basestring
 
 
 ## UploadSession
 # This model keeps track of file upload sessions.
-class UploadSession(ndb.Model):
+class UploadSession(model.ThinModel):
 
     ''' This model keeps track of blobstore upload sessions. '''
 
-    token = ndb.StringProperty(indexed=True)
-    upload_url = ndb.StringProperty(indexed=False)
-    created = ndb.DateTimeProperty(indexed=False)
-    enable_cdn = ndb.BooleanProperty()
-    assets = ndb.KeyProperty(repeated=True)
-    backend = ndb.StringProperty(indexed=True, choices=['blobstore', 'cloud'])
-    status = ndb.StringProperty(choices=['pending', 'success', 'fail'], indexed=True)
-
+    token = basestring
+    upload_url = basestring
+    created = datetime.datetime, {'auto_now_add': True}
+    enable_cdn = bool
+    assets = basestring, {'impl': 'KeyProperty'}
+    backend = basestring, {'choices': ['blobstore', 'cloud']}
+    status = basestring, {'choices': ['pending', 'success', 'fail']}
+    
 
 ## PushSession
 # This model keeps track of async sessions established by the service layer.
-class PushSession(ndb.Model):
+class PushSession(model.ThinModel):
 
     ''' This model keeps track of async sessions established by the service layer. '''
 
-    seed = ndb.StringProperty()
-    token = ndb.StringProperty()
-    active = ndb.BooleanProperty(default=True, indexed=True)
+    seed = basestring
+    token = basestring
+    active = bool, {'default': True}
+

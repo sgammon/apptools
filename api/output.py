@@ -571,26 +571,31 @@ class OutputMixin(HandlerMixin):
 
         ''' Minify rendered template output. Override for custom minification function or monkeypatch to 'unicode' to disable completely. '''
 
-        import slimmer
+        try:
+            import slimmer
 
-        minify = unicode  # default to unicode
+        except ImportError as e:
+            self.logging.debug('Module `slimmer` not found. Skipping output minification.')
+            return unicode(rendered_template)
 
-        # Read minification config + setup minification handler
-        if self._outputConfig.get('minify', False) is True:
-            if content_type == 'text/html':
-                minify = slimmer.html_slimmer
-                self.logging.debug('Minifying with HTMLSlimmer...')
-            elif content_type == 'text/javascript':
-                from slimmer.js_function_slimmer import slim as slimjs
-                minify = slimjs
-                self.logging.debug('Minifying with SlimJS...')
-            elif content_type == 'text/css':
-                minify = slimmer.css_slimmer
-                self.logging.debug('Minifying with SlimCSS...')
-            else:
-                self.logging.debug('No minification enabled.')
+        else:
 
-        return minify(rendered_template)
+            # Read minification config + setup minification handler
+            if self._outputConfig.get('minify', False) is True:
+                if content_type == 'text/html':
+                    minify = slimmer.html_slimmer
+                    self.logging.debug('Minifying with HTMLSlimmer...')
+                elif content_type == 'text/javascript':
+                    from slimmer.js_function_slimmer import slim as slimjs
+                    minify = slimjs
+                    self.logging.debug('Minifying with SlimJS...')
+                elif content_type == 'text/css':
+                    minify = slimmer.css_slimmer
+                    self.logging.debug('Minifying with SlimCSS...')
+                else:
+                    self.logging.debug('No minification enabled.')
+
+            return minify(rendered_template)
 
     # Render a template, given a context, with Jinja2
     def render(self, path, context={}, elements={}, content_type='text/html', headers={}, **kwargs):

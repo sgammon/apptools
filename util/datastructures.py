@@ -13,8 +13,29 @@ Holds useful classes and code for managing/manipulating/using specialized datast
 import abc
 import logging
 
+
+## Sentinel
+# Small utility class used to create named marker objects.
+class Sentinel(object):
+
+    ''' Create a named sentinel object. '''
+
+    name = None
+
+    def __init__(self, name):
+
+        ''' Construct a new sentinel. '''
+
+        self.name = name
+
+    def __repr__(self):
+
+        ''' Represent this sentinel as a string. '''
+
+        return '<Sentinel "%s">' % self.name
+
 # Sentinels
-_EMPTY, _TOMBSTONE = object(), object()
+_EMPTY, _TOMBSTONE = Sentinel("EMPTY"), Sentinel("TOMBSTONE")
 
 
 ## UtilStruct
@@ -372,338 +393,348 @@ class StateManager(object):
 # Metaclass for doubly-indexed mappings. Used in BidirectionalEnum.
 class ProxiedStructure(type):
 
-	''' Metaclass for property-gather-enabled classes. '''
+    ''' Metaclass for property-gather-enabled classes. '''
 
-	def __new__(cls, name, chain, mappings):
+    def __new__(cls, name, chain, mappings):
 
-		''' Read mapped properties, store on the object, along with a reverse mapping. '''
+        ''' Read mapped properties, store on the object, along with a reverse mapping. '''
 
-		if name == 'ProxiedStructure':
-			return type(name, chain, mappings)
+        if name == 'ProxiedStructure':
+            return type(name, chain, mappings)
 
-		# Init calculated data attributes
-		mappings['_pmap'] = {}
-		mappings['_plookup'] = []
+        # Init calculated data attributes
+        mappings['_pmap'] = {}
+        mappings['_plookup'] = []
 
-		# Define __contains__ proxy
-		def _contains(proxied_o, flag_or_value):
+        # Define __contains__ proxy
+        def _contains(proxied_o, flag_or_value):
 
-			''' Bidirectionally-compatible __contains__ replacement. '''
+            ''' Bidirectionally-compatible __contains__ replacement. '''
 
-			return flag_or_value in proxied_o._plookup
+            return flag_or_value in proxied_o._plookup
 
-		# Define __getitem__ proxy
-		def _getitem(proxied_o, fragment):
+        # Define __getitem__ proxy
+        def _getitem(proxied_o, fragment):
 
-			''' Attempt to resolve the fragment by a forward, then reverse resolution chain. '''
+            ''' Attempt to resolve the fragment by a forward, then reverse resolution chain. '''
 
-			if proxied_o.__contains__(fragment):
+            if proxied_o.__contains__(fragment):
 
-				return proxied_o._pmap.get(fragment)
+                return proxied_o._pmap.get(fragment)
 
-		# Define __setitem__ proxy
-		def _setitem(proxied_o, n, v):
+        # Define __setitem__ proxy
+        def _setitem(proxied_o, n, v):
 
-			''' Block setitem calls, because this is a complicated object that is supposed to be a modelling tool only. '''
+            ''' Block setitem calls, because this is a complicated object that is supposed to be a modelling tool only. '''
 
-			raise NotImplemented
+            raise NotImplemented
 
-		# Map properties into data and lookup attributes
-		map(lambda x: [mappings['_pmap'].update(dict(x)), mappings['_plookup'].append([x[0][0], x[1][0]])],
-			(((attr, value), (value, attr)) for attr, value in mappings.items() if not attr.startswith('_')))
+        # Map properties into data and lookup attributes
+        map(lambda x: [mappings['_pmap'].update(dict(x)), mappings['_plookup'].append([x[0][0], x[1][0]])],
+            (((attr, value), (value, attr)) for attr, value in mappings.items() if not attr.startswith('_')))
 
-		# Map methods
-		mappings.update({
-			'__getitem__': _getitem,
-			'__setitem__': _setitem,
-			'__contains__': _contains
-		})
+        # Map methods
+        mappings.update({
+            '__getitem__': _getitem,
+            '__setitem__': _setitem,
+            '__contains__': _contains
+        })
 
-		return type(name, chain, mappings)
+        new_cls = type(name, chain, mappings)
+        return new_cls
 
 
 ## BidirectionalEnum
 # Simple datastructure for mapping small / useful values to larger ones.
 class BidirectionalEnum(object):
 
-	''' Small and simple datastructure for mapping static flags to smaller values. '''
+    ''' Small and simple datastructure for mapping static flags to smaller values. '''
 
-	__metaclass__ = ProxiedStructure
+    __singleton__ = True
+    __metaclass__ = ProxiedStructure
 
-	def reverse_resolve(self, code):
+    def reverse_resolve(self, code):
 
-		''' Resolve a mapping, by it's integer/string code. '''
+        ''' Resolve a mapping, by it's integer/string code. '''
 
-		if code in self:
-			return self._pmap[code]
-		return False
+        if code in self:
+            return self._pmap[code]
+        return False
 
-	def forward_resolve(self, flag):
+    def forward_resolve(self, flag):
 
-		''' Resolve a mapping, by it's string property name. '''
+        ''' Resolve a mapping, by it's string property name. '''
 
-		if flag in self.__dict__.keys():
-			return self.__getattr__(flag)
-		return False
+        if flag in self.__dict__.keys():
+            return self.__getattr__(flag)
+        return False
 
-	def __serialize__(self):
+    @classmethod
+    def __serialize__(self):
 
-		''' Flatten down into a structure suitable for storage/transport. '''
+        ''' Flatten down into a structure suitable for storage/transport. '''
 
-		return dict([(k, v) for k, v in self.__dict__ if not k.startswith('_')])
+        return dict([(k, v) for k, v in self.__dict__ if not k.startswith('_')])
 
-	def __json__(self):
+    def __json__(self):
 
-		''' Flatten down and serialize into JSON. '''
+        ''' Flatten down and serialize into JSON. '''
 
-		return self.__serialize__()
+        return self.__serialize__()
 
-	def __repr__(self):
+    def __repr__(self):
 
-		''' Display a string representation of a flattened self. '''
+        ''' Display a string representation of a flattened self. '''
 
-		return '::'.join([
-			"<%s" % self.__class__.__name__,
-			','.join([
-				block for block in ('='.join([str(k), str(v)]) for k, v in self.__serialize__().items())]),
-			"BiDirectional>"
-			])
+        return '::'.join([
+            "<%s" % self.__class__.__name__,
+            ','.join([
+                block for block in ('='.join([str(k), str(v)]) for k, v in self.__serialize__().items())]),
+            "BiDirectional>"
+            ])
 
 
 ## TrackedDictionary
 # Used in the upcoming Core Sessions API. Keeps track of an objects "dirtyness" (whether it has been modified since first population).
 class TrackedDictionary(object):
 
-	''' Keeps track of modifications and modified state for a dictionary. '''
+    ''' Keeps track of modifications and modified state for a dictionary. '''
 
-	__metaclass__ = abc.ABCMeta
+    __metaclass__ = abc.ABCMeta
 
-	__data = {}
-	__seen = set([])
-	__dirty = None
-	__mutations = []
+    __data = {}
+    __seen = set([])
+    __dirty = None
+    __mutations = []
 
-	def __init__(self, initial=None):
+    def __init__(self, initial=None):
 
-		''' Prepare internal data storage. '''
+        ''' Prepare internal data storage. '''
 
-		self.__data, self.__dirty, self.__seen, self.__mutations = initial if initial != None else {}, None, set([]), []
+        self.__data, self.__dirty, self.__seen, self.__mutations = initial if initial != None else {}, None, set([]), []
 
-	def __getitem__(self, key):
+    def __getitem__(self, key):
 
-		''' Retrieve from internal storage. '''
+        ''' Retrieve from internal storage. '''
 
-		value = self.__data.get(key, _EMPTY)
-		if value == _EMPTY:
-			raise KeyError(key)
-		return value
+        value = self.__data.get(key, _EMPTY)
+        if value == _EMPTY:
+            raise KeyError(key)
+        return value
 
-	def __setitem__(self, key, value):
+    def __setitem__(self, key, value):
 
-		''' Set a value in internal storage. '''
+        ''' Set a value in internal storage. '''
 
-		self.__data[key] = value
-		self.__seen.add(key)
+        self.__data[key] = value
+        self.__seen.add(key)
 
-		if self.__dirty is None:
-			self.__dirty = False
-		else:
-			self.__mutations.append((key, value))
-			self.__dirty = True
-		return
+        if self.__dirty is None:
+            self.__dirty = False
+        else:
+            self.__mutations.append((key, value))
+            self.__dirty = True
+        return
 
-	def __delitem__(self, key):
+    def __delitem__(self, key):
 
-		''' Remove an item from internal storage. '''
+        ''' Remove an item from internal storage. '''
 
-		if self.__contains__(key):
-			self.__mutations.append((key, _TOMBSTONE))
-			del self.__data[key]
-			self.__dirty = True
-			return
-		raise KeyError(key)
+        if self.__contains__(key):
+            self.__mutations.append((key, _TOMBSTONE))
+            del self.__data[key]
+            self.__dirty = True
+            return
+        raise KeyError(key)
 
-	def __nonzero__(self):
+    def __nonzero__(self):
 
-		''' Indicates whether this dictionary is empty or not. '''
+        ''' Indicates whether this dictionary is empty or not. '''
 
-		return False if self.__dirty is None else True
+        return False if self.__dirty is None else True
 
-	def __contains__(self, key):
+    def __contains__(self, key):
 
-		''' Indicate whether we have a key or not. '''
+        ''' Indicate whether we have a key or not. '''
 
-		return key in self.__seen
+        return key in self.__seen
 
-	def __len__(self):
+    def __len__(self):
 
-		''' Return the length of this TrackedDictionary. '''
+        ''' Return the length of this TrackedDictionary. '''
 
-		return len(self.__data.keys())
+        return len(self.__data.keys())
 
-	def __repr__(self):
+    def __repr__(self):
 
-		''' Properly allow serialization. '''
+        ''' Properly allow serialization. '''
 
-		return self.__data.__repr__()
+        return self.__data.__repr__()
 
-	def __iter__(self):
+    def __iter__(self):
 
-		''' Iterate over keys in internal storage. '''
+        ''' Iterate over keys in internal storage. '''
 
-		for k in self.__data.iterkeys():
-			yield k
+        for k in self.__data.iterkeys():
+            yield k
 
-	def __json__(self):
+    def __json__(self):
 
-		''' JSON hook. '''
+        ''' JSON hook. '''
 
-		return self.__data
+        return self.__data
 
-	@classmethod
-	def __subclasshook__(cls, other):
+    @classmethod
+    def __subclasshook__(cls, other):
 
-		''' Check if the provided object is TrackedDictionary. '''
+        ''' Check if the provided object is TrackedDictionary. '''
 
-		if cls is TrackedDictionary:
-			if any("reconcile" in i.__dict__ for i in other.__mro__):
-				return True
-		return NotImplemented
+        if cls is TrackedDictionary:
+            if any("reconcile" in i.__dict__ for i in other.__mro__):
+                return True
+        return NotImplemented
 
-	@abc.abstractmethod
-	def reconcile(self, target):
+    @abc.abstractmethod
+    def reconcile(self, target):
 
-		''' Flatten this object's mutation pool onto the target object. '''
+        ''' Flatten this object's mutation pool onto the target object. '''
 
-		raise NotImplementedError
+        raise NotImplementedError
 
-	def dirty(self):
+    def dirty(self):
 
-		''' Return this object's `dirty` status. '''
+        ''' Return this object's `dirty` status. '''
 
-		return self.__dirty
+        return self.__dirty
 
-	def mutations(self):
+    def mutations(self):
 
-		''' Return this object's mutation pool. '''
+        ''' Return this object's mutation pool. '''
 
-		return self.__mutations[:]
+        return self.__mutations[:]
 
-	def update(self, mapping):
+    def update(self, mapping):
 
-		''' Update internal values. '''
+        ''' Update internal values. '''
 
-		if isinstance(mapping, list):
-			mapping = dict(mapping)
+        if isinstance(mapping, list):
+            mapping = dict(mapping)
 
-		if self.__dirty is None:
-			self.__data.update(mapping)
-			map(lambda x: self.__seen.add(x), filter(lambda y: y not in self.__seen, mapping.iterkeys()))
-			self.__dirty = False
-		else:
-			for k, v in mapping.items():
-				self.__data[k] = v
+        if self.__dirty is None:
+            self.__data.update(mapping)
+            map(lambda x: self.__seen.add(x), filter(lambda y: y not in self.__seen, mapping.iterkeys()))
+            self.__dirty = False
+        else:
+            for k, v in mapping.items():
+                self.__data[k] = v
 
-				if k not in self.__seen:
-					self.__seen.add(k)
+                if k not in self.__seen:
+                    self.__seen.add(k)
 
-				self.__mutations.append((k, v))
-			self.__dirty = True
-		return self.__data
+                self.__mutations.append((k, v))
+            self.__dirty = True
+        return self.__data
 
-	def items(self):
+    def items(self):
 
-		''' Return a list of (keys, values). '''
+        ''' Return a list of (keys, values). '''
 
-		return self.__data.items()
+        return self.__data.items()
 
-	def keys(self):
+    def keys(self):
 
-		''' Return a list of all available keys. '''
+        ''' Return a list of all available keys. '''
 
-		return self.__data.keys()
+        return self.__data.keys()
 
-	def values(self):
+    def values(self):
 
-		''' Return a list of all available values. '''
+        ''' Return a list of all available values. '''
 
-		return self.__data.values()
+        return self.__data.values()
 
-	def iteritems(self):
+    def iteritems(self):
 
-		''' Yield (keys, values) one at a time. '''
+        ''' Yield (keys, values) one at a time. '''
 
-		for k, v in self.__data.iteritems():
-			yield k, v
+        for k, v in self.__data.iteritems():
+            yield k, v
 
-	def iterkeys(self):
+    def iterkeys(self):
 
-		''' Yield keys one at a time. '''
+        ''' Yield keys one at a time. '''
 
-		for k in self.__data.iterkeys():
-			yield k
+        for k in self.__data.iterkeys():
+            yield k
 
-	def itervalues(self):
+    def itervalues(self):
 
-		''' Yield values one at a time. '''
+        ''' Yield values one at a time. '''
 
-		for v in self.__data.itervalues():
-			yield v
+        for v in self.__data.itervalues():
+            yield v
 
-	def get(self, key, default=None):
+    def get(self, key, default=None):
 
-		''' Retrieve an item, safely, optionally returning `default` if no item could be found. '''
+        ''' Retrieve an item, safely, optionally returning `default` if no item could be found. '''
 
-		if self.__contains__(key):
-			return self.__data.get(key, default)
-		return default
+        if self.__contains__(key):
+            return self.__data.get(key, default)
+        return default
 
 
 ## PropertyDescriptor - utility class for wrapping a value + type pair, with options
 class PropertyDescriptor(object):
 
-	''' Utility class used to encapsulate a name, type, and set of options for a property on a data model. '''
+    ''' Utility class used to encapsulate a name, type, and set of options for a property on a data model. '''
 
-	__name = _EMPTY
-	__type = _EMPTY
-	__opts = _EMPTY
-	__value = _EMPTY
+    __null = True     # allow null values in this property
+    __name = _EMPTY   # name of the property
+    __type = _EMPTY   # basetype of the property
+    __opts = _EMPTY   # options for implementation classes
+    __value = _EMPTY  # the value of this property
 
-	def __init__(self, name, proptype, options, **kwargs):
+    def __init__(self, name, proptype, options, **kwargs):
 
-		''' Property initialized and descriptor class. '''
+        ''' Property initialized and descriptor class. '''
 
-		options.update(kwargs)
-		self.__name, self.__type, self.__opts = name, proptype, DictProxy(options)
+        options.update(kwargs)
+        self.__name, self.__type, self.__opts = name, proptype, DictProxy(options)
 
-	def __set__(self, instance, value):
+    def __set__(self, instance, value):
 
-		''' Set this property's internal value. '''
+        ''' Set this property's internal value. '''
 
-		# check type
-		if 'validate' not in self.__opts and 'typeless' not in self.__opts and self.__opts.get('typeless', False) != True:
-			if not isinstance(value, self.__type):
-				raise ValueError('Property "%s" on model instance "%s" only accepts values of type "%s".' % (self.__name, instance, self.__type))
-		else:
-			if not self.__opts.get('typeless', False):
-				value = self.__opts.validate(value)
+        # check type
+        if 'validate' not in self.__opts and 'typeless' not in self.__opts and self.__opts.get('typeless', False) != True:
+            if not isinstance(value, self.__type):
+                if value == None and self.__null:
+                    pass
+                else:
+                    raise ValueError('Property "%s" on model instance "%s" only accepts values of type "%s".' % (self.__name, instance, self.__type))
+        else:
+            if not self.__opts.get('typeless', False):
+                value = self.__opts.validate(value)
 
-		self.__value = value
-		return
+        self.__value = value
+        return
 
-	def __get__(self, instance, owner):
+    def __get__(self, instance, owner):
 
-		''' Get this property's internal value. '''
+        ''' Get this property's internal value. '''
 
-		# if empty, return None
-		if self.__value == _EMPTY:
-			return None
-		else:
-			return self.__value
+        # if empty, return None
+        if self.__value == _EMPTY:
+            if hasattr(instance, '__sentinel__'):
+                if instance.__sentinel__:
+                    return _EMPTY
+            return None
+        else:
+            return self.__value
 
-	def __delete__(self, instance):
+    def __delete__(self, instance):
 
-		''' Delete this property's internal value. '''
+        ''' Delete this property's internal value. '''
 
-		# set value to empty
-		self.__value = _EMPTY
+        # set value to empty
+        self.__value = _EMPTY

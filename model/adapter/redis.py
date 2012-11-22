@@ -1,127 +1,312 @@
 ## Base Imports
-import redis
+import base64
+import config
+import webapp2
 
 ## Model Imports
-from apptools.model.adapter import ModelAdapter
-from apptools.model.adapter import ModelKeyAdapter
+from apptools.util import json
+from apptools.util import debug
+from apptools.services import KeyMessage
+from apptools.model.adapter import StorageAdapter
+from apptools.model.adapter import ThinKeyAdapter
+from apptools.model.adapter import ThinModelAdapter
+
+## Gevent Compatibility
+try:
+    import geventredis as redis
+    _GEVENT_MODE = True
+
+except ImportError, e:
+    import redis
+    _GEVENT_MODE = False
 
 
-## RedisKey - adapts model keys to redis
-class RedisKey(ModelKeyAdapter):
+## RedisKeyAdapter - adapts model keys to redis
+class RedisKeyAdapter(ThinKeyAdapter):
 
-	''' Provides models with keys for use in Redis. '''
+    ''' Provides models with keys for use in Redis. '''
 
-	def get(self):
+    ## == AppTools Model Hooks == ##
+    @classmethod
+    def __inflate__(cls, raw):
 
-		''' Retrieve an entity from Redis by its key. '''
+        ''' Inflate a raw structure from Redis into a key. '''
 
-		pass
+        # decode key
+        chunks = []
+        for chunk in base64.b64decode(raw).split(':'):
+            chunks.append(base64.b64decode(chunk))
 
-	def get_async(self):
+        chunks = tuple(chunks)
 
-		''' Asynchronously retrieve an entity from Redis by its key. '''
+        # split key
+        if len(chunks) == 3:
+            ns, kind, id = chunks
 
-		pass
+        elif len(chunks) == 2:
+            kind, id = chunks
+            ns = None
 
-	def delete(self):
+        else:
+            raise ValueError("Could not decode raw key '%s' into RedisKey." % raw)
 
-		''' Delete an entity in Redis by its key. '''
+        # inflate into an object
+        return cls(namespace=ns, kind=kind, id=id, adapter=Redis, raw=raw)
 
-		pass
+    def __message__(self):
 
-	def delete_async(self):
+        ''' Convert this model into a structure suitable for transmission. '''
 
-		''' Asynchronously delete an entity from Redis by its key. '''
+        id_prop = 'name'
+        if isinstance(self.__id__, int):
+            id_prop = 'id'
 
-		pass
+        # construct and return keymessage
+        return KeyMessage(**{
+            'encoded': self.__value__,
+            'namespace': self.__namespace__,
+            'kind': self.__kind__,
+            id_prop: self.__id__
+        })
 
-	def id(self):
+    def __encode__(self):
 
-		''' Retrieve this key's string/integer ID. '''
+        ''' Encode this key as a base64 string. '''
 
-		pass
+        if self.__value__:
+            return self.__value__
 
-	def kind(self):
+        if not self.__id__:
+            raise ValueError("Cannot URLsafe an incomplete key.")
 
-		''' Retrieve this key's kind name. '''
+    ## == Datastore Methods == ##
+    def get(self):
 
-		pass
+        ''' Retrieve an entity from Redis by its key. '''
 
-	def parent(self):
+        return self.__adapter__.get(self)
 
-		''' Retrieve this key's parent key. '''
+    def delete(self):
 
-		pass
+        ''' Delete an entity in Redis by its key. '''
 
-	def pairs(self):
+        return self.__adapter__.get(self)
 
-		''' Retrieve this key's pairs. '''
+    ## == Internal Key Methods == ##
+    def id(self):
 
-		pass
+        ''' Retrieve this key's string/integer ID. '''
 
-	def app(self):
+        return self.__id__
 
-		''' Retrieve the app that created this key. '''
+    def kind(self):
 
-		pass
+        ''' Retrieve this key's kind name. '''
 
-	def urlsafe(self):
+        return self.__kind__
 
-		''' Generate a string representation of this key, suitable for use in a URL. '''
+    def parent(self):
 
-		pass
+        ''' Retrieve this key's parent key. '''
 
-	def flat(self):
+        return None
 
-		''' Flatten this key. '''
+    def pairs(self):
 
-		pass
+        ''' Retrieve this key's pairs. '''
+
+        # we don't have inheritance
+        return (self.__kind__, self.__id__)
+
+    def app(self):
+
+        ''' Retrieve the app that created this key. '''
+
+        return self.__app__
+
+    def urlsafe(self):
+
+        ''' Generate a string representation of this key, suitable for use in a URL. '''
+
+        if not self.__id__:
+            raise ValueError("Cannot urlsafe incomplete key.")
+
+        return self.__encode__()
+
+    def flat(self):
+
+        ''' Flatten this key. '''
+
+        if not self.__id__:
+            raise ValueError("Cannot flatten incomplete key.")
+
+        return [i for i in filter(lambda x: x is not None, [
+            self.__namespace__,
+            self.__kind__,
+            self.__id__
+        ])]
 
 
-## RedisAdapter - class that adapts thinmodels for storage in Redis
-class RedisAdapter(ModelAdapter):
+## RedisModelAdapter - class that adapts thinmodels for storage in Redis
+class RedisModelAdapter(ThinModelAdapter):
 
-	''' Adapts ThinModels to use Redis for storage. '''
+    ''' Adapts ThinModels to use Redis for storage. '''
 
-	def __json__(self):
 
-		''' Return a JSON representation of this model. '''
+    ## == AppTools Model Hooks == ##
+    @classmethod
+    def __inflate__(cls, key, struct):
 
-		pass
+        ''' Inflate a raw Redis structure into a model. '''
 
-	def __message__(self):
+        properties = {}
 
-		''' Return a structured representation of this model, suitable for transmission. '''
+        if isinstance(struct, list) and isinstance(struct[0], basestring):
+            key = None
+            for i in struct:
+                if key:
+                    properties[key] = i
+                    key = None
+                else:
+                    key = i
 
-		pass
+        elif isinstance(struct, list) and isinstance(struct[0], tuple):
+            properties = dict(struct)
 
-        def key(self):
-		
-		''' Retrieve this entity's key. '''
+        elif isinstance(struct, dict):
+            properties = struct
 
-		pass
+        pmap = dict([(n, t) for (n, t, o) in cls.__pmap__[:]])
 
-        def get(self):
+        filtered = {}
+        for k in properties:
+            if k in cls.__lookup__:
 
-		''' Retrieve an entity from storage. '''
+                try:
+                    if pmap[k] in frozenset([basestring, str, unicode]):
+                        filtered[k] = properties[k]
 
-		pass
+                    elif pmap[k] is int:
+                        filtered[k] = int(properties[k])
 
-        def put(self):
+                    elif pmap[k] is float:
+                        filtered[k] = float(properties[k])
 
-		''' Store/save an entity in storage. '''
+                    elif pmap[k] is bool:
+                        filtered[k] = bool(properties[k])
 
-		pass
+                    elif properties[k] == _NONE_SENTINEL:
+                        filtered[k] = None
 
-        def delete(self):
+                except ValueError, e:
+                    raise ValueError("Error decoding property '%s' into object value. Encountered type mismatch with model prop type '%s'." % (k, pmap[k]))
 
-		''' Delete a model from storage. '''
+        return cls(key=RedisKey.__inflate__(key), **filtered)
 
-		pass
+    def __message__(self):
 
-        def query(self):
+        ''' Return a structured representation of this model, suitable for transmission. '''
 
-		''' Start a query from this ThinModel. '''
+        pass
 
-		pass
+    def __json__(self):
 
+        ''' Return a JSON representation of this model. '''
+
+        pass
+
+    ## == Internal Model Methods == ##
+    @property
+    def key(self):
+
+        ''' Retrieve this entity's key. '''
+
+        pass
+
+    def query(self):
+
+        ''' Start a query from this ThinModel. '''
+
+        pass
+
+
+## Redis - central controller for redis interactions
+class Redis(StorageAdapter):
+
+    ''' Controller for adapting models to Redis. '''
+
+    redis = redis
+
+    __db = 0
+    __host = None
+    __port = None
+    __socket = None
+    __compatible = False
+    __connection = None
+
+    key = RedisKeyAdapter
+    model = RedisModelAdapter
+
+    @webapp2.cached_property
+    def config(self):
+
+        ''' Named config shortcut. '''
+
+        return config.config.get('apptools.model.adapters.redis.Redis', {})
+
+    @webapp2.cached_property
+    def logging(self):
+
+        ''' Named logging shortcut. '''
+
+        return debug.AppToolsLogger(path='apptools.model.adapter.redis', name='Redis')._setcondition(self.config.get('debug', True))
+
+    def __init__(self, host=None, port=None, socket=None, db=0):
+
+        ''' Initialize a new Redis adapter. '''
+
+        if host or port:
+            self.__host, self.__port, self.__socket, self.__db = host, port, socket, db
+
+        else:
+            active = self.config.get('servers', {}).get(self.config.get('servers', {}).get('active'), None)
+            self.__host, self.__port, self.__socket, self.__db = active.get('host', None), active.get('port', None), active.get('socket', None), active.get('db', 0)
+
+        if ((not self.__host) or (not self.__port)) and not self.__socket:
+            self.__compatible = False
+            if config.debug:
+                raise RuntimeError("Redis is not supported by config/libraries in the current installation. Please disable the Redis adapter.")
+        return
+
+    def get(self, key, **opts):
+
+        ''' Retrieve one or multiple entities by key. '''
+
+        if isinstance(key, basestring):
+            key = self.key.__inflate__(key)
+
+        self.logging.info('RECEIVED GET REQUEST FOR KEY "%s".' % key)
+        return key
+
+    def put(self, entity, **opts):
+
+        ''' Persist one or multiple entities. '''
+
+        self.logging.info('RECEIVED PUT REQUEST: "%s".' % entity)
+        self.logging.info('RECEIVED PUT OPTS: "%s".' % opts)
+
+        return entity
+
+    def delete(self, target, **opts):
+
+        ''' Delete one or multiple entities. '''
+
+
+    def query(self, kind=None, **opts):
+
+        ''' Start building a query, optionally over a kind. '''
+
+
+    def kinds(self, **opts):
+
+        ''' Retrieve a list of active kinds in this storage backend. '''

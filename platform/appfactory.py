@@ -179,7 +179,7 @@ class AppFactory(Platform):
         ''' Check config to see if AppFactory integration is enabled. '''
 
         _logger.info('Checking environment for AppFactory compatibility.')
-        enabled = config.config.get(cls.l9_config_path).get('enabled', False)
+        enabled = config.config.get(cls.l9_config_path, {}).get('enabled', False)
 
         if enabled:
             _logger.info('AppFactory compatibility tests passed, integration enabled.')

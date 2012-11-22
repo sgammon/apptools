@@ -38,11 +38,10 @@ class PlatformInjector(object):
 
         ''' Configure an injection sequence. '''
 
-        cls.discover()
-        return cls.inject(target)
+        return cls.discover().inject(target)
 
     @classmethod
-    def discover(cls):
+    def discover(cls, storage=False):
 
         ''' Discover installed platforms, cache them globally. '''
 
@@ -59,10 +58,10 @@ class PlatformInjector(object):
 
         # If we have everything cached, just return it
         if len(_adapters) > 0 and len(_platforms) > 0:
-            adapters = _adapters
-            platforms = _platforms
+            cls.adapters = _adapters
+            cls.platforms = _platforms
 
-            return platforms, adapters
+            return cls
 
         # Build our list of platforms/adapters manually
         else:
@@ -183,3 +182,16 @@ class PlatformInjector(object):
 
         ## Done! Return prepped Platform injectee
         return target
+
+
+## DatamodelInjector
+# Adds support to AppTools model classes for storage backend adapters.
+class DatamodelInjector(PlatformInjector):
+
+    ''' Platform injector for AppTools models, with added support for storage engine management. '''
+
+    def __new__(cls, target):
+
+        ''' Configure an injection sequence. '''
+
+        return cls.discover(storage=True).inject(target)

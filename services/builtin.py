@@ -343,35 +343,35 @@ class AssetsService(BaseService, AssetsMixin):
     ''' Builtin API service for retrieving asset URLs. Exposed publicly by default (see config/services.py). '''
 
     @remote.method(ImageRequest, AssetResponse)
-    def image_url(self, request):
+    def image(self, request):
 
         ''' Resolve and return an image URL. '''
 
         pass
 
     @remote.method(AssetRequest, AssetResponse)
-    def script_url(self, request):
+    def script(self, request):
 
         ''' Resolve and return a URL to a script. '''
 
         pass
 
     @remote.method(AssetRequest, AssetResponse)
-    def style_url(self, request):
+    def style(self, request):
 
         ''' Resolve and return a URL to a stylesheet. '''
 
         pass
 
     @remote.method(BlobRequest, AssetResponse)
-    def blob_url(self, request):
+    def blob(self, request):
 
         ''' Resolve and return a blob URL. '''
 
         pass
 
     @remote.method(BlobRequest, AssetResponse)
-    def storage_url(self, request):
+    def storage(self, request):
 
         ''' Resolve and return a URL from Google Cloud Storage. '''
 
@@ -385,7 +385,7 @@ class AssetsService(BaseService, AssetsMixin):
         pass
 
     @remote.method(UploadURLRequest, UploadURLResponse)
-    def generate_upload_url(self, request):
+    def upload(self, request):
 
         ''' Generate and return a blobstore upload URL. '''
 

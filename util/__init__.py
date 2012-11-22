@@ -12,6 +12,7 @@ belong anywhere more-specific in AppTools.
 '''
 
 ## Base Imports
+import os
 import config
 import logging as std_logging
 
@@ -45,31 +46,42 @@ else:
     libjson = std_json  # we're running on >= py 2.7. life is gewd
 
 ## Globals
-_api_cache = {}
+_MODULE_LOADER_CACHE = {}
+_MODULE_LOADER_SENTINEL = type(os)
+
 logging = AppToolsLogger('apptools.util')
 
 
 ## _loadAPIModule
-# Take an entry from one of the package bridges, and lazy-load it into _api_cache.
+# Take an entry from one of the package bridges, and lazy-load it into _MODULE_LOADER_CACHE.
 def _loadModule(entry):
 
     ''' Callback to lazy-load an API module in tuple(path, item) format. '''
 
-    global _api_cache
+    global _MODULE_LOADER_CACHE
 
-    if entry not in _api_cache:
+    if entry not in _MODULE_LOADER_CACHE:
+
+        # tuple syntax - ('path.to.module', 'ModuleOrClassName')
         if isinstance(entry, tuple):
             path, name = entry
             mod = __import__(path, globals(), locals(), [name])
-            _api_cache[entry] = getattr(mod, name)
+            _MODULE_LOADER_CACHE[entry] = getattr(mod, name)
+
+        # string syntax - "path.to.module.ModuleOrClassName"
         elif isinstance(entry, basestring):
             mod = __import__(entry, globals(), locals(), ['*'])
-            _api_cache[entry] = mod
+            _MODULE_LOADER_CACHE[entry] = mod
+
+        # module syntax - you're kind of an idiot.
+        elif isinstance(entry, _MODULE_LOADER_SENTINEL):
+            return module
+
         else:
             logging.error('Lazyloader failed to resolve module for shortcut: "' + str(entry) + '".')
             raise ImportError("Could not resolve module for entry '" + str(entry) + "'.")
 
-    return _api_cache[entry]
+    return _MODULE_LOADER_CACHE[entry]
 
 ## Custom JSON Encoder/Decoder
 class AppToolsJSONEncoder(libjson.JSONEncoder):

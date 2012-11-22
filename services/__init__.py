@@ -30,6 +30,7 @@ except:
 from protorpc import remote
 from protorpc import messages as pmessages
 from protorpc import message_types as pmessage_types
+from protorpc.message_types import VoidMessage
 
 # Service handlers
 from protorpc.webapp import service_handlers
@@ -50,22 +51,30 @@ from apptools.util import _loadModule
 from apptools.util import debug
 from apptools.util import datastructures
 
-# Field Imports
-from apptools.services import fields as afields
-from apptools.services import decorators as adecorators
-
-# Decorator Imports
-from apptools.services.decorators import audit
-from apptools.services.decorators import caching
-from apptools.services.decorators import security
-
 # Globals
-decorate = adecorators
 _global_debug = config.debug
-logging = debug.AppToolsLogger('apptools.services', 'ServiceLayer')
+logging = debug.AppToolsLogger('apptools.services', 'ServiceLayer')._setcondition(_global_debug)
 
 # Service layer middleware object cache
 _middleware_cache = {}
+
+
+#+#+#+ ==== Handy Message Fields ==== +#+#+#
+
+## VariantField
+# A hack that allows a fully-variant field in ProtoRPC message classes.
+class VariantField(pmessages.Field):
+
+    ''' Field definition for a completely variant field. '''
+
+    VARIANTS = frozenset([pmessages.Variant.DOUBLE, pmessages.Variant.FLOAT, pmessages.Variant.BOOL,
+                          pmessages.Variant.INT64, pmessages.Variant.UINT64, pmessages.Variant.SINT64,
+                          pmessages.Variant.INT32, pmessages.Variant.UINT32, pmessages.Variant.SINT32,
+                          pmessages.Variant.STRING, pmessages.Variant.MESSAGE, pmessages.Variant.BYTES, pmessages.Variant.ENUM])
+
+    DEFAULT_VARIANT = pmessages.Variant.STRING
+
+    type = (int, long, bool, basestring, dict, pmessages.Message)
 
 
 #+#+#+ ==== Handy Message Classes ==== +#+#+#
@@ -94,35 +103,6 @@ class Echo(pmessages.Message):
     message = pmessages.StringField(1, default='Hello, World!')
 
 
-## Service flags
-# Decorate remote methods with these flags to annotate them with specific policies/functionality.
-flags = datastructures.DictProxy({
-
-    ''' Shortcut to remote method/service decorator flags. '''
-
-    # Decorators related to logging/backend output
-    'audit': datastructures.DictProxy({
-        'monitor': audit.Monitor,
-        'debug': audit.Debug,
-        'loglevel': audit.LogLevel,
-    }),
-
-    # Decorators related to caching, for performance
-    'caching': datastructures.DictProxy({
-        'local': caching.LocalCacheable,
-        'memcache': caching.MemCacheable,
-        'cacheable': caching.Cacheable,
-    }),
-
-    # Decorators related to access & security
-    'security': datastructures.DictProxy({
-        'authorize': security.Authorize,
-        'authenticate': security.Authenticate,
-        'admin': security.AdminOnly
-    })
-
-})
-
 ## Message Classes
 # A nice, universal mapping to all available ProtoRPC message field types.
 messages = datastructures.DictProxy({
@@ -143,7 +123,7 @@ messages = datastructures.DictProxy({
     'FieldList': pmessages.FieldList,
 
     # Field shortcuts
-    'VariantField': afields.VariantField,
+    'VariantField': VariantField,
     'BooleanField': pmessages.BooleanField,
     'BytesField': pmessages.BytesField,
     'EnumField': pmessages.EnumField,
@@ -307,7 +287,7 @@ if appfactory and isinstance(appfactory, type(os)):
 
     ## Root Abstract Platform - AppFactory
     class AbstractPlatformServiceHandler(BaseObject, service_handlers.ServiceHandler, integration.AppFactoryMixin):
-    
+
         ''' Injects AppFactory configuration, shortcut, and state properties. '''
 
         _appfactory_enabled = True
@@ -316,7 +296,7 @@ else:
 
     ## Vanilla Root Abstract Platform
     class AbstractPlatformServiceHandler(BaseObject, service_handlers.ServiceHandler):
-    
+
         ''' Used as a base platform service handler when no platform integration is enabled. '''
 
         _appfactory_enabled = False
@@ -484,6 +464,23 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
             else:
                 return self.interpreted_body
 
+    def __send_error(self, http_code, status_state, error_message, mapper, error_name=None):
+
+        ''' Send an error RPC response. '''
+
+        status = remote.RpcStatus(state=status_state, error_message=error_message, error_name=error_name)
+        mapper.build_response(self, status)
+
+        self.response.headers['Content-Type'] = mapper.default_content_type
+        self.logging.error(error_message)
+
+        response_content = self.response.body
+        padding = ' ' * max(0, 512 - len(response_content))
+
+        self.response.write(padding)
+        self.response.set_status(http_code, error_message)
+        return
+
     def handle(self, http_method, service_path, remote_method):
 
         ''' Handle a remote service request. '''
@@ -545,21 +542,21 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
                     method_info = method.remote
                 except AttributeError, err:
                     self.setstatus('failure')
-                    self._ServiceHandler__send_error(400, remote.RpcState.METHOD_NOT_FOUND_ERROR, 'Unrecognized RPC method: %s' % remote_method, mapper)
+                    self.__send_error(400, remote.RpcState.METHOD_NOT_FOUND_ERROR, 'Unrecognized RPC method: %s' % remote_method, mapper)
                     return
 
                 request = mapper.build_request(self, method_info.request_type)
 
             except (RequestError, pmessages.DecodeError), err:
                 self.setstatus('failure')
-                self._ServiceHandler__send_error(400, remote.RpcState.REQUEST_ERROR, 'Error parsing RPC request (%s)' % err, mapper)
+                self.__send_error(400, remote.RpcState.REQUEST_ERROR, 'Error parsing RPC request (%s)' % err, mapper)
                 return
 
             try:
                 response = method(request)
             except self.ApplicationError, err:
                 self.setstatus('failure')
-                self._ServiceHandler__send_error(400, remote.RpcState.APPLICATION_ERROR, err.message, mapper, err.error_name)
+                self.__send_error(400, remote.RpcState.APPLICATION_ERROR, err.message, mapper, err.error_name)
                 return
 
             mapper.build_response(self, response)
@@ -571,7 +568,7 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
             self.setstatus('failure')
             self.logging.error('An unexpected error occured when handling RPC: %s' % err, exc_info=1)
             self.logging.exception('Unexpected service exception of type "%s": "%s".' % (type(err), str(err)))
-            self._ServiceHandler__send_error(500, remote.RpcState.SERVER_ERROR, 'Internal Server Error', mapper)
+            self.__send_error(500, remote.RpcState.SERVER_ERROR, 'Internal Server Error', mapper)
             if config.debug:
                 raise
             else:
@@ -783,3 +780,286 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
         self.log('Handler prepared. Dispatching...')
 
         service_handler.dispatch(self, service)
+
+
+## RemoteMethodDecorator
+# This base class is for decorators that annotate remote service methods
+class RemoteMethodDecorator(object):
+
+    """ Indicates a class that can be used to decorate a remote method (a function on a class that responds to a remote API request). """
+
+    args = None
+    kwargs = None
+    request = None
+    service = None
+    callback = None
+
+    #lib = _libbridge
+    #api = _apibridge
+    #ext = _extbridge
+    #util = _utilbridge
+
+    def __init__(self, *args, **kwargs):
+
+        """ Take in positional and keyword arguments when it is used as a decorator. """
+
+        self.args = args
+        self.kwargs = kwargs
+
+    def __call__(self, fn):
+
+        """ When the target remote method is called... """
+
+        def wrapped(service_obj, request):
+
+            """ Redirect the function call to our decorator's execute call (this enables us to do things like caching inside a decorator, by hijacking the remote method call and injecting a return value from the cache)... """
+
+            self.callback = fn
+            self.service = service_obj
+            self.request = request
+
+            for n in set(dir(fn)) - set(dir(self)):
+                setattr(self, n, getattr(fn, n))
+
+            return self.execute(*self.args, **self.kwargs)  # <-- redirect to our execute()
+
+        return wrapped
+
+    def execute(self, *args, **kwargs):
+
+        """ Default decorator execution case: run the remote method (or, pass it down the chain to the next decorator) and return the result. """
+
+        return self.execute_remote()
+
+    def execute_remote(self):
+
+        """ Shortcut to execute the remote method/next decorator and return the result. """
+
+        return self.callback(self.service, self.request)
+
+    def __repr__(self):
+
+        """ Pleasant for debugging. """
+
+        return self.callback
+
+
+#### ==== Auditing Flags ==== ####
+
+## Monitor
+# Monitor individual and aggregate request data, and log to datastore or memcache
+class Monitor(RemoteMethodDecorator):
+
+    """ Log remote requests when they happen, and optionally store stats/usage per API consumer in the datastore and memcache. """
+
+    def execute(self, *args, **kwargs):
+        return self.execute_remote()
+
+
+## Debug
+# Set debug to true or false in the scope of a single remote method
+class Debug(RemoteMethodDecorator):
+
+    """ Set debug mode to true or false for a remote method. Adds extra debug flags to the response envelope and ups the logging level. """
+
+    def execute(self):
+        config.debug = True
+        result = self.execute_remote()
+        config.debug = False
+        return result
+
+
+## LogLevel
+# Set the minimum log severity in the scope of a single remote method
+class LogLevel(RemoteMethodDecorator):
+
+    """ Manually set the logging level for a remote service method. """
+
+    def execute(self):
+        return self.execute_remote()
+
+
+#### ==== Caching Flags ==== ####
+
+## Cacheable
+# Specify a method's caching policy for all caching layers.
+class Cacheable(RemoteMethodDecorator):
+
+    """ Indicate that the response from a remote method is cacheable locally on the browser side. """
+
+    def execute(self, *args, **kwargs):
+        return self.execute_remote()
+
+
+## LocalCacheable
+# Specify a method's caching policy for threadlocal/global layers.
+class LocalCacheable(RemoteMethodDecorator):
+
+    """ Indicate that the response from a remote method is cacheable in instance memory (fastcache). """
+
+    def execute(self):
+        return self.execute_remote()
+
+
+## MemCacheable
+# Specify a method's caching policy for memcaching.
+class MemCacheable(RemoteMethodDecorator):
+
+    """ Indicate that the response from a remote method is memcacheable. """
+
+    def execute(self):
+        return self.execute_remote()
+
+
+#### ==== Security Flags ==== ####
+
+## Blacklist
+# Specify that a remote service client cannot be on a blacklist in order to execute successfully.
+class Blacklist(RemoteMethodDecorator):
+
+    """ Indicate that a remote method must be matched against a blacklist. """
+
+    def execute(self, *args, **kwargs):
+        return self.execute_remote()
+
+
+## Whitelist
+# Specify that a remote service client must be on a whitelist in order to execute successfully.
+class Whitelist(RemoteMethodDecorator):
+
+    """ Indicate that a remote method must be matched against a whitelist. """
+
+    def execute(self, *args, **kwargs):
+        return self.execute_remote()
+
+
+## Authorize
+# Specify that a remote service client must authorize via an ACL or other grouping of users.
+class Authorize(RemoteMethodDecorator):
+
+    """ Indicate that a remote method requires authorization. """
+
+    def execute(self, *args, **kwargs):
+        return self.execute_remote()
+
+
+## Authenticate
+# Specify that a remote service client must authenticate before executing remote methods.
+class Authenticate(RemoteMethodDecorator):
+
+    """ Indicate that a remote method requires authentication. """
+
+    def execute(self):
+        return self.execute_remote()
+
+
+## AdminOnly
+# Specify that a remote service method can be run by AppEngine-registered admins only.
+class AdminOnly(RemoteMethodDecorator):
+
+    """ Indicate that a remote method requires an admin to be logged in. """
+
+    def execute(self):
+        if self.api.users.is_current_user_admin():
+            return self.execute_remote()
+        else:
+            raise Exception()
+
+
+#### ==== Decorator Shortcuts ==== ####
+
+# Audit decorators
+audit = datastructures.DictProxy({
+
+    'Monitor': Monitor,
+    'Debug': Debug,
+    'LogLevel': LogLevel,
+
+})
+
+# Caching decorators
+caching = datastructures.DictProxy({
+
+    'Cacheable': Cacheable,
+    'LocalCacheable': LocalCacheable,
+    'MemCacheable': MemCacheable,
+
+})
+
+# Security decorators
+security = datastructures.DictProxy({
+
+    'Authorize': Authorize,
+    'Authenticate': Authenticate,
+    'AdminOnly': AdminOnly
+
+})
+
+
+## Service flags
+# Decorate remote methods with these flags to annotate them with specific policies/functionality.
+flags = datastructures.DictProxy({
+
+    ''' Shortcut to remote method/service decorator flags. '''
+
+    # Decorators related to logging/backend output
+    'audit': datastructures.DictProxy({
+        'monitor': audit.Monitor,
+        'debug': audit.Debug,
+        'loglevel': audit.LogLevel,
+    }),
+
+    # Decorators related to caching, for performance
+    'caching': datastructures.DictProxy({
+        'local': caching.LocalCacheable,
+        'memcache': caching.MemCacheable,
+        'cacheable': caching.Cacheable,
+    }),
+
+    # Decorators related to access & security
+    'security': datastructures.DictProxy({
+        'authorize': security.Authorize,
+        'authenticate': security.Authenticate,
+        'admin': security.AdminOnly
+    })
+
+})
+
+
+## rpcmethod - Wrap a classmethod for use with AppTools thimodels, optionally enforcing logon.
+def rpcmethod(input, output=None, authenticated=False):
+
+    ''' Protect a service method from anonymous access. '''
+
+    from apptools import model
+
+    # convert models to messages
+    if issubclass(input, model.ThinModel):
+        input = input.to_message_model()
+
+    if output is None:
+        output = input
+
+    def make_rpc_method(fn):
+
+        ''' Closure that makes a closured RPC method. '''
+
+        @remote.method(input, output)
+        def wrapped(self, request):
+
+            ''' Wrap remote method and throw an exception if no user is present. '''
+
+            # pull user
+            if authenticated:
+                user = self.api.users.get_current_user()
+                if not user:
+                    raise self.LoginRequired("Woops! Only logged in users can do that!")
+                result = fn(self, request, user)
+            else:
+                result = fn(self, request)
+            if isinstance(result, model.ThinModel):
+                return result.to_message()
+            else:
+                return result
+        return wrapped
+    return make_rpc_method
