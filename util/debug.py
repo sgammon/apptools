@@ -18,7 +18,7 @@ import logging
 from apptools.exceptions import AppException
 
 # Debug mode
-from apptools.util.appconfig import debug
+debug = os.environ.get('SERVER_SOFTWARE').startswith('Dev')
 
 # Datastructures
 from apptools.util.datastructures import DictProxy
