@@ -11,8 +11,9 @@ Copyright 2012, momentum labs (http://www.momentum.io)
 '''
 
 ## Base Imports
+import os
+import sys
 import time
-import config
 import logging
 
 ## Try the app bootstrapper, if it's around
@@ -21,11 +22,26 @@ try:
     bootstrap.AppBootstrapper.prepareImports()
 except:
     logging.warning('Could not resolve app bootstrapper.')
-    if config.debug:
-        raise
-    else:
-        pass
+    pass
 
+## AppTools Util
+from apptools.util import debug
+from apptools.util import appconfig
+
+try:
+    import config
+except ImportError as e:
+    config = appconfig.ConfigProxy(appconfig._DEFAULT_CONFIG)
+    config.debug = os.environ.get('SERVER_SOFTWARE').startswish('Dev')
+
+    ## Patch sysmodules
+    appconfig.config = config
+    appconfig.debug = debug
+    sys.modules['config'] = appconfig
+
+else:
+    config = appconfig.ConfigProxy(appconfig._DEFAULT_CONFIG).overlay(config.config)
+    debug = config.debug
 
 wallclock = []
 

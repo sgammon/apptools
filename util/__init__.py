@@ -13,7 +13,6 @@ belong anywhere more-specific in AppTools.
 
 ## Base Imports
 import os
-import config
 import logging as std_logging
 
 ## Export Util Controllers
@@ -36,8 +35,7 @@ except ImportError:
             from django.utils import json as djson
         except ImportError:
             std_logging.critical('No valid JSON adapter found. This could cause serious problems...')
-            if config.debug:
-                raise
+            raise
         else:
             libjson = djson  # apparently, simplejson is NOT installed and we're running on py < 2.7, on appengine (probably)
     else:

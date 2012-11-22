@@ -102,6 +102,23 @@ class _AppToolsModel(object):
 
         self.__sentinel__ = False
 
+    def to_dict(self, exclude=None, include=None):
+
+        ''' Reduce this model to a dictionary. '''
+
+        props = {}
+        with self:
+            for name, dtype, opts in self.__pmap__:
+                    if exclude and name in exclude:
+                        continue
+                    elif include and name not in include:
+                        continue
+                    else:
+                        value = getattr(self, name)
+                        if value != datastructures._EMPTY:
+                            props[name] = value
+        return props
+
 try:
     # App Engine Imports
     from google.appengine.ext import db as ldb
