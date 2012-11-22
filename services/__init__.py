@@ -53,7 +53,7 @@ from apptools.util import datastructures
 
 # Globals
 _global_debug = config.debug
-logging = debug.AppToolsLogger('apptools.services', 'ServiceLayer')
+logging = debug.AppToolsLogger('apptools.services', 'ServiceLayer')._setcondition(_global_debug)
 
 # Service layer middleware object cache
 _middleware_cache = {}

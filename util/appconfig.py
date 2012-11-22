@@ -396,7 +396,7 @@ class ConfigProxy(object):
 
         return item in self._lookup
 
-    def overlay(self, mapping, rov=None):
+    def _overlay(self, mapping, rov=None):
 
         ''' Recursively update config, from target `mapping`. '''
 
@@ -406,10 +406,16 @@ class ConfigProxy(object):
             rov = dict(self._config.items()[:])
         for k, v in mapping.iteritems():
             if k in rov and isinstance(rov[k], dict):
-                rov[k] = self.overlay(v, rov[k])
+                rov[k] = self._overlay(v, rov[k])
             else:
                 rov[k] = v
         return rov
+
+    def overlay(self, mapping):
+
+        ''' Exported method for recursively updating config. '''
+
+        return ConfigProxy(self._overlay(mapping))
 
     def get(self, name, default=None):
 
