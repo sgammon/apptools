@@ -28,22 +28,21 @@ except:
 from apptools.util import debug
 from apptools.util import appconfig
 
+wallclock = []
+
 try:
     import config
-except ImportError as e:
-    config = appconfig.ConfigProxy(appconfig._DEFAULT_CONFIG)
-    config.debug = os.environ.get('SERVER_SOFTWARE').startswish('Dev')
 
-    ## Patch sysmodules
-    appconfig.config = config
-    appconfig.debug = debug
-    sys.modules['config'] = appconfig
+except ImportError as e:
+    cfg = appconfig.ConfigProxy(appconfig._DEFAULT_CONFIG)
 
 else:
-    config = appconfig.ConfigProxy(appconfig._DEFAULT_CONFIG).overlay(config.config)
-    debug = config.debug
-
-wallclock = []
+    if os.environ.get('PLATFORM') == 'Layer9':
+        from layer9.platform import config as platform
+        cfg = appconfig.ConfigProxy(appconfig._DEFAULT_CONFIG).overlay(platform.config).overlay(config.config)
+    else:
+        cfg = appconfig.ConfigProxy(appconfig._DEFAULT_CONFIG).overlay(config.config)
+    config.config = cfg
 
 
 def clockpoint(name):
