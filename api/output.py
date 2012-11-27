@@ -366,7 +366,7 @@ class OutputMixin(HandlerMixin):
         self._response_headers.update(filter(lambda x: x[1] is not None, {
             'Cache-Control': self._outputConfig.get('headers', {}).get('Cache-Control', 'no-cache'),  # Stop caching of responses from Python, by default
             'X-Powered-By': self._outputConfig.get('headers', {}).get('X-Powered-By', ' '.join(filter(lambda x: x is not None, [
-                'Google AppEngine/1.7.2',
+                'Google AppEngine/1.7.4',
                 'AppFactory/%s' % self.appfactory.version if hasattr(self, 'appfactory') else None,
                 '%s/%s' % (self._projectConfig['name'], '.'.join(map(str, [
                     self._projectConfig.get('version', {}).get('major', 0),
