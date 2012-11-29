@@ -464,6 +464,21 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
             else:
                 return self.interpreted_body
 
+    def set_request_body(self, body):
+
+        ''' Set an already-interpreted or raw request body. '''
+
+        if not isinstance(body, basestring):
+            self.interpreted_body = body
+        else:
+            try:
+                self.interpreted_body = json.loads(body)
+            except Exception:
+                self.interpreted_body = None
+                return False
+            else:
+                return self.interpreted_body
+
     def __send_error(self, http_code, status_state, error_message, mapper, error_name=None):
 
         ''' Send an error RPC response. '''
