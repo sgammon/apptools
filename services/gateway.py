@@ -48,9 +48,12 @@ def _normalize_services(mixed_services):
     return services
 
 
-def generateServiceMappings(svc_cfg, registry_path=forms.DEFAULT_REGISTRY_PATH):
+def generateServiceMappings(svc_cfg, registry_path=forms.DEFAULT_REGISTRY_PATH, handler=RemoteServiceHandlerFactory):
 
     ''' Utility function that reads the services config and generates URL mappings to service classes. '''
+
+    if registry_path is None:
+        registry_path = forms.DEFAULT_REGISTRY_PATH
 
     services = []
 
@@ -84,7 +87,7 @@ def generateServiceMappings(svc_cfg, registry_path=forms.DEFAULT_REGISTRY_PATH):
             paths.add(path)
 
         # Create service mapping for webapp2.
-        new_mapping = RemoteServiceHandlerFactory.default(service).mapping(path)
+        new_mapping = handler.default(service).mapping(path)
         mapping.append(new_mapping)
 
         # Update registry with service class.

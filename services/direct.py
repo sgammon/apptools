@@ -20,6 +20,7 @@ from protorpc import remote
 from protorpc import messages
 
 # Service Imports
+from apptools import services
 from apptools.services import realtime
 from apptools.services import _middleware_cache
 from apptools.services import RemoteServiceHandler
@@ -210,3 +211,10 @@ class DirectServiceFactory(RemoteServiceFactory):
 		''' Prepares RemoteService classes. '''
 
 		return service
+
+
+def realtimeServiceMappings(svc_cfg, registry_path=None, handler=DirectServiceHandlerFactory):
+
+	''' Generate a set of realtime service mappings, for use in URL routing. '''
+
+	return services.generateServiceMappings(svc_cfg, registry_path, handler)
