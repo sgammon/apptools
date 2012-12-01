@@ -106,34 +106,34 @@ class JSONWrapper(object):
     _default_encoder = libjson._default_encoder
 
     @classmethod
-    def dump(cls, iterator):
+    def dump(cls, iterator, **kwargs):
 
         ''' Streaming serialization to JSON strings. '''
 
         for i in interator:
-            yield AppToolsJSONEncoder().encode(i)
+            yield AppToolsJSONEncoder(**kwargs).encode(i)
 
     @classmethod
-    def load(cls, iterator):
+    def load(cls, iterator, **kwargs):
 
         ''' Streaming deserialization from JSON strings. '''
 
         for i in iterator:
-            yield jsonlib.loads(i)
+            yield jsonlib.loads(i, **kwargs)
 
     @classmethod
-    def dumps(cls, struct):
+    def dumps(cls, struct, **kwargs):
 
         ''' Dump a structure to a JSON string. '''
 
-        return AppToolsJSONEncoder().encode(struct)
+        return AppToolsJSONEncoder(**kwargs).encode(struct)
 
     @classmethod
-    def loads(cls, string):
+    def loads(cls, string, **kwargs):
 
         ''' Load via libjson. '''
 
-        return libjson.loads(string)
+        return libjson.loads(string, **kwargs)
 
 json = JSONWrapper
 
