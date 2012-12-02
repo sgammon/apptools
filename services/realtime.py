@@ -16,9 +16,11 @@ import config
 
 # AppTools Imports
 from apptools import util
+from apptools.util import decorators
 
 # ProtoRPC Imports
 from protorpc import remote
+from protorpc import messages
 from protorpc import transport
 
 
@@ -34,7 +36,18 @@ class RealtimeProtocol(object):
 
 		''' Serialize and encode a structure. '''
 
-		return cls.encode(cls.serialize(struct))
+		if isinstance(struct, tuple):
+			command, payload = struct
+		elif isinstance(struct, dict):
+			command, payload = struct.get('command'), struct.get('payload')
+		elif isinstance(struct, list):
+			command = payload[0]
+			payload = payload[1]
+		else:
+			command = struct
+			payload = None
+			
+		return cls.encode(cls.serialize(command, payload))
 
 	@classmethod
 	def unpack(cls, raw, kind=None):
@@ -43,17 +56,17 @@ class RealtimeProtocol(object):
 
 		return cls.deserialize(cls.decode(raw))
 
-	@util.decorators.classproperty
+	@decorators.classproperty
 	def config(cls):
 
 		''' Named config pip for all RealtimeProtocol(s). '''
 
 		if hasattr(cls, 'config_path'):
-			return config.config.get('.'.join(['apptools.realtime.protocol', cls.__name__]), {})
+			return config.config.get('.'.join(['apptools.realtime.protocol', cls.__class__.__name__]), {})
 		else:
 			return config.config.get(cls.config_path, config.config.get('.'.join(['apptools.realtime.protocol', cls.__name__])))
 
-	@util.decorators.classproperty
+	@decorators.classproperty
 	def logging(cls):
 
 		''' Named logging pipe for all RealtimeProtocol(s). '''
@@ -70,7 +83,7 @@ class RealtimeProtocol(object):
 	def vocabulary(self): pass
 
 	@abc.abstractproperty
-	def errocodes(self): pass
+	def errorcodes(self): pass
 
 	@abc.abstractmethod
 	def encode(self, struct): pass
@@ -95,9 +108,17 @@ class RealtimeProtocol(object):
 
 
 ## RealtimeRPCState - replacement for proto's RpcState class, suitable for realtime services
-class RealtimeRPCState(remote.RpcState):
+class RealtimeRPCState(messages.Enum):
 
 	''' Keeps state about the current RPC lifecycle. '''
+
+	OK = 0
+	RUNNING = 1
+	REQUEST_ERROR = 2
+	SERVER_ERROR = 3
+	NETWORK_ERROR = 4
+	APPLICATION_ERROR = 5
+	METHOD_NOT_FOUND_ERROR = 6
 
 
 ## RealtimeRequestState - replacement for proto's HttpRequestState class, suitable for realtime services

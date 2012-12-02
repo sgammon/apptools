@@ -110,7 +110,6 @@ _sitemap_app = [webapp2.Route('/_app/sitemap.*', SitemapHandler, name='sitemap-h
 _appcache_app = [webapp2.Route('/_app/manifest.*', CacheManifestHandler, name='cache-manifest-handler')]
 _services_app = servicelayer_dispatch.generateServiceMappings(config.config.get('apptools.project.services'))
 
-
 ## Get builtin apps
 def get_builtin_apps():
 
@@ -186,15 +185,19 @@ def appcache(environ=None, start_response=None):
 
 
 ## Services run shortcut
-def services(environ=None, start_response=None):
+def services(environ=None, start_response=None, direct=False):
 
     ''' Run the service layer app. '''
 
     global _run
     global _services_app
 
+    if direct:
+        from apptools.services import direct
+        _services_app = direct.realtimeServiceMappings(config.config.get('apptools.project.services'))
+
     ## Pass off to servicelayer-specific dispatch (if accessed through this entrypoint)
-    return _run(servicelayer_dispatch._application, environ, start_response)
+    return _run(_services_app, environ, start_response)
 
 
 ## Main WSGI dispatch

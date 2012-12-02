@@ -201,7 +201,7 @@ class DirectServiceHandler(RemoteServiceHandler):
 				return
 
 ## DirectServiceFactory - manufactures service classes suitable for direct dispatch
-class DirectServiceFactory(RemoteServiceFactory):
+class DirectServiceFactory(services.RemoteServiceFactory):
 
 	''' Manufactures RemoteServices suitable for direct dispatch. '''
 

@@ -86,6 +86,13 @@ class AppToolsJSONEncoder(libjson.JSONEncoder):
 
     ''' Custom encoder that implements the __json__ method interface. '''
 
+    def __init__(self, *args, **kwargs):
+
+        ''' Initialize this JSONEncoder.  '''
+
+        # pass up the chain
+        super(AppToolsJSONEncoder, self).__init__(*args, **kwargs)
+
     def default(self, target):
 
         ''' Invoked when the JSON encoder can't encode something. '''
