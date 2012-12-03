@@ -571,12 +571,17 @@ class OutputMixin(HandlerMixin):
 
         ''' Minify rendered template output. Override for custom minification function or monkeypatch to 'unicode' to disable completely. '''
 
+        if content_type != 'application/json':
+            minify = unicode  # default to unicode
+        else:
+            minify = basestring
+
         try:
             import slimmer
 
         except ImportError as e:
             self.logging.debug('Module `slimmer` not found. Skipping output minification.')
-            return unicode(rendered_template)
+            return minify(rendered_template)
 
         else:
 
