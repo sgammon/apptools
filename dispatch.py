@@ -201,7 +201,7 @@ def services(environ=None, start_response=None, direct=False):
 
 
 ## Main WSGI dispatch
-def gateway(environ=None, start_response=None):
+def gateway(environ=None, start_response=None, direct=False):
 
     ''' Resolve which internal app should be run, then do it. '''
 
@@ -215,6 +215,9 @@ def gateway(environ=None, start_response=None):
     ## Make the WSGI app
     action = _run
     app = webapp2.WSGIApplication(routing_rules, debug=config.debug, config=config.config)
+
+    if direct:
+        environ['xaf.direct'] = True
 
     ## Debug Options
     if config.debug:

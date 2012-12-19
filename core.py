@@ -90,6 +90,7 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
 
     # Class Properties
     uagent = {}
+    direct = False
     context = {}
     platforms = []
 
@@ -114,6 +115,10 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
 
         # Collect super dispatch
         s_dispatch = super(BaseHandler, self).dispatch
+
+        # Consider direct dispatch
+        if self.request.environ.get('xaf.direct'):
+            self.direct = True
 
         # Check platforms for pre-dispatch hooks
         if (hasattr(self, 'platforms') and isinstance(self.platforms, list)) and len(self.platforms) > 0:
