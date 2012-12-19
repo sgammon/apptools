@@ -119,6 +119,8 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
         # Consider direct dispatch
         if self.request.environ.get('xaf.direct'):
             self.direct = True
+        else:
+            self.direct = False
 
         # Check platforms for pre-dispatch hooks
         if (hasattr(self, 'platforms') and isinstance(self.platforms, list)) and len(self.platforms) > 0:
