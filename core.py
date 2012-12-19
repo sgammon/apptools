@@ -162,7 +162,7 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
                         else:
                             continue
 
-        if direct and not isinstance(result, webapp2.Response):
+        if self.direct and not isinstance(result, webapp2.Response):
             return self.response
         return result
 
