@@ -27,6 +27,10 @@ from apptools.util import debug
 from apptools.util import platform
 from apptools.util import datastructures
 
+## WebOb
+# AppTools uses some stuff directly from WebOb. For example, many AppTools exceptions inherit from WebOb objects.
+from webob import exc
+
 ## Webapp2
 # AppTools uses [Webapp2](webapp-improved.appspot.com) for WSGI internals, session handling, request dispatching, etc.
 from webapp2 import Response
@@ -162,8 +166,8 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
                         else:
                             continue
 
-        if self.direct and not isinstance(result, webapp2.Response):
-            return self.response
+        if self.direct:
+            return self
         return result
 
     ## Exceptions
@@ -286,3 +290,65 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
             context['page']['agent'] = self.uagent
 
         return context
+
+
+## ApplicationFactory
+# Dynamically produces a WSGI application class, suitable for direct-dispatch.
+class ApplicationFactory(object):
+
+    ''' Factory for generating WSGI application objects. '''
+
+    def __new__(self, target=webapp2.WSGIApplication, *args, **kwargs):
+
+        ''' Factory a new WSGI application object. '''
+
+        return target(*args, **kwargs)
+
+
+## DirectDispatchApplication
+# Modified WSGI application class that returns a response object directly, rather than the app iterator.
+class DirectDispatchApplication(webapp2.WSGIApplication):
+
+    ''' Allows an application to be directly-dispatched, such that a WebOb response is returned rather than a content generator. '''
+
+    def __call__(self, environ, start_response):
+
+        ''' Dispatched upon receiving a request. '''
+
+        # Default to indirect dispatch
+        if 'xaf.direct' in environ and environ.get('xaf.direct', False) is True:
+            self.direct = True
+        else:
+            self.direct = False
+
+        with self.request_context_class(self, environ) as (request, response):
+            try:
+                if request.method not in self.allowed_methods:
+                    # 501 Not Implemented
+                    raise exc.HTTPNotImplemented()
+
+                rv = self.router.dispatch(request, response)
+                if rv is not None:
+                    response = rv
+
+            except Exception as e:
+                try:
+                    rv = self.handle_exception(request, response, e)
+                    if rv is not None:
+                        response = rv
+
+                except exc.HTTPException, e:
+                    # Use the HTTP exception as response.
+                    response = e
+
+                except Exception, e:
+                    response = self._internal_error(e)
+
+            try:
+                if self.direct:
+                    return response
+                else:
+                    return response(environ, start_response)
+
+            except Exception as e:
+                return self._internal_error(e)(environ, start_response)

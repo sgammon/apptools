@@ -34,6 +34,7 @@ class NoURLRules(Exception): pass
 if len(rule_builders) == 0:
 	raise NoURLRules("Could not resolve a URL rule builder.")
 
+from apptools import core
 from apptools.util import runtools
 
 from apptools.services import gateway as servicelayer_dispatch
@@ -201,7 +202,7 @@ def services(environ=None, start_response=None, direct=False):
 
 
 ## Main WSGI dispatch
-def gateway(environ=None, start_response=None, direct=False):
+def gateway(environ=None, start_response=None, direct=False, appclass=webapp2.WSGIApplication):
 
     ''' Resolve which internal app should be run, then do it. '''
 
@@ -212,12 +213,13 @@ def gateway(environ=None, start_response=None, direct=False):
     ## Get user/app rules, then splice in our internal rules at the end
     routing_rules = [rule for rule in (app_rules + get_builtin_apps())]
 
-    ## Make the WSGI app
-    action = _run
-    app = webapp2.WSGIApplication(routing_rules, debug=config.debug, config=config.config)
-
     if direct:
         environ['xaf.direct'] = True
+        appclass = core.DirectDispatchApplication
+
+    ## Make the WSGI app
+    action = _run
+    app = core.ApplicationFactory(appclass, routing_rules, debug=config.debug, config=config.config)
 
     ## Debug Options
     if config.debug:
