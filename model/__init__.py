@@ -1022,7 +1022,7 @@ class ThinModelFactory(AbstractModelFactory):
                     epath = engine.get('path').split('.')
                     epath, ename = '.'.join(epath[0:-1]), epath[-1]
 
-                    logging.debug('Engine "%s" is enabled and supported. Importing.' % engine.get('name'))
+                    logging.debug('Engine "%s" is enabled. Importing.' % engine.get('name'))
 
                     # import the engine
                     try:
@@ -1041,7 +1041,11 @@ class ThinModelFactory(AbstractModelFactory):
 
                         if engine_impl_class.supported():
                             # construct and prepare engine
+                            logging.info("Engine '%s' is supported." % ename)
                             engine_impl = engine_impl_class()
+                        else:
+                            logging.info("Engine '%s' is not supported in this environment." % ename)
+                            continue  # advance if this engine isn't supported
 
                         if not hasattr(engine_impl, 'name'):
                             engine_impl.name = engine.get('name').lower()
