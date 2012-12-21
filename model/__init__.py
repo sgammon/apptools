@@ -1039,7 +1039,7 @@ class ThinModelFactory(AbstractModelFactory):
                     else:
                         logging.debug("Successfully imported storage adapter.")
 
-                        if engine_class.supported():
+                        if engine_impl_class.supported():
                             # construct and prepare engine
                             engine_impl = engine_impl_class()
 
