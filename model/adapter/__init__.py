@@ -209,6 +209,7 @@ class StorageAdapter(object):
 
     name = None
     __metaclass__ = abc.ABCMeta
+    supported = lambda x: return False
 
     ## == Datastore Methods == ##
     @abc.abstractmethod
