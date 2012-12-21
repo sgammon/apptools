@@ -1021,15 +1021,15 @@ class ThinModelFactory(AbstractModelFactory):
                     epath = engine.get('path').split('.')
                     epath, ename = '.'.join(epath[0:-1]), epath[-1]
 
-                    logging.debug('Engine "%s" is enabled. Importing.' % engine.get('name'))
+                    logging.debug('Engine "%s" is enabled and supported. Importing.' % engine.get('name'))
 
                     # import the engine
                     try:
                         engine_impl_class = _loadModule((epath, ename))
 
-                    except ImportError, e:
+                    except webapp2.ImportStringError as e:
                         logging.error("Failed to import storage adapter at name/path %s:%s." % (epath, ename))
-                        if config.debug:
+                        if config.debug and config.strict:
                             raise
 
                         else:

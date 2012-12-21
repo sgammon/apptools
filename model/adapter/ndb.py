@@ -1,13 +1,29 @@
+# -*- coding: utf-8 -*-
 
+'''
+
+Adapters: NDB
+
+Bridges AppTools ThinModels to AppEngine's NDB.
+
+-sam (<sam@momentum.io>)
+
+'''
+
+# Base Imports
 import config
 
+# AppTools Utils
 from apptools.util import datastructures
 
+# AppTools Model API
 from apptools.model import _NDB
 from apptools.model.adapter import StorageAdapter
 from apptools.model.adapter import ThinKeyAdapter
 from apptools.model.adapter import ThinModelAdapter
 
+
+## If we're running with NDB (and, therefore, App Engine)...
 if _NDB:
     from google.appengine.ext import ndb
 
@@ -185,3 +201,27 @@ if _NDB:
             ''' Retrieve a list of active kinds in this storage backend. '''
 
             raise NotImplemented
+
+        @classmethod
+        def supported(cls):
+
+            ''' If we've arrive here, NDB is supported. '''
+
+            return True
+
+
+## If NDB isn't available...
+else:
+
+    ## NDB
+    # Stubbed shim, exposed when we aren't running on Google App Engine.
+    class NDB(StorageAdapter):
+
+        ''' This class is exposed when NDB is _not_ available in the host environment. '''
+
+        @classmethod
+        def supported(cls):
+
+            ''' If we've arrived here, NDB is _not_ supported. '''
+
+            return False

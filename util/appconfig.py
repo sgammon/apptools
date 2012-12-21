@@ -330,6 +330,7 @@ class ConfigProxy(object):
     _i = 0
     _oc = None
     debug = False
+    strict = False
     _config = None
     _lookup = None
 
