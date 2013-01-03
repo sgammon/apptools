@@ -253,8 +253,6 @@ class AppFactory(Platform):
                 context['util']['software'] = os.environ.get('XAF_BACKEND', 'yoga-sandbox')
                 context['util']['datacenter'] = os.environ.get('XAF_DATACENTER', 'usw-1-b')
 
-                context['api'] = handler.api
-                context['util']['api'] = handler.api
                 context['util']['request']['hash'] = '__UNDEFINED__'
                 context['util']['request']['namespace'] = '__UNDEFINED__'
 
