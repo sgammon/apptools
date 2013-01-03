@@ -113,8 +113,11 @@ class GoogleAppEngine(Platform):
 
         ''' Check the environment and see if we're running on GAE. '''
 
-        # Return True if we detect AppEngine production, or possibly the DevServer
-        return (environ.get('SERVER_SOFTWARE', '__NULL__').startswith('Google App Engine') or environ.get('SERVER_SOFTWARE', '__NULL__').startswith('Dev'))
+        try:
+            from google.appengine.ext import ndb
+        except ImportError as e:
+            return False
+        return True
 
     @webapp2.cached_property
     def shortcut_exports(self):
