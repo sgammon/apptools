@@ -1082,6 +1082,11 @@ class ThinModelFactory(AbstractModelFactory):
             return _DEFAULT_ENGINE, _STORAGE_ENGINES
 
 
+## ThinKey
+# Base class used for ThinModel keys.
+class ThinKey(object): pass
+
+
 ## ThinModel
 # Base class for flexible, universal, efficient datamodels.
 class ThinModel(_AppToolsModel, MessageConverter, PipelineTrigger):

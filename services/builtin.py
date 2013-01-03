@@ -249,6 +249,46 @@ class UploadURLResponse(messages.Message):
     ticket = messages.StringField(3)
 
 
+## ContentFormat
+# Keeps track of available content formats for the dynamic content tools.
+class ContentFormat(messages.Enum):
+
+    ''' Specifies available formats under which content can be saved/retrieved. '''
+
+    TEXT = 1  # sentinel for plaintext content
+    HTML = 2  # sentinel for richtext content
+
+
+## ContentSummary
+# Summarizes a ContentSnippet entry.
+class ContentSummary(messages.Message):
+
+    ''' Describe a human-understandable summary of a content snippet. '''
+
+    text = messages.StringField(1)
+    html = messages.StringField(2)
+
+
+## ContentSnippet
+# Full content message, for a revision of a ContentArea.
+class ContentSnippet(messages.Message):
+
+    ''' Describe a snippet of dynamic content. '''
+
+    html = messages.StringField(1)
+    text = messages.StringField(2)
+    summary = messages.MessageField(ContentSummary, 3)
+
+
+## ContentArea
+# An area of editable content, either plaintext/richtext
+class ContentArea(messages.Message):
+
+    ''' Describe a zone of dynamic content. '''
+
+    pass
+
+
 #+#+#+ ==== System API Service ==== +#+#+#
 
 ## SystemService

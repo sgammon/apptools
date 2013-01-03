@@ -99,6 +99,14 @@ class AppToolsJSONEncoder(libjson.JSONEncoder):
 
         if hasattr(target, '__json__'):
             return libjson.JSONEncoder.default(target)
+        try:
+            from jinja2 import runtime
+        except ImportError as e:
+            pass
+        else:
+            if isinstance(target, runtime.Undefined):
+                return None
+        return libjson.JSONEncoder.default(self, target)
 
 ## Splice in custom JSON codec
 class JSONWrapper(object):
