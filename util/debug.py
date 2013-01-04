@@ -112,6 +112,8 @@ class AppToolsLogger(AppToolsLoggingEngine):
             # Quick fix/patch to allow initialization here or in config
             _syslog_config = appconfig._SYSLOG_CONFIG
             del _syslog_config['class']
+            del _syslog_config['level']
+            
             default_handler = handlers.SysLogHandler(**_syslog_config)
 
         if cls.handlers == []:
