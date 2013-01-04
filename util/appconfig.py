@@ -11,9 +11,28 @@ Holds utilities for dealing with application config, and the default config set.
 '''
 
 # Base Imports
+import os
+import sys
 import copy
+import socket
+import logging
 import webapp2
 import hashlib
+
+# Logging Imports
+from logging import handlers
+
+# Constants
+debug = any([os.environ.get('SERVER_SOFTWARE', 'Default').startswith(x) for x in frozenset(('Develop', 'Sandbox'))])
+
+
+_SYSLOG_CONFIG = {
+    'class': 'logging.handlers.SysLogHandler',
+    'level': 'INFO',
+    'address': ('localhost', 514),
+    'socktype': 'socket.SOCK_DGRAM'
+}
+
 
 # Constants
 _DEFAULT_CONFIG = {
@@ -37,6 +56,26 @@ _DEFAULT_CONFIG = {
 
     'apptools': {
 
+    },
+
+    'logging': {
+        'version': 1,
+        'handlers': {
+            'dev': {
+                'class': 'logging.StreamHandler',
+                'level': 'DEBUG',
+                'stream': 'sys.stdout'
+            },
+            'appfactory': _SYSLOG_CONFIG
+        },
+        'root': {
+            'handlers': ['dev' if debug else 'appfactory']
+        },
+        'loggers': {
+            'apptools': {
+                'handlers': ['dev' if debug else 'appfactory']
+            }
+        }
     },
 
     'apptools.system': {

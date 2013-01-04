@@ -14,12 +14,16 @@ sequence.
 # Base Imports
 import os
 import logging
+import inspect
+
+# Logging Imports
+from logging import handlers
 
 # Exceptions
 from apptools.exceptions import AppException
 
 # Debug mode
-debug = os.environ.get('SERVER_SOFTWARE', 'Development/1.0').startswith('Dev')
+debug = any([os.environ.get('SERVER_SOFTWARE', 'Default').startswith(x) for x in frozenset(('Develop', 'Sandbox'))])
 
 # Datastructures
 from apptools.util.datastructures import DictProxy
@@ -33,17 +37,22 @@ try:
 except ImportError:
     _logbook_support = False
 
-    class AppToolsLoggingEngine(object):
+    class AppToolsLoggingEngine(logging.getLoggerClass()):
+
         ''' Simple, non-Logbook AppTools logging backend. '''
+
         pass
 else:
     _logbook_support = True
 
     class AppToolsLoggingEngine(logbook.Logger):
+
         ''' Logbook-powered AppTools logging backend. '''
+
         pass
 
 _loggers = WritableObjectProxy({})
+_root_logger = None
 
 
 ## LoggingException
@@ -60,14 +69,19 @@ class AppToolsLogger(AppToolsLoggingEngine):
     ''' Logging controller for outputting debug information from different levels of AppTools. '''
 
     # Logging channel config
-    channel_name = '_default_'
-    channel_path = 'apptools.default'
+    name = 'apptools'
+    channel_name = '_root_'
+    channel_path = 'apptools'
     channel_parent = None
 
     # Event/context config
     bubble = False
+    filters = []
+    handlers = []
+    disabled = False
+    propagate = False
     context_fn = None
-    conditional = None
+    conditional = debug
     logbook_support = False
 
     provider = None
@@ -83,11 +97,25 @@ class AppToolsLogger(AppToolsLoggingEngine):
 
     })
 
-    def __new__(cls, path='apptools.default', name='_default_', parent_channel=None, bubble=False, ctx=None):
+    def __new__(cls, path='apptools', name='_root_', parent_channel=None, bubble=False, ctx=None):
 
         ''' Create a new logger channel, or return it if it already exists. '''
 
         global _loggers
+        global _root_logger
+
+        from apptools.util import appconfig
+
+        if debug:
+            default_handler = logging.StreamHandler()
+        else:
+            # Quick fix/patch to allow initialization here or in config
+            _syslog_config = appconfig._SYSLOG_CONFIG
+            del _syslog_config['class']
+            default_handler = handlers.SysLogHandler(**_syslog_config)
+
+        if cls.handlers == []:
+            cls.handlers.append(default_handler)
 
         if cls.__name__ == 'AppToolsLogController':
             logging.warning('AppToolsLogController is deprecated. Check logger path/name: (%s, %s).' % path, name)
@@ -96,9 +124,19 @@ class AppToolsLogger(AppToolsLoggingEngine):
                 logger_k = path, name
             else:
                 logger_k = (path,)
+
+            ## check for cached logger object
             if logger_k in _loggers.keys():
                 return _loggers[logger_k]
             else:
+                ## splice in root as parent if unspecified
+                if not parent_channel and parent_channel != False:
+                    parent_channel = _root_logger
+
+                ## explicit flag for parent-less channel
+                elif parent_channel == False:
+                    parent_channel = None
+
                 return super(AppToolsLogger, cls).__new__(cls, path, name, parent_channel, bubble, ctx)
 
     def __init__(self, path='apptools.default', name='_default_', parent_channel=None, bubble=False, ctx=None):
@@ -170,11 +208,18 @@ class AppToolsLogger(AppToolsLoggingEngine):
         ''' Output an AppTools log message. '''
 
         if self.conditional:
+
+            # gather callee info
+            frame = inspect.getframeinfo(inspect.currentframe().f_back)
+        
             out_message = []
             if module is not None:
                 out_message.append('[' + str(module) + ']')
             out_message.append(message)
-            print "%s: %s" % (severity.upper(), ' '.join(out_message))
+            record = self.makeRecord(self.name, getattr(logging, severity.upper()), frame.filename, frame.lineno, out_message, {}, None, frame.function)
+            
+            self.handle(record)
+        return
 
     def dev(self, message, module=None):
 
@@ -231,4 +276,16 @@ class AppToolsLogger(AppToolsLoggingEngine):
 
         return self._send_log(message, module, 'critical')
 
+    @staticmethod
+    def echo(*args):
+
+        ''' Simply print the given arguments. Used for debugging. '''
+
+        print args
+
+
+## alias for backwards compatibility
 AppToolsLogController = AppToolsLogger
+
+## create root logger
+_root_logger = AppToolsLogger(path='apptools', name='', parent_channel=False)
