@@ -215,7 +215,7 @@ class AppToolsLogger(AppToolsLoggingEngine):
             out_message.append(message)
 
             if _logbook_support:
-                record = self.make_record_and_handle(getattr(logging, severity.upper()), out_message, [], {}, None)
+                record = self.make_record_and_handle(getattr(logging, severity.upper()), out_message, [], {}, None, {})
             else:
                 # gather callee info
                 frame = inspect.getframeinfo(inspect.currentframe().f_back)
