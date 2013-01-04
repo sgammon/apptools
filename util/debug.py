@@ -208,17 +208,19 @@ class AppToolsLogger(AppToolsLoggingEngine):
         ''' Output an AppTools log message. '''
 
         if self.conditional:
-
-            # gather callee info
-            frame = inspect.getframeinfo(inspect.currentframe().f_back)
         
             out_message = []
             if module is not None:
                 out_message.append('[' + str(module) + ']')
             out_message.append(message)
-            record = self.makeRecord(self.name, getattr(logging, severity.upper()), frame.filename, frame.lineno, out_message, {}, None, frame.function)
-            
-            self.handle(record)
+
+            if _logbook_support:
+                record = self.make_record_and_handle(getattr(logging, severity.upper()), out_message, [], {}, None)
+            else:
+                # gather callee info
+                frame = inspect.getframeinfo(inspect.currentframe().f_back)
+                record = self.makeRecord(self.name, getattr(logging, severity.upper()), frame.filename, frame.lineno, out_message, {}, None, frame.function)
+                self.handle(record)
         return
 
     def dev(self, message, module=None):
