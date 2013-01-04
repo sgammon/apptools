@@ -30,7 +30,7 @@ _SYSLOG_CONFIG = {
     'class': 'logging.handlers.SysLogHandler',
     'level': 'INFO',
     'address': ('localhost', 514),
-    'socktype': 'socket.SOCK_DGRAM',
+    'socktype': socket.SOCK_STREAM,
     'facility': 'LOCAL5'
 }
 
