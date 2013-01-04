@@ -29,7 +29,7 @@ debug = any([os.environ.get('SERVER_SOFTWARE', 'Default').startswith(x) for x in
 _SYSLOG_CONFIG = {
     'class': 'logging.handlers.SysLogHandler',
     'level': 'INFO',
-    'address': ('localhost', 514),
+    'address': ('localhost', 10514),
     'socktype': socket.SOCK_STREAM,
     'facility': 'LOCAL5'
 }
