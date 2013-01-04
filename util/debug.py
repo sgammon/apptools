@@ -110,7 +110,7 @@ class AppToolsLogger(AppToolsLoggingEngine):
             default_handler = logging.StreamHandler()
         else:
             # Quick fix/patch to allow initialization here or in config
-            _syslog_config = dict([k, v for k, v in appconfig._SYSLOG_CONFIG if k not in ('class', 'level')])
+            _syslog_config = dict([(k, v) for k, v in appconfig._SYSLOG_CONFIG.items() if k not in ('class', 'level')])
 
             default_handler = handlers.SysLogHandler(**_syslog_config)
 
