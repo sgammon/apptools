@@ -106,8 +106,6 @@ class AppToolsLogger(AppToolsLoggingEngine):
 
         from apptools.util import appconfig
 
-        import pdb; pdb.set_trace()
-
         if debug:
             default_handler = logging.StreamHandler()
         else:
