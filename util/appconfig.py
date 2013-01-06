@@ -31,7 +31,7 @@ _SYSLOG_CONFIG = {
     'level': 'DEBUG',
     'address': ('localhost', 10514),
     'socktype': socket.SOCK_DGRAM,
-    'facility': 'LOG_LOCAL5'
+    'facility': 'LOCAL5'
 }
 
 

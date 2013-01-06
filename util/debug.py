@@ -52,6 +52,7 @@ else:
         pass
 
 _loggers = WritableObjectProxy({})
+_appengine = any([os.environ.get('SERVER_SOFTWARE', 'Generic/1.0').startswith(y) for y in frozenset(['Google', 'Dev'])])
 _root_logger = None
 
 
@@ -216,10 +217,13 @@ class AppToolsLogger(AppToolsLoggingEngine):
             if _logbook_support:
                 record = self.make_record_and_handle(getattr(logbook, severity.upper()), ''.join(out_message), [], {}, None, {})
             else:
-                # gather callee info
-                frame = inspect.getframeinfo(inspect.currentframe().f_back)
-                record = self.makeRecord(self.name, getattr(logging, severity.upper()), frame.filename, frame.lineno, ''.join(out_message), {}, None, frame.function)
-                self.handle(record)
+                if _appengine:
+                    getattr(self._stdlib_severity_map, severity)(''.join(out_message))
+                else:
+                    # gather callee info
+                    frame = inspect.getframeinfo(inspect.currentframe().f_back)
+                    record = self.makeRecord(self.name, getattr(logging, severity.upper()), frame.filename, frame.lineno, ''.join(out_message), {}, None, frame.function)
+                    self.handle(record)
         return
 
     def dev(self, message, module=None):
