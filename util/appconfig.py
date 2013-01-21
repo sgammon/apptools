@@ -22,24 +22,14 @@ import hashlib
 # Logging Imports
 from logging import handlers
 
-# Constants
+
+## Constants
 debug = any([os.environ.get('SERVER_SOFTWARE', 'Default').startswith(x) for x in frozenset(('Develop', 'Sandbox'))])
 
-
-_SYSLOG_CONFIG = {
-    'class': 'logging.handlers.SysLogHandler',
-    'level': 'DEBUG',
-    'address': ('localhost', 10514),
-    'socktype': socket.SOCK_DGRAM,
-    'facility': 'LOCAL5'
-}
-
-
-# Constants
+## Constants
 _DEFAULT_CONFIG = {
 
     'webapp2': {
-        'sup': False
     },
 
     'webapp2_extras.jinja2': {
@@ -66,15 +56,14 @@ _DEFAULT_CONFIG = {
                 'class': 'logging.StreamHandler',
                 'level': 'DEBUG',
                 'stream': 'sys.stdout'
-            },
-            'appfactory': _SYSLOG_CONFIG
+            }
         },
         'root': {
-            'handlers': ['dev' if debug else 'appfactory']
+            'handlers': ['dev']
         },
         'loggers': {
             'apptools': {
-                'handlers': ['dev' if debug else 'appfactory']
+                'handlers': ['dev']
             }
         }
     },
@@ -378,7 +367,7 @@ class ConfigProxy(object):
 
         ''' Initialize this object. '''
 
-        self._config, self._oc, self._lookup = copy.deepcopy(config), config.items(), set(config.keys())
+        self._config, self._oc, self._lookup = config, config.items(), set(config.keys())
 
     @webapp2.cached_property
     def logging(self):

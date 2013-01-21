@@ -30,10 +30,11 @@ Recipe available at: [http://code.activestate.com/recipes/577081/](http://code.a
 
 # Imports
 from __future__ import division
-import doctest
-
 
 def humanize_bytes(bytes, precision=1):
+
+    ''' Output a count of bytes as a human-readable value. '''
+
     abbrevs = (
         (1 << 50L, 'PB'),
         (1 << 40L, 'TB'),
@@ -48,7 +49,3 @@ def humanize_bytes(bytes, precision=1):
         if bytes >= factor:
             break
     return '%.*f %s' % (precision, bytes / factor, suffix)
-
-
-if __name__ == '__main__':
-    doctest.testmod()

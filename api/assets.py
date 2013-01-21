@@ -253,7 +253,8 @@ class CoreAssetsAPI(CoreAPI):
                         ### Minification in no-path mode is a boolean (appends .min)
                         if minify and 'min' in asset and isinstance(asset['min'], bool):
                             query_string['m'] = '1'
-                            filename.append('min')
+                            if _type not in frozenset(['style', 'css']):
+                                filename.append('min')
 
                         ### Consider version
                         if version is not None or 'version' in asset:

@@ -17,12 +17,14 @@ the template and store it in the cache.
 
 ## Base Imports
 import os
+import time
 import base64
 import config
 import pprint
 import random
 import hashlib
 import webapp2
+import datetime
 
 ## API Mixins
 from apptools.api import CoreAPI
@@ -435,8 +437,10 @@ class OutputMixin(HandlerMixin):
                 'converters': {  # Converters
 
                     'json': json,  # SimpleJSON or Py2.7 JSON
-                    'hashlib': hashlib,  # Hash utilities (MD5/SHA etc)
+                    'time': time,  # Builtin time tools
                     'base64': base64,  # Utilities for B64 encoding/decoding
+                    'hashlib': hashlib,  # Hash utilities (MD5/SHA etc)
+                    'datetime': datetime,  # Builtin date/time tools
                     'timesince': self.util.timesince,  # Util library for "15 minutes ago"-type text from datetimes
                     'byteconvert': self.util.byteconvert  # Util library for formatting data storage amounts
 
@@ -498,7 +502,11 @@ class OutputMixin(HandlerMixin):
             ## Consider context injectors
             for injector in self.context_injectors:
                 try:
-                    newcontext = injector(self, context)
+                    if isinstance(injector, (list, tuple)):
+                        for sub_i in injector:
+                            newcontext = sub_i(self, context)
+                    else:
+                        newcontext = injector(self, context)
                 except Exception, e:
                     self.logging.warning('Context injector "' + str(injector) + '" encountered an unhandled exception. ' + str(e))
                     if config.debug:

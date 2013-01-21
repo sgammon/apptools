@@ -23,7 +23,8 @@ from logging import handlers
 from apptools.exceptions import AppException
 
 # Debug mode
-debug = any([os.environ.get('SERVER_SOFTWARE', 'Default').startswith(x) for x in frozenset(('Develop', 'Sandbox'))])
+debug = True
+#debug = any([os.environ.get('SERVER_SOFTWARE', 'Default').startswith(x) for x in frozenset(('Develop', 'Sandbox'))])
 
 # Datastructures
 from apptools.util.datastructures import DictProxy
@@ -82,15 +83,15 @@ class AppToolsLogger(AppToolsLoggingEngine):
     disabled = False
     propagate = False
     context_fn = None
-    conditional = debug
+    conditional = True
     logbook_support = False
 
     provider = None
     _stdlib_severity_map = DictProxy({
 
-        'dev': logging.debug,
-        'debug': logging.debug,
-        'verbose': logging.debug,
+        'dev': logging.info,
+        'debug': logging.info,
+        'verbose': logging.info,
         'info': logging.info,
         'warning': logging.warning,
         'error': logging.error,
@@ -237,10 +238,7 @@ class AppToolsLogger(AppToolsLoggingEngine):
 
         ''' `Debug` severity. '''
 
-        if debug:
-            return self._send_log(message, module, 'info')
-        else:
-            return self._send_log(message, module, 'debug')
+        return self._send_log(message, module, 'info')
 
     def verbose(self, message, module=None):
 

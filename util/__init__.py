@@ -58,6 +58,9 @@ def _loadModule(entry):
 
     global _MODULE_LOADER_CACHE
 
+    if not entry:
+        raise ValueError("Invalid module spec: '%s'." % entry)
+
     if entry not in _MODULE_LOADER_CACHE:
 
         # tuple syntax - ('path.to.module', 'ModuleOrClassName')

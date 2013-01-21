@@ -37,11 +37,7 @@ except ImportError as e:
     cfg = appconfig.ConfigProxy(appconfig._DEFAULT_CONFIG)
 
 else:
-    if os.environ.get('PLATFORM') == 'Layer9':
-        from layer9.platform import config as platform
-        cfg = appconfig.ConfigProxy(appconfig._DEFAULT_CONFIG).overlay(platform.config).overlay(config.config)
-    else:
-        cfg = appconfig.ConfigProxy(appconfig._DEFAULT_CONFIG).overlay(config.config)
+    cfg = appconfig.ConfigProxy(config.config)
     config.config = cfg
 
 

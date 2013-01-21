@@ -249,9 +249,9 @@ class AppFactory(Platform):
         def inject(handler, context):
             if os.environ.get('APPFACTORY', False):
                 context['util']['request']['geo'] = {}
-                context['util']['instance'] = os.environ.get('XAF_INSTANCE', 'web-1')
-                context['util']['software'] = os.environ.get('XAF_BACKEND', 'yoga-sandbox')
-                context['util']['datacenter'] = os.environ.get('XAF_DATACENTER', 'usw-1-b')
+                context['util']['instance'] = os.environ.get('XAF_INSTANCE', '_unknown_')
+                context['util']['software'] = os.environ.get('XAF_BACKEND', 'sandbox')
+                context['util']['datacenter'] = os.environ.get('XAF_DATACENTER', '_unknown_')
 
                 context['util']['request']['hash'] = '__UNDEFINED__'
                 context['util']['request']['namespace'] = '__UNDEFINED__'

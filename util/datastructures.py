@@ -10,6 +10,7 @@ Holds useful classes and code for managing/manipulating/using specialized datast
 
 '''
 
+# Base Imports
 import abc
 import logging
 
@@ -254,6 +255,9 @@ class CallbackProxy(ObjectProxy):
             raise KeyError
 
     def __getattr__(self, name):
+        if not name or (name not in self._entries):
+            logging.debug('CallbackProxy entry pool: "%s".' % self._entries)
+            raise AttributeError("CallbackProxy could not resolve entry '%s'." % name)
         return self.callback(self._entries.get(name))
 
 
