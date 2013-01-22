@@ -2,7 +2,7 @@
 
 # Base Imports
 import webapp2
-import unittest2
+import unittest
 
 # App Engine API Imports
 from google.appengine.ext import db
@@ -30,7 +30,7 @@ _APPENGINE_SERVICES = frozenset(_APPENGINE_SERVICE_BINDINGS.keys())
 
 
 ## AppToolsTestCase - Parent class for AppTools and Application-level tests.
-class AppToolsTestCase(unittest2.TestCase):
+class AppToolsTestCase(unittest.TestCase):
 
 	''' A test case compatible with vanilla WSGI or GAE. '''
 
@@ -95,6 +95,5 @@ class SampleTest(AppToolsTest):
 
 
 ## AppToolsTests - Gather AppTools testsuites.
-AppToolsTests = unittest2.TestSuite()
+AppToolsTests = unittest.TestSuite()
 AppToolsTests.addTest(SampleTest('test_multiply'))
-#AppToolsTests.addTests(unittest2.TestLoader().discover('.'))
