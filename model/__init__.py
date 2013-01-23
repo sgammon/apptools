@@ -353,8 +353,6 @@ except ImportError as e:
     # ProtoRPC is not supported
     _PROTORPC = False
 
-    import pdb; pdb.set_trace()
-
     logging.debug('ProtoRPC is not supported in this environment.')
 
     # Empty out our globals and indicate ProtoRPC isn't supported in the current environment.

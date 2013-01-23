@@ -102,8 +102,6 @@ class DirectServiceHandler(RemoteServiceHandler):
 
 		''' Dispatch remote request to handle(). '''
 
-		import pdb; pdb.set_trace()
-
 		# Map in factory / service
 		self._ServiceHandler__factory = factory
 		self._ServiceHandler__service = service
