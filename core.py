@@ -154,7 +154,7 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
 
         # Check platforms for post-dispatch hooks
         if (hasattr(self, 'platforms') and isinstance(self.platforms, list)) and len(self.platforms) > 0:
-            callchain = filter(lambda x: hasattr(x, 'post_dispatch'), self.platforms[:])
+            callchain = filter(lambda x: hasattr(x, 'post_dispatch'), reversed(self.platforms[:]))
             if len(callchain) > 0:
                 for platform in callchain:
                     try:

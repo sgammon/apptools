@@ -509,53 +509,51 @@ class TrackedDictionary(object):
     __data = {}
     __seen = set([])
     __dirty = None
+    __target = None
+    __failfast = False
     __mutations = []
 
-    def __init__(self, initial=None):
+    def __init__(self, initial={}, target=None):
 
         ''' Prepare internal data storage. '''
 
-        self.__data, self.__dirty, self.__seen, self.__mutations = initial if initial != None else {}, None, set([]), []
+        self.__data, self.__dirty, self.__seen, self.__target, self.__mutations = initial, None, set([]), target, []
 
-    def __getitem__(self, key):
+    def __getitem__(self, key, exception=KeyError):
 
         ''' Retrieve from internal storage. '''
 
         value = self.__data.get(key, _EMPTY)
         if value == _EMPTY:
-            raise KeyError(key)
+            if self.__failfast:
+                raise exception("TrackedDictionary could not resolve key '%s'." % key)
         return value
 
     def __setitem__(self, key, value):
 
         ''' Set a value in internal storage. '''
 
+        self.__dirty = True
         self.__data[key] = value
         self.__seen.add(key)
+        self.__mutations.append((key, value))
 
-        if self.__dirty is None:
-            self.__dirty = False
-        else:
-            self.__mutations.append((key, value))
-            self.__dirty = True
-        return
-
-    def __delitem__(self, key):
+    def __delitem__(self, key, exception=KeyError):
 
         ''' Remove an item from internal storage. '''
 
-        if self.__contains__(key):
+        if key in self:
             self.__mutations.append((key, _TOMBSTONE))
             del self.__data[key]
             self.__dirty = True
             return
-        raise KeyError(key)
+        raise exception("TrackedDictionary could not delete missing key '%s'." % key)
 
     def __nonzero__(self):
 
         ''' Indicates whether this dictionary is empty or not. '''
 
-        return False if self.__dirty is None else True
+        return True if self._data else False
 
     def __contains__(self, key):
 
@@ -567,7 +565,7 @@ class TrackedDictionary(object):
 
         ''' Return the length of this TrackedDictionary. '''
 
-        return len(self.__data.keys())
+        return len(self.__data)
 
     def __repr__(self):
 
@@ -591,7 +589,7 @@ class TrackedDictionary(object):
     @classmethod
     def __subclasshook__(cls, other):
 
-        ''' Check if the provided object is TrackedDictionary. '''
+        ''' Check if the provided object is a TrackedDictionary. '''
 
         if cls is TrackedDictionary:
             if any("reconcile" in i.__dict__ for i in other.__mro__):
@@ -599,7 +597,7 @@ class TrackedDictionary(object):
         return NotImplemented
 
     @abc.abstractmethod
-    def reconcile(self, target):
+    def reconcile(self, target=None):
 
         ''' Flatten this object's mutation pool onto the target object. '''
 
@@ -623,20 +621,8 @@ class TrackedDictionary(object):
 
         if isinstance(mapping, list):
             mapping = dict(mapping)
-
-        if self.__dirty is None:
-            self.__data.update(mapping)
-            map(lambda x: self.__seen.add(x), filter(lambda y: y not in self.__seen, mapping.iterkeys()))
-            self.__dirty = False
-        else:
-            for k, v in mapping.items():
-                self.__data[k] = v
-
-                if k not in self.__seen:
-                    self.__seen.add(k)
-
-                self.__mutations.append((k, v))
-            self.__dirty = True
+        for k, v in mapping.items():
+            self.__setitem__(k, v)
         return self.__data
 
     def items(self):
