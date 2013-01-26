@@ -252,9 +252,9 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
                     'multiprocess': self.handler.request.environ.get('wsgi.multiprocess')
 
                 }
-                if self.api.backends.get_backend() is not None:
+                if self.handler.api.backends.get_backend() is not None:
                     response_envelope['platform']['info']['layer'] = 'backend'
-                    response_envelope['platform']['info']['instance'] = self.api.backends.get_instance()
+                    response_envelope['platform']['info']['instance'] = self.handler.api.backends.get_instance()
                 else:
                     response_envelope['platform']['info']['layer'] = 'frontend'
 

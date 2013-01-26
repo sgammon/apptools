@@ -234,6 +234,7 @@ class CallbackProxy(ObjectProxy):
 
     ''' Handy little object that takes a dict and makes it accessible via var[item], but returns the result of an invoked callback(item). '''
 
+    _entries = None
     callback = None
 
     def __init__(self, callback, struct={}, **kwargs):
@@ -249,16 +250,25 @@ class CallbackProxy(ObjectProxy):
                 self._entries = dict([i for i in struct.items()] + [i for i in kwargs.items()])
 
     def __getitem__(self, name):
-        if name in self._entries:
-            return self.callback(self._entries.get(name))
+        if self._entries:
+            if name in self._entries:
+                return self.callback(self._entries.get(name))
+            else:
+                raise KeyError
         else:
-            raise KeyError
+            return self.callback(name)
 
     def __getattr__(self, name):
-        if not name or (name not in self._entries):
-            logging.debug('CallbackProxy entry pool: "%s".' % self._entries)
-            raise AttributeError("CallbackProxy could not resolve entry '%s'." % name)
-        return self.callback(self._entries.get(name))
+        if self._entries:
+            if not name or (name not in self._entries):
+                logging.debug('CallbackProxy entry pool: "%s".' % self._entries)
+                raise AttributeError("CallbackProxy could not resolve entry '%s'." % name)
+            return self.callback(self._entries.get(name))
+        else:
+            return self.callback(name)
+
+    def __call__(self):
+        return self.callback()
 
 
 ## ObjectDictBridge
@@ -671,6 +681,9 @@ class TrackedDictionary(object):
         if self.__contains__(key):
             return self.__data.get(key, default)
         return default
+
+    __setattr__ = __setitem__
+    __getattr__ = lambda x, y: x.__getitem__(y)
 
 
 ## PropertyDescriptor - utility class for wrapping a value + type pair, with options
