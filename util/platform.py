@@ -18,9 +18,6 @@ import config as sysconfig
 from apptools.util import debug
 from apptools.util import _loadModule
 
-_adapters = []
-_platforms = []
-
 logging = debug.AppToolsLogger('core.util.platform')
 
 
@@ -45,26 +42,12 @@ class PlatformInjector(object):
 
         ''' Discover installed platforms, cache them globally. '''
 
-        # Globals
-        global logging
-        global _adapters
-        global _platforms
-
-        # Setup environment
-        adapters = {}
-        platforms = []
-        environ = os.environ
-        config = sysconfig.config.get('apptools.system.platform', {})
-
-        # If we have everything cached, just return it
-        if len(_adapters) > 0 and len(_platforms) > 0:
-            cls.adapters = _adapters
-            cls.platforms = _platforms
-
-            return cls
-
-        # Build our list of platforms/adapters manually
-        else:
+        if (hasattr(cls, '_injected') and not cls._injected) or not hasattr(cls, '_injected'):
+            # Setup environment
+            adapters = {}
+            platforms = []
+            environ = os.environ
+            config = sysconfig.config.get('apptools.system.platform', {})
 
             # Consider installed platforms
             for platform in config.get('installed_platforms', []):
@@ -100,85 +83,94 @@ class PlatformInjector(object):
                     platforms.append(platform)
 
             # Set to globals
-            _adapters = dict(adapters.items()[:])
-            _platforms = platforms[:]
+            cls.adapters = adapters.items()
+            cls.platforms = platforms
 
-            return cls
+        return cls
 
     @classmethod
     def inject(cls, target):
 
         ''' Take the target class and inject properties according to enabled platforms + features. '''
 
-        global logging
-        global _adapters
-        global _platforms
+        if hasattr(target, '_injected') and target._injected is True:
+            return target
+
+        _adapters, _platforms = cls.adapters, cls.platforms
 
         ## Check for appropriate feature containers
         if not hasattr(target, 'platforms'):
             target.platforms = []
+        if not hasattr(target, 'platform_index'):
+            target.platform_index = set([])
         if not hasattr(target, 'context_injectors'):
             target.context_injectors = []
 
         ## Install each platform
         for platform in _platforms:
 
-            # Consider config shortcuts
-            try:
+            if platform['path'] not in target.platform_index:
 
-                config_s = getattr(platform['adapter'], 'config_shortcuts')
-                if not isinstance(config_s, list):
-                    config_s = config_s()
+                target.platform_index.add(platform['path'])
 
-                target.injected_config = []
-                for name, shortcut in config_s:
-                    if hasattr(target, name):
-                        logging.warning('Platform config shortcut "' + name + '" on platform "' + str(platform) + '" already exists on the target injectee. Overwriting.')
-                    try:
-                        setattr(target, name, shortcut)
-                    except Exception, e:
-                        logging.warning('Platform config shortcut injection sequence for shortcut "' + name + '" on platform "' + str(platform) + '" encountered an unhandled exception: "' + str(e) + '".')
-                        if sysconfig.debug:
-                            raise
+                # Consider config shortcuts
+                try:
+
+                    config_s = getattr(platform['adapter'], 'config_shortcuts')
+                    if not isinstance(config_s, list):
+                        config_s = config_s()
+
+                    target.injected_config = []
+                    for name, shortcut in config_s:
+                        if hasattr(target, name):
+                            logging.warning('Platform config shortcut "' + name + '" on platform "' + str(platform) + '" already exists on the target injectee. Overwriting.')
+                        try:
+                            setattr(target, name, shortcut)
+                        except Exception, e:
+                            logging.warning('Platform config shortcut injection sequence for shortcut "' + name + '" on platform "' + str(platform) + '" encountered an unhandled exception: "' + str(e) + '".')
+                            if sysconfig.debug:
+                                raise
+                            else:
+                                continue
                         else:
-                            continue
-                    else:
-                        target.injected_config.append((name, shortcut))
+                            target.injected_config.append((name, shortcut))
 
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
-            # Consider shortcut exports
-            try:
+                # Consider shortcut exports
+                try:
 
-                shortcuts = getattr(platform['adapter'], 'shortcut_exports')
-                if not isinstance(shortcuts, list):
-                    shortcuts = shortcuts()
+                    shortcuts = getattr(platform['adapter'], 'shortcut_exports')
+                    if not isinstance(shortcuts, list):
+                        shortcuts = shortcuts()
 
-                target.injected_shortcuts = []
-                for name, shortcut in shortcuts:
-                    if hasattr(target, name):
-                        logging.warning('Platform config shortcut "' + name + '" on platform "' + str(platform) + '" already exists on the target injectee. Overwriting.')
-                    try:
-                        setattr(target, name, shortcut)
-                    except Exception, e:
-                        logging.warning('Platform config shortcut injection sequence for shortcut "' + name + '" on platform "' + str(platform) + '" encountered an unhandled exception: "' + str(e) + '".')
-                        if sysconfig.debug:
-                            raise
+                    target.injected_shortcuts = []
+                    for name, shortcut in shortcuts:
+                        if hasattr(target, name):
+                            logging.warning('Platform config shortcut "' + name + '" on platform "' + str(platform) + '" already exists on the target injectee. Overwriting.')
+                        try:
+                            setattr(target, name, shortcut)
+                        except Exception, e:
+                            logging.warning('Platform config shortcut injection sequence for shortcut "' + name + '" on platform "' + str(platform) + '" encountered an unhandled exception: "' + str(e) + '".')
+                            if sysconfig.debug:
+                                raise
+                            else:
+                                continue
                         else:
-                            continue
-                    else:
-                        target.injected_shortcuts.append((name, shortcut))
+                            target.injected_shortcuts.append((name, shortcut))
 
-            except Exception:
-                pass
+                except Exception:
+                    pass
 
-            # Add template context injectors
-            if hasattr(platform['adapter'], 'template_context'):
-                target.context_injectors.append(platform['adapter'].template_context)
+                # Add template context injectors
+                if hasattr(platform['adapter'], 'template_context'):
+                    target.context_injectors.append(platform['adapter'].template_context)
 
-            # Add the platform as installed
-            target.platforms.append(platform['adapter'])
+                # Add the platform as installed
+                target.platforms.append(platform['adapter'])
+
+                target._injected = True
 
         ## Done! Return prepped Platform injectee
         return target

@@ -57,6 +57,7 @@ logging = debug.AppToolsLogger('apptools.services', 'ServiceLayer')._setconditio
 
 # Service layer middleware object cache
 _middleware_cache = {}
+_installed_mappers = []
 
 
 #+#+#+ ==== Handy Message Fields ==== +#+#+#
@@ -567,6 +568,9 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
                 self.__send_error(400, remote.RpcState.REQUEST_ERROR, 'Error parsing RPC request (%s)' % err, mapper)
                 return
 
+            if hasattr(self.service, 'before_request_hook'):
+                self.service.before_request_hook()
+
             try:
                 response = method(request)
             except self.ApplicationError, err:
@@ -653,6 +657,7 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
         ''' Return installed mappers, calculated from config. '''
 
         global _global_debug
+        global _installed_mappers
 
         # Decide whether we should output logs
         if self._servicesConfig.get('debug', False) is True:
@@ -660,33 +665,40 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
         else:
             output_debug = False
 
-        mappers = []
-        for mapper in self._globalServicesConfig.get('mappers', []):
-            if mapper.get('enabled', False) is not True:
-                if output_debug:
-                    self.logging.info('Mapper at name "' + str(mapper.get('name', 'UnknownMapper')) + '" skipped according to config.')
-                continue
-
-            try:
-                mapper_cls = _loadModule(tuple(['.'.join(mapper.get('path').split('.')[0:-1]), mapper.get('path').split('.')[-1]]))
-                mapper = mapper_cls()
-
-            except ImportError:
-                self.logging.warning('Invalid path to RPCMapper of name "%s". Given path: "%s" does not exist or otherwise could not be imported.' % (str(mapper.get('name', 'UnknownMapper')), str(mapper.get('path', 'UnknownPath'))))
-                if _global_debug:
-                    raise
-                else:
+        if len(_installed_mappers) == 0:
+            mappers = []
+            for mapper in self._globalServicesConfig.get('mappers', []):
+                if mapper.get('enabled', False) is not True:
+                    if output_debug:
+                        self.logging.info('Mapper at name "' + str(mapper.get('name', 'UnknownMapper')) + '" skipped according to config.')
                     continue
 
-            except Exception, e:
-                self.logging.error('Unknown exception encountered when trying to install the RPC mapper at name "%s" with path "%s". Exception: "%s".' % (str(mapper.get('name', 'UnknownMapper')), str(mapper.get('path', 'UnknownPath')), str(e)))
-                if _global_debug:
-                    raise
-                else:
-                    continue
+                try:
+                    mapper_cls = _loadModule(tuple(['.'.join(mapper.get('path').split('.')[0:-1]), mapper.get('path').split('.')[-1]]))
+                    mapper = mapper_cls()
 
-            else:
-                mappers.append(mapper)
+                except ImportError:
+                    self.logging.warning('Invalid path to RPCMapper of name "%s". Given path: "%s" does not exist or otherwise could not be imported.' % (str(mapper.get('name', 'UnknownMapper')), str(mapper.get('path', 'UnknownPath'))))
+                    if _global_debug:
+                        raise
+                    else:
+                        continue
+
+                except Exception, e:
+                    self.logging.error('Unknown exception encountered when trying to install the RPC mapper at name "%s" with path "%s". Exception: "%s".' % (str(mapper.get('name', 'UnknownMapper')), str(mapper.get('path', 'UnknownPath')), str(e)))
+                    if _global_debug:
+                        raise
+                    else:
+                        continue
+
+                else:
+                    mappers.append(mapper)
+
+            # Set cache
+            _installed_mappers = mappers[:]
+        else:
+            # Read from cache
+            mappers = _installed_mappers[:]
 
         if (output_debug or _global_debug) and len(mappers) == 0:
             self.logging.warning(' === NO VALID RPCMAPPERS FOUND. ===')

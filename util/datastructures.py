@@ -467,43 +467,50 @@ class BidirectionalEnum(object):
     __singleton__ = True
     __metaclass__ = ProxiedStructure
 
-    def reverse_resolve(self, code):
+    @classmethod
+    def reverse_resolve(cls, code):
 
         ''' Resolve a mapping, by it's integer/string code. '''
 
-        if code in self:
-            return self._pmap[code]
-        return False
-
-    def forward_resolve(self, flag):
-
-        ''' Resolve a mapping, by it's string property name. '''
-
-        if flag in self.__dict__.keys():
-            return self.__getattr__(flag)
+        if code in cls._pmap:
+            return cls._pmap[code]
         return False
 
     @classmethod
-    def __serialize__(self):
+    def forward_resolve(cls, flag):
+
+        ''' Resolve a mapping, by it's string property name. '''
+
+        if flag in cls._pmap:
+            return cls.__getattr__(flag)
+        return False
+
+    @classmethod
+    def resolve(cls, flag): return cls.forward_resolve(flag)
+
+    @classmethod
+    def __serialize__(cls):
 
         ''' Flatten down into a structure suitable for storage/transport. '''
 
-        return dict([(k, v) for k, v in self.__dict__ if not k.startswith('_')])
+        return dict([(k, v) for k, v in dir(cls) if not k.startswith('_')])
 
-    def __json__(self):
+    @classmethod
+    def __json__(cls):
 
         ''' Flatten down and serialize into JSON. '''
 
-        return self.__serialize__()
+        return cls.__serialize__()
 
-    def __repr__(self):
+    @classmethod
+    def __repr__(cls):
 
         ''' Display a string representation of a flattened self. '''
 
         return '::'.join([
             "<%s" % self.__class__.__name__,
             ','.join([
-                block for block in ('='.join([str(k), str(v)]) for k, v in self.__serialize__().items())]),
+                block for block in ('='.join([str(k), str(v)]) for k, v in cls.__serialize__().items())]),
             "BiDirectional>"
             ])
 

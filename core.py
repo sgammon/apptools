@@ -128,6 +128,20 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
 
         # Check platforms for pre-dispatch hooks
         if (hasattr(self, 'platforms') and isinstance(self.platforms, list)) and len(self.platforms) > 0:
+            callchain = filter(lambda x: hasattr(x, 'initialize'), self.platforms[:])
+            if len(callchain) > 0:
+                # There's some platforms that need initializing
+                for platform in callchain:
+                    try:
+                        platform.initialize(self)
+                    except Exception as e:
+                        self.logging.error('Encountered unhandled exception "%s" in platform initialize hook for installed platform "%s".' % (e, platform))
+                        if config.debug:
+                            raise
+                        else:
+                            continue
+
+            # Pre-dispatch hook
             callchain = filter(lambda x: hasattr(x, 'pre_dispatch'), self.platforms[:])
             if len(callchain) > 0:
                 for platform in callchain:

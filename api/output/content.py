@@ -23,6 +23,7 @@ from apptools.api import CoreAPI
 ## AppTools Imports
 from apptools.api import output
 from apptools.util import debug
+from apptools.util import AppToolsJSONEncoder
 
 ## NDB Imports
 from google.appengine.ext import ndb
@@ -35,7 +36,7 @@ from google.appengine.api import memcache
 from google.appengine.ext import blobstore
 
 ## Openfire Imports
-from apptools.models import builtin as models
+from apptools.model import builtin as models
 
 
 ## == Globals == ##
@@ -648,21 +649,6 @@ class ContentBridge(object):
     __content_bridge = None
     __content_prerender = None
 
-    def __init__(self, app=None, handler=None, service=None, environment=None):
-
-        ''' Initialize the content bridge. '''
-
-        if app is not None:
-            self._initialize_dynamic_content(app, handler, service, environment)
-
-    def __getattr__(self, name):
-
-        ''' Proxy to the current handler. '''
-
-        if name not in self.__dict__:
-            return getattr(self.handler, name)
-        else: return getattr(self, name)
-
     @webapp2.cached_property
     def config(self):
 
@@ -682,21 +668,21 @@ class ContentBridge(object):
 
         ''' Named config pipe to output config. '''
 
-        return config.config.get('project.output', {})
+        return self._outputConfig
 
     @webapp2.cached_property
     def _jinjaConfig(self):
 
         ''' Cached access to Jinja2 base config. '''
 
-        return config.config.get('webapp2_extras.jinja2')
+        return config.config.get('webapp2_extras.jinja2', {})
 
     @webapp2.cached_property
     def _outputConfig(self):
 
         ''' Cached access to base output config. '''
 
-        return config.config.get('apptools.project.output')
+        return config.config.get('apptools.project.output', {})
 
     @webapp2.cached_property
     def _environment(self):
@@ -712,7 +698,7 @@ class ContentBridge(object):
 
         ''' Cached access to this handler's config. '''
 
-        return config.config.get('project.classes.WebHandler')
+        return config.config.get('apptools.classes.WebHandler', {})
 
     def _initialize_dynamic_content(self, app, handler=None, service=None, environment=None):
 
@@ -777,14 +763,14 @@ class ContentBridge(object):
             self.logging.info('Preparing Jinja2 OF template execution environment.')
 
             # use output logging condition for a minute
-            self.logging._setcondition(self._prOutputConfig.get('extensions').get('config').get('logging'))
+            self.logging._setcondition(self._prOutputConfig.get('extensions', {}).get('config', {}).get('logging', True))
 
             # get jinja2 base config
             j2cfg = self._jinjaConfig
             base_environment_args = j2cfg.get('environment_args')
             base_extensions_list = base_environment_args.get('extensions')
 
-            if self._prOutputConfig.get('extensions', {}).get('config').get('enabled', False) == True:
+            if self._prOutputConfig.get('extensions', {}).get('config', {}).get('enabled', False) == True:
 
                 if isinstance(_output_extensions, dict) and (len(_output_extensions) == len(base_extensions_list)):
                     compiled_extension_list = _output_extensions.values()
@@ -851,9 +837,6 @@ class ContentBridge(object):
                     _loader = output.CoreOutputLoader(j2cfg.get('template_path'))
                 _output_loader = _loader
 
-            #if True:
-            #    _loader = output.ModuleLoader(templates_compiled_target)
-
             self.logging.info('Final extensions list: "%s".' % compiled_extension_list)
             self.logging.info('Chosen loader: "%s".' % _loader)
 
@@ -867,13 +850,13 @@ class ContentBridge(object):
 
             # bind environment args
             base_environment_args['loader'] = _loader
-            base_environment_args['bytecode_cache'] = _bytecacher
+            base_environment_args['bytecode_cache'] = _output_bytecacher
 
             # hook up filters
             filters = {
                 'currency': lambda x: self._format_as_currency(x, False),
                 'percentage': lambda x: self._format_as_percentage(x, True),
-                'json': self.AppToolsJSONEncoder().encode
+                'json': AppToolsJSONEncoder().encode
             }
 
             # generate environment
@@ -884,13 +867,13 @@ class ContentBridge(object):
             env = environment.Environment(**environment_args)
 
             # update globals and filters
-            env.globals.update(self.baseContext)
+            env.globals.update(self.__handler.baseContext)
             env.filters.update(filters)
 
             # patch in app, handler, ext and api
             env.extend(**{
                 'wsgi_current_application': app,
-                'wsgi_current_handler': self,
+                'wsgi_current_handler': self.__handler,
                 'jinja2_current_loader': _loader,
                 'jinja2_current_bytecache': base_environment_args.get('bytecode_cache')
             })
@@ -899,7 +882,12 @@ class ContentBridge(object):
                 env.add_extension(extension)
 
             # replace logging conditional
-            self.logging._setcondition(self._webHandlerConfig.get('logging'))
+            handler_config = self.__handler._webHandlerConfig
+            if handler_config:
+                log_condition = handler_config.get('logging', True)
+            else:
+                log_condition = True # default to True
+            self.logging._setcondition(log_condition)
             self.__environment = env
 
             return self.__environment
