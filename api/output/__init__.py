@@ -556,9 +556,11 @@ class OutputMixin(HandlerMixin):
 
         # Inject python builtins as globals, so they are available to macros
 
+        from apptools.util import timesince, byteconvert
+
         # **Ever wanted your favorite Python builtins available in your template?** Look ma!
         j2cfg['globals'] = self.baseContext
-        j2cfg['filters'] = {'json': lambda f: self.json_encoder().encode(f)}
+        j2cfg['filters'] = {'json': lambda f: self.json_encoder().encode(f), 'timesince': timesince.timesince, 'humanize': byteconvert.humanize_bytes}
 
         environment = jinja2.Jinja2(app, config=j2cfg)  # Make & return template environment
         return environment

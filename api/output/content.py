@@ -25,6 +25,10 @@ from apptools.api import output
 from apptools.util import debug
 from apptools.util import AppToolsJSONEncoder
 
+## External Imports
+from apptools.util import timesince
+from apptools.util import byteconvert
+
 ## NDB Imports
 from google.appengine.ext import ndb
 from google.appengine.ext.ndb import context
@@ -856,7 +860,9 @@ class ContentBridge(object):
             filters = {
                 'currency': lambda x: self._format_as_currency(x, False),
                 'percentage': lambda x: self._format_as_percentage(x, True),
-                'json': AppToolsJSONEncoder().encode
+                'json': AppToolsJSONEncoder().encode,
+                'timesince': timesince.timesince,
+                'humanize': byteconvert.humanize_bytes
             }
 
             # generate environment

@@ -580,6 +580,16 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
 
             mapper.build_response(self, response)
 
+            baseHeaders = config.config.get('apptools.project.output', {}).get('headers', {})
+            for k, v in baseHeaders.items():
+                if k.lower() == 'access-control-allow-origin':
+                    if v == None:
+                        self.response.headers[k] = self.request.headers['origin']
+                    else:
+                        self.response.headers[k] = v
+                else:
+                    self.response.headers[k] = v
+
             if hasattr(self.service, 'after_request_hook'):
                 self.service.after_request_hook()
 
@@ -742,7 +752,13 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
         response = webapp2.Response()
         for k, v in self.outputConfig.get('headers').items():
-            response.headers[k] = v
+            if k.lower() == 'access-control-allow-origin':
+                if v == None:
+                    response.headers[k] = self.request.headers['origin']
+                else:
+                    response.headers[k] = v
+            else:
+                response.headers[k] = v
         response.write('POST,OPTIONS,HEAD')
         return response
 
@@ -752,6 +768,7 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
         global _middleware_cache
 
+        self.request = request
         if request.method.lower() == 'options':
             return self.options()
 

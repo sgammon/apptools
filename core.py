@@ -211,6 +211,8 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
                 'enabled': self.push.session,  # enable/disable appengine channel API
                 'token': self.push.token  # token for connecting channel
             },
+            'request': self.request,  # the active request
+            'route': self.request.route,  # the route that was matched
             'appcache': {
                 'enabled': False,  # enable/disable appcaching
                 'location': None  # location for appcache manifest
