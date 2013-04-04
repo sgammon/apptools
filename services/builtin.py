@@ -346,7 +346,7 @@ class SystemService(BaseService):
         # Infrastructure Info
         response.datacenter = self.request.environ.get('DATACENTER', '_default_')
         response.instance = self.request.environ.get('INSTANCE_ID', '_default_')
-        response.runtime = self.request.environ.get('APPENGINE_RUNTIME', '_default_')
+        response.runtime = self.request.environ.get('APPENGINE_RUNTIME', self.request.environ.get('RUNTIME', '_default_'))
 
         if hasattr(self, 'api') and hasattr(self.api, 'backends'):
             if self.api.backends.get_backend() is not None:
@@ -356,7 +356,7 @@ class SystemService(BaseService):
         response.app_version = self.request.environ.get('CURRENT_VERSION_ID', '_default_')
 
         # Request Info
-        response.request_id = self.request.environ.get('REQUEST_ID_HASH', '_default_')
+        response.request_id = self.request.environ.get('REQUEST_ID_HASH', self.request.headers.get('XAF-Request-ID', '_default_'))
         if self.request.environ.get('wsgi.version', False) is not False:
             response.interface = WhoAreYouResponse.GatewayInterface.WSGI
             response.multithread = bool(self.request.environ.get('wsgi.multithread', False))

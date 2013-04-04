@@ -617,9 +617,6 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
 
         ''' Dispatch the remote request, and generate a response. '''
 
-        # Buffer POST body
-        self.request.make_body_seekable()
-
         # Unfortunately we need to access the protected attributes.
         self._ServiceHandler__factory = factory
         self._ServiceHandler__service = service
