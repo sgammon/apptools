@@ -147,6 +147,14 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
                 for platform in callchain:
                     try:
                         platform.pre_dispatch(self)
+
+                    except exc.HTTPFound as e:
+                        self.logging.info('Redirect encountered in pre_dispatch.')
+
+                        # Force-put session ticket and data
+                        self.session.commit()
+                        return self.response
+
                     except Exception, e:
                         self.logging.error('Encountered unhandled exception "%s" in platform pre_dispatch hook for installed platform "%s".' % (e, platform))
                         if config.debug:

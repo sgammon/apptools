@@ -16,6 +16,11 @@ import config
 import webapp2
 import logging
 
+try:
+    import endpoints
+except ImportError as e:
+    endpoints = False
+
 rule_builders = []
 installed_apps = config.config.get('webapp2', {}).get('apps_installed', [])
 if len(installed_apps) == 0:
@@ -110,6 +115,8 @@ _admin_app = [webapp2.Route('/_app/manage.*', AppAdminHandler, name='admin-handl
 _sitemap_app = [webapp2.Route('/_app/sitemap.*', SitemapHandler, name='sitemap-handler')]
 _appcache_app = [webapp2.Route('/_app/manifest.*', CacheManifestHandler, name='cache-manifest-handler')]
 _services_app = servicelayer_dispatch.generateServiceMappings(config.config.get('apptools.project.services'))
+if endpoints:
+    endpoint = endpoints.api_server([service for name, service in servicelayer_dispatch.resolveServices(load=True) if hasattr(service, 'api_info')], restricted=False)
 
 ## Get builtin apps
 def get_builtin_apps():

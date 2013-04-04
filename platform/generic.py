@@ -129,9 +129,7 @@ class GenericWSGI(Platform):
         return [
 
             # Lib, Ext & Util
-            ('ext', self.ext), ('util', self.util),
-
-            # Services, Messages & Models
+            ('ext', self.ext), ('util', self.util)
 
         ]
 
@@ -142,7 +140,7 @@ class GenericWSGI(Platform):
 
         return [
             # Main Config
-            ('config', self.config), ('_sysConfig', self._sysConfig),
+            ('_sysConfig', self._sysConfig),
 
             # Services Config
             ('_globalServicesConfig', self._globalServicesConfig), ('_servicesConfig', self._servicesConfig),

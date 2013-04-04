@@ -18,7 +18,13 @@ import time
 import base64
 import config
 import hashlib
+import inspect
 import webapp2
+
+try:
+    import endpoints
+except ImportError as e:
+    endpoints = False
 
 # AppFactory Integration
 try:
@@ -59,6 +65,9 @@ logging = debug.AppToolsLogger('apptools.services', 'ServiceLayer')._setconditio
 _middleware_cache = {}
 _installed_mappers = []
 
+# OAuth Constants
+_DEFAULT_OAUTH_SCOPES = ("https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile")
+_DEFAULT_OAUTH_AUDIENCES = (endpoints.API_EXPLORER_CLIENT_ID,) if endpoints else None
 
 #+#+#+ ==== Handy Message Fields ==== +#+#+#
 
@@ -608,6 +617,9 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
 
         ''' Dispatch the remote request, and generate a response. '''
 
+        # Buffer POST body
+        self.request.make_body_seekable()
+
         # Unfortunately we need to access the protected attributes.
         self._ServiceHandler__factory = factory
         self._ServiceHandler__service = service
@@ -1071,9 +1083,9 @@ flags = datastructures.DictProxy({
 
 
 ## rpcmethod - Wrap a classmethod for use with AppTools thimodels, optionally enforcing logon.
-def rpcmethod(input, output=None, authenticated=False):
+def rpcmethod(input, output=None, authenticated=False, audiences=_DEFAULT_OAUTH_AUDIENCES, scopes=_DEFAULT_OAUTH_SCOPES, **kwargs):
 
-    ''' Protect a service method from anonymous access. '''
+    ''' Wrap a service method with the appropriate decorators. '''
 
     from apptools import model
 
@@ -1084,11 +1096,27 @@ def rpcmethod(input, output=None, authenticated=False):
     if output is None:
         output = input
 
+    if not endpoints:
+        def endpoint_wrap(fn):
+
+            ''' Shim to wrap endpoint methods when the `endpoints` lib is unavailable. '''
+
+            def wrap(*args, **kwargs):
+
+                ''' Return the wrapped method directly, soaking up any endpoints arguments. '''
+
+                return fn
+
+            return wrap
+    else:
+        endpoint_wrap = endpoints.method
+
     def make_rpc_method(fn):
 
         ''' Closure that makes a closured RPC method. '''
 
-        @remote.method(input, output)
+        #@endpoint_wrap(input, output, audiences=audiences, scopes=scopes, **kwargs)
+        #@remote.method(input, output)
         def wrapped(self, request):
 
             ''' Wrap remote method and throw an exception if no user is present. '''
@@ -1105,5 +1133,10 @@ def rpcmethod(input, output=None, authenticated=False):
                 return result.to_message()
             else:
                 return result
-        return wrapped
+
+        wrapped.__name__ = fn.__name__
+        wrapped.__module__ = fn.__module__
+        wrapped.__doc__ = fn.__doc__
+        return endpoint_wrap(input, output, audiences=audiences, scopes=scopes, **kwargs)(remote.method(input, output)(wrapped))
+
     return make_rpc_method

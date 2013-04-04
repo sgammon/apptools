@@ -21,7 +21,7 @@ try:
     import bootstrap
     bootstrap.AppBootstrapper.prepareImports()
 except:
-    logging.warning('Could not resolve app bootstrapper.')
+    # No bootstrapper found.
     pass
 
 ## AppTools Util

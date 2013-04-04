@@ -17,12 +17,13 @@ import datetime
 # AppTools Model API
 from apptools import model
 
+
 ## Builtin Models
 
 
 ## StoredAsset
 # This model keeps track of StoredAssets.
-class StoredAsset(model.ThinModel):
+class StoredAsset(model.Model):
 
     ''' This model keeps track of a single item uploaded to the Blobstore or Cloud Storage. '''
 
@@ -35,7 +36,7 @@ class StoredAsset(model.ThinModel):
 
 ## UploadSession
 # This model keeps track of file upload sessions.
-class UploadSession(model.ThinModel):
+class UploadSession(model.Model):
 
     ''' This model keeps track of blobstore upload sessions. '''
 
@@ -50,7 +51,7 @@ class UploadSession(model.ThinModel):
 
 ## PushSession
 # This model keeps track of async sessions established by the service layer.
-class PushSession(model.ThinModel):
+class PushSession(model.Model):
 
     ''' This model keeps track of async sessions established by the service layer. '''
 
@@ -63,47 +64,47 @@ class PushSession(model.ThinModel):
 
 ## ContentNamespace
 # Groups runtime sections of dynamic content, if not assigned a datastore key as a namespace.
-class ContentNamespace(model.ThinModel):
+class ContentNamespace(model.Model):
 
     ''' Represents a group of ContentAreas namespaced by something other than a datastore key (otherwise they are put under that and just correlated here). '''
 
     # Storage Settings
     name = basestring, {'required': True, 'indexed': True}
-    areas = model.ThinKey, {'repeated': True, 'indexed': True}
-    target = model.ThinKey, {'default': None}
+    areas = model.Key, {'repeated': True, 'indexed': True}
+    target = model.Key, {'default': None}
 
 
 ## ContentArea
 # Marks an editable dynamic area on a given page for a given data point.
-class ContentArea(model.ThinModel):
+class ContentArea(model.Model):
 
     ''' Represents a content area that can be edited for a certain datapoint. '''
 
     html = basestring, {'impl': 'TextProperty'}
     text = basestring, {'impl': 'TextProperty'}
     local = bool, {'default': False}
-    latest = model.ThinKey, {'default': None}
-    versions = model.ThinKey, {'repeated': True}
+    latest = model.Key, {'default': None}
+    versions = model.Key, {'repeated': True}
 
 
 ## ContentSnippet
 # A content value for a content area (multiple exist for an area only for versioned content sections).
-class ContentSnippet(model.ThinModel):
+class ContentSnippet(model.Model):
 
     ''' Represents a versioned content value of a content area. '''
 
-    area = model.ThinKey
+    area = model.Key
     html = basestring, {'impl': 'TextProperty', 'compressed': True}
     text = basestring, {'impl': 'TextProperty', 'compressed': True}
-    summary = model.ThinKey
+    summary = model.Key
 
 
 ## ContentSummary
 # A shortened summary value for a content area's content.
-class ContentSummary(model.ThinModel):
+class ContentSummary(model.Model):
 
     ''' Represents a summary of content in a content area. '''
 
-    target = model.ThinKey
+    target = model.Key
     html = basestring, {'impl': 'BlobProperty'}
-    text = basestring, {'impl', 'TextProperty'}
+    text = basestring, {'impl': 'TextProperty'}

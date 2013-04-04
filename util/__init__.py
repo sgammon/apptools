@@ -13,10 +13,19 @@ belong anywhere more-specific in AppTools.
 
 ## Base Imports
 import os
+import datetime
 import logging as std_logging
 
 ## Export Util Controllers
 from apptools.util.debug import AppToolsLogger
+
+## AppEngine Imports
+try:
+    from google.appengine.ext import ndb
+    from google.appengine.api import datastore_types
+    _NDB = True
+except ImportError as e:
+    _NDB = False
 
 ## Exported Datastructures
 from apptools.util.datastructures import DictProxy
@@ -109,6 +118,15 @@ class AppToolsJSONEncoder(libjson.JSONEncoder):
         else:
             if isinstance(target, runtime.Undefined):
                 return None
+        if isinstance(target, (datetime.datetime, datetime.date, datetime.time)):
+            return target.isoformat()
+        if _NDB:
+            if isinstance(target, ndb.Key):
+                return target.urlsafe()
+            if isinstance(target, ndb.Model):
+                return target.to_dict()
+            if isinstance(target, datastore_types.BlobKey):
+                return str(target)
         return libjson.JSONEncoder.default(self, target)
 
 ## Splice in custom JSON codec

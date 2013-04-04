@@ -2,1173 +2,726 @@
 
 '''
 
-AppTools Models
-
-Exports useful utils/classes for data modelling, along with builtin models
-and tools for working with polymorphic persistent data.
-
--sam (<sam@momentum.io>)
+	apptools2: model API
+	-------------------------------------------------
+	|												|	
+	|	`apptools.model`							|
+	|												|
+	|	a general-purpose, minimalist toolkit for 	|
+	|	extensible pythonic data modelling.			|
+	|												|	
+	-------------------------------------------------
+	|	authors:									|
+	|		-- sam gammon (sam@momentum.io)			|
+	-------------------------------------------------	
+	|	changelog:									|
+	|		-- apr 1, 2013: initial draft			|
+	-------------------------------------------------
 
 '''
 
-## Base Imports
-try:
-    import cPickle as pickle
-except ImportError, e:
-    import pickle
-
-import config
-import webapp2
+# stdlib
+import abc
+import base64
 import weakref
-import inspect
-import datetime
+import operator
 import collections
 
-## AppTools Util
+# relative imports
+from . import adapter
+from .adapter import concrete
+
+# apptools util
+from apptools import util
 from apptools.util import json
-from apptools.util import debug
-from apptools.util import platform
-from apptools.util import _loadModule
-from apptools.util import ObjectProxy
-from apptools.util import datastructures
 
-## Constants
-_MODEL_PROPERTIES = frozenset([
-    '_getModelPath',
-    '_getClassPath',
-    '_use_cache',
-    '_use_memcache',
-    '_use_datastore',
-    '_post_put_hook',
-    '_post_delete_hook'
-])
-
-_DEFAULT_ENGINE = None
-_STORAGE_ENGINES = {}
-__flattened_properties = None
-__unflattened_properties = None
-logging = debug.AppToolsLogger(path='apptools', name='model')._setcondition(config.debug)
-
-## Defaults
-_DEFAULT_PROP_OPTS = {}
+# apptools datastructures
+from apptools.util.datastructures import _EMPTY
 
 
-## _AppToolsModel
-# This model class mixes in a few utilities to all submodels.
-class _AppToolsModel(object):
-
-    ''' Root, master, polymorphic-capable thin data model. Everything lives under this class. '''
-
-    def __init__(self, key=None, **kwargs):
-
-        ''' Receive a newly inflated model. '''
-
-        self.__key__ = key
-        for k, v in kwargs.iteritems():
-            setattr(self, k, v)
-
-    def _getModelPath(self, seperator=None):
-
-        ''' Retrieve a path for this model's polymorphic class chain. '''
-
-        path = [i for i in str(self.__module__ + '.' + self.__class__.__name__).split('.')]
-
-        if seperator is not None:
-            return seperator.join(path)
-
-        return path
-
-    def _getClassPath(self, seperator=None):
-
-        ''' Retrieve an importable path for this model's class. '''
-
-        if hasattr(self, '__class_hierarchy__'):
-            path = [cls.__name__ for cls in self.__class_hierarchy__]
-
-            if seperator is not None:
-                return seperator.join(path)
-            return path
-        else:
-            return []
-
-    def __enter__(self):
-
-        ''' Sets an internal flag to indicate emptiness without `None`, when a model is used as a context manager. '''
-
-        self.__sentinel__ = True
-
-    def __exit__(self, *args, **kwargs):
-
-        ''' Resets internal flags. '''
-
-        self.__sentinel__ = False
-
-    def to_dict(self, exclude=None, include=None):
-
-        ''' Reduce this model to a dictionary. '''
-
-        props = {}
-        with self:
-            for name, dtype, opts in self.__pmap__:
-                    if exclude and name in exclude:
-                        continue
-                    elif include and name not in include:
-                        continue
-                    else:
-                        value = getattr(self, name)
-                        if value != datastructures._EMPTY:
-                            props[name] = value
-        return props
-
+## == protorpc support == ##
 try:
-    # App Engine Imports
-    from google.appengine.ext import db as ldb
-    from google.appengine.ext import blobstore
-
-    # NDB Imports (New DataBase)
-    from google.appengine.ext import ndb as nndb
-    from google.appengine.ext.ndb import key, model
-
-except ImportError:
-
-    # No NDB :(
-    _NDB = False
-    _GAE = False
-
-    logging.debug('NDB/LDB is not supported in this environment.')
-
-    ## AbstractModelFactory
-    # Without NDB, we just present an abstract parent.
-    class AbstractModelFactory(type):
-
-        ''' Abstract parent to model factory metaclasses. '''
-
-        pass
-
-    ## _ModelPathProperty
-    # Subclass `str`, for use with ThinModel, without NDB present.
-    class _ModelPathProperty(str):
-        pass
-
-    ## _ClassKeyProperty
-    # Subclass `str`, for use with ThinModel, without NDB present.
-    class _ClassKeyProperty(list):
-        pass
-
-else:
-
-    # We have NDB!
-    _NDB = True
-    _GAE = True
-
-    logging.debug('NDB/LDB is supported in this environment.')
-
-    ## AbstractModelFactory
-    # Mixes in NDB's metaclass, if available.
-    class AbstractModelFactory(nndb.MetaModel):
-
-        ''' Abstract parent to model factory metaclasses. '''
-
-        pass
-
-    ## _ModelPathProperty
-    # This property is used in PolyPro to store the model's type inheritance path.
-    class _ModelPathProperty(ldb.StringProperty):
-
-        ''' Stores the Python package import path from the application root, for lazy-load on search. '''
-
-        def __init__(self, name, **kwargs):
-            super(_ModelPathProperty, self).__init__(name=name, default=None, **kwargs)
-
-        def __set__(self, *args):
-            raise ldb.DerivedPropertyError('Model-path is a derived property and cannot be set.')
-
-        def __get__(self, model_instance, model_class):
-            if model_instance is None:
-                return self
-            return model_instance._getModelPath(':')
-
-    ## _ClassKeyProperty
-    # This property is used in PolyPro to store the model's class path.
-    class _ClassKeyProperty(ldb.ListProperty):
-
-        ''' Stores the polymodel class inheritance path. '''
-
-        def __init__(self, name):
-            super(_ClassKeyProperty, self).__init__(name=name, item_type=str, default=None)
-
-        def __set__(self, *args):
-            raise ldb.DerivedPropertyError('Class-key is a derived property and cannot be set.')
-
-        def __get__(self, model_instance, model_class):
-            if model_instance is None:
-                return self
-            return model_instance._getClassPath()
-
-try:
-    import pipeline
-
-except ImportError:
-
-    # No pipelines :(
-    _PIPELINES = False
-
-    ## PipelineTrigger
-    # Placeholder trigger mixin, in case pipelines aren't supported in our current environment.
-    class PipelineTrigger(object):
-
-        ''' Placeholder class, used when pipelines is not supported. '''
-
-        pass
-
-    logging.debug('Pipelines are not supported in this environment.')
-
-else:
-
-    # Pipelines are supported!
-    _PIPELINES = True
-
-    logging.debug('Pipelines are supported in this environment.')
-
-    ## PipelineTrigger
-    # Allows bound pipelines to be constructed and started automatically when NDB hooks fire on models.
-    class PipelineTrigger(object):
-
-        ''' Mixin class that provides pipeline-based model triggers. '''
-
-        _pipeline_class = None
-
-        ### === Internal Properties === ###
-        __config = config.config.get('apptools.model.integration.pipelines', {})
-        __logging = debug.AppToolsLogger('apptools.model.mixins', 'PipelineTriggerMixin')._setcondition(__config.get('logging', False))
-
-        ### === Internal Methods === ###
-        @classmethod
-        def _construct_hook_pipeline(cls, action, **kwargs):
-
-            ''' Conditionally trigger a hooked model-driven pipeline. '''
-
-            if hasattr(cls, '_pipeline_class'):
-                if cls._pipeline_class is not None:
-                    if issubclass(cls._pipeline_class, ModelPipeline):
-                        cls.__logging.info('Valid pipeline found for model `%s`.' % cls)
-                        if hasattr(cls._pipeline_class, action):
-                            cls.__logging.info('Pipeline has hook for action `%s`.' % action)
-
-                            ## build pipeline params
-                            kwargs['action'] = action
-
-                            ## build pipeline
-                            return cls._pipeline_class(**kwargs)
-
-                        else:
-                            cls.__logging.info('Pipeline does not have a hook defined for action `%s`.' % action)
-                            return
-
-                    else:
-                        cls.__logging.error('Model-attached pipeline (on model "%s") is not an instance of ModelPipeline (of type "%s").' % (cls, cls._pipeline_class))
-                        return
-            else:
-                cls.__logging.info('No hooked pipeline detected for model "%s" on action "%s".' % (cls, action))
-            return
-
-        @classmethod
-        def _trigger_hook_pipeline(cls, action, start=False, **kwargs):
-
-            ''' Try to construct a pipeline for a given trigger hook, and optionally start it. '''
-
-            if action not in frozenset(['put', 'delete']):
-                cls.__logging.warning('Triggered NDB hook action is not `put` or `delete`. Ignoring.')
-                return
-            else:
-                cls.__logging.info('Valid hook action for potential pipeline hook. Trying to construct/resolve.')
-                p = cls._construct_hook_pipeline(action, **kwargs)
-                cls.__logging.info('Got back pipeline: `%s`.' % p)
-                if p:
-                    if start:
-                        cls.__logging.info('Starting hooked pipeline...')
-
-                        running_tests = os.environ.get('RUNNING_TESTS')
-                        if running_tests:
-                            pipeline = p.start_test(queue_name=cls.__config.get('trigger_queue', 'default'))
-                        else:
-                            pipeline = p.start(queue_name=cls.__config.get('trigger_queue', 'default'))
-
-                        cls.__logging.info('Hooked pipeline away: "%s"' % pipeline)
-                        return pipeline
-                    cls.__logging.info('Autostart is off. NOT starting constructed pipeline.')
-                    return p
-                else:
-                    cls.__logging.error('Could not construct pipeline! :(')
-                    return
-            return
-
-        ### === Hook Methods === ###
-        def _pipelines_post_put_hook(self, future):
-
-            ''' This hook is run after an AppModel is put using NDB. '''
-
-            cls = self.__class__
-            if cls.__config.get('enable', False):
-                cls.__logging.info('Pipelines-NDB integration hooks enabled.')
-                cls._trigger_hook_pipeline('put', cls.__config.get('autostart', False), key=self.key.urlsafe())
-            else:
-                cls.__logging.info('Pipelines-NDB integration hooks disabled.')
-            return
-
-        @classmethod
-        def _pipelines_post_delete_hook(cls, key, future):
-
-            ''' This hook is run after an AppModel is deleted using NDB. '''
-
-            if cls.__config.get('enable', False):
-                cls.__logging.info('Pipelines-NDB integration hooks enabled.')
-                cls._trigger_hook_pipeline('delete', cls.__config.get('autostart', False), key=key.urlsafe())
-            else:
-                cls.__logging.info('Pipelines-NDB integration hooks disabled.')
-            return
-
-        ### === Model Hooks === ###
-        def _post_put_hook(self, future):
-
-            ''' Post-put hook. '''
-
-            self._pipelines_post_put_hook(future)
-
-        @classmethod
-        def _post_delete_hook(cls, key, future):
-
-            ''' Post-delete hook. '''
-
-            cls._pipelines_post_delete_hook(key, future)
-
-try:
-    from apptools import services
-    from protorpc import messages as pmessages
+	import protorpc
+	from protorpc import messages as pmessages
+	from protorpc import message_types as pmessage_types
 
 except ImportError as e:
-
-    raise
-
-    # ProtoRPC is not supported
-    _PROTORPC = False
-
-    logging.debug('ProtoRPC is not supported in this environment.')
-
-    # Empty out our globals and indicate ProtoRPC isn't supported in the current environment.
-    _PROTORPC, _MESSAGE_FIELDS, _MESSAGE_FIELD_LOOKUP, _MESSAGE_FIELD_TO_BASETYPE = False, frozenset([]), frozenset([]), frozenset([])
-
-    ## MessageConverterMixin
-    # Placeholder class, used when ProtoRPC is not supported in the current environment.
-    class MessageConverter(object):
-
-        ''' Placeholder class, used when ProtoRPC is not supported in the current environment. '''
-
-        pass
+	# flag as unavailable
+	_PROTORPC, _root_message_class = False, object
 
 else:
+	# flag as available
+	_PROTORPC, _root_message_class = True, pmessages.Message
 
-    # ProtoRPC is supported
-    _PROTORPC = True
 
-    logging.debug('ProtoRPC is supported in this environment.')
+## == appengine support == ##
 
-    ## MessageConverterMixin
-    # Allows us to automatically convert an NDB model to or from a bound ProtoRPC message class.
-    class MessageConverter(object):
+# try to find appengine pipelines
+try:
+	import pipeline
+	from pipeline import common as _pcommon
+	from pipeline import pipeline as _pipeline
 
-        ''' Mixin class for automagically generating a ProtoRPC Message class from a model. '''
-
-        _message_class = None
-
-        @classmethod
-        def to_message_model(cls, exclude=None, include=None, property_set=None):
-
-            ''' Convert this model to a ProtoRPC message class. '''
-
-            if not _PROTORPC:
-                raise RuntimeError("ProtoRPC is not supported in this environment.")
-            if exclude:
-                property_set = [k for k in cls.__pmap__ if k[0] not in exclude]
-            elif include:
-                property_set = [k for k in cls.__pmap__ if k[0] in include]
-            elif property_set is None:
-                property_set = cls.__pmap__[:]
-            lookup_s = tuple([k[0] for k in property_set])
-
-            if lookup_s in cls.__messages__:
-                return cls.__messages__.get(lookup_s)
-
-            props = map(lambda g: (g[0], convert_basetype_to_field(g[1], g[2]), g[2]) if ('impl' not in g[2] and 'field' not in g[2]) else (g[0], resolve_fieldtype(g[1], g[2]), g[2]), property_set)
-
-            field_props = []
-            for i, group in enumerate(props):
-                name, prop, opts = group
-
-                if 'indexed' in opts:
-                    del opts['indexed']
-
-                if 'required' in opts:
-                    del opts['required']
-
-                if prop in frozenset([pmessages.MessageField, pmessages.EnumField]):
-
-                    ## TODO: Recursive generation of messages
-                    raise ValueError("Automatic model => message conversion does not currently support submessages or enums. Please author an explicit message class for the model '%s' and link it via the classmember '_message_class'." % cls.__name__)
-
-                else:
-                    args = [i+1]  # ID's need to be 1-indexed
-                    field_props.append((name, prop, args, opts))
-
-            msg_impl = pmessages.Message.__metaclass__(*[
-                cls.__name__, tuple([pmessages.Message]), dict([(k, v(*a, **o)) for k, v, a, o in field_props])])
-
-            cls.__messages__[lookup_s] = msg_impl
-            return msg_impl
-
-        def to_message(self, include=None, exclude=None, strict=False, message_class=None):
-
-            ''' Convert an entity instance into a message instance. '''
-
-            if message_class:
-                response = message_class()
-            else:
-                if self._message_class is not None:
-                    response = self._message_class()
-                else:
-                    response = self.to_message_model(exclude, include)
-
-            if hasattr(response, 'key'):
-                if self.key is not None:
-                    response.key = unicode(self.key.urlsafe())
-                else:
-                    response.key = None
-
-            def _convert_prop(v):
-
-                ''' Helper method to convert a property to be assigned to a message. '''
-
-                if isinstance(v, nndb.Key):
-                    return v.urlsafe()
-
-                elif isinstance(v, (datetime.datetime, datetime.date, datetime.time)):
-                    return v.isoformat()
-
-                # TODO: Activate this code and write a test for it.
-                elif isinstance(v, ndb.Model):
-                    if hasattr(v, '_message_class'):
-                        return v.to_message()
-                    else:
-                        model_dict = {}
-                        for k, v in v.to_dict().items():
-                            model_dict[k] = _convert_prop(v)
-                        return model_dict
-
-                else:
-                    if isinstance(v, (tuple, list)):
-                        values = []
-                        for i in v:
-                            values.append(_convert_prop(i))
-                        return values
-                    if isinstance(v, (int, basestring, float, bool)):
-                        return v
-                    if v == None:
-                        if strict:
-                            return v
-
-            def _convert_to_message_field(message_class, v):
-
-                ''' Helper method to convert a value to the provided message type. '''
-
-                if isinstance(v, list):
-                    if not len(v):
-                        return []
-                    if isinstance(v[0], nndb.Key):
-                        objs = ndb.get_multi(v)
-                        return [obj.to_message() for obj in objs]
-                    else:
-                        messages = []
-                        for i in v:
-                            messages.append(_convert_to_message_field(message_class, i))
-                        return messages
-
-                elif isinstance(v, dict):
-                    message = message_class()
-                    for key, val in v.items():
-                        if hasattr(message, key):
-                            setattr(message, key, _convert_prop(val))
-                    return message
-
-                else:
-                    # Not list or dict, attempt to convert with other methods.
-                    return _convert_prop(v)
-
-            # Convert each property and assign it to the response message.
-            msg_struct = {}
-            for k, v in self.to_dict(include=include, exclude=exclude).items():
-                if hasattr(response, k):
-                    v = getattr(self, k)
-                    if isinstance(v, (datetime.datetime, datetime.date, datetime.time)):
-                        v = v.isoformat()
-                    msg_struct[k] = v
-
-            return response(**msg_struct)
-
-        @classmethod
-        def from_message(cls, message, key=None, **kwargs):
-
-            ''' Convert a message instance to an entity instance. '''
-
-            if (hasattr(message, 'key') and message.key) and key is None:
-                obj = cls(key=nndb.key.Key(urlsafe=message.key), **kwargs)
-            elif key is not None and isinstance(key, ndb.key.Key):
-                obj = cls(key=nndb.key.Key(urlsafe=key.urlsafe()), **kwargs)
-            elif key is not None and isinstance(key, basestring):
-                obj = cls(key=nndb.key.Key(urlsafe=key), **kwargs)
-            else:
-                obj = cls(**kwargs)
-
-            for k, v in cls._properties.items():
-                if k == 'key':
-                    continue
-                if hasattr(message, k):
-                    try:
-                        setattr(obj, str(k), getattr(message, k))
-
-                    except TypeError:
-                        if k is not None and k not in [False, True, '']:
-
-                            try:
-                                setattr(obj, str(k), str(getattr(message, k)))
-                            except TypeError:
-                                continue
-
-                    else:
-                        continue
-            return obj
-
-        def mutate_from_message(self, message, exclude=[]):
-
-            ''' Copy all the attributes except the key from message to this object. '''
-
-            for k in [f.name for f in message.all_fields()]:
-                if k == 'key' or (exclude and k in exclude):
-                    continue
-                if hasattr(self, k) and getattr(message, k):
-                    try:
-                        setattr(self, str(k), getattr(message, k))
-                    except TypeError:
-                        if k is not None and k not in [False, True, '']:
-                            try:
-                                setattr(self, str(k), str(getattr(message, k)))
-                            except TypeError:
-                                continue
-
-                    except:
-                        try:
-                            # Is it an iso-formatted date?
-                            date = datetime.datetime(*map(int, re.split('[^\d]', getattr(message, k))[:-1]))
-                            setattr(self, str(k), date)
-                        except (TypeError, ValueError):
-                            # TODO: Handle other errors here?
-                            try:
-                                key = nndb.key.Key(urlsafe=getattr(message, k))
-                                setattr(self, str(k), key)
-                            except (TypeError, ProtocolBufferDecodeError):
-                                continue
-                    else:
-                        continue
-            return self
-
-
-    if _NDB:
-        # Message Field Mappings
-        _MESSAGE_FIELD_TO_BASETYPE = frozenset([
-
-            ((basestring, str, unicode, model.StringProperty), pmessages.StringField),
-            ((int, model.IntegerProperty), pmessages.IntegerField),
-            ((float, model.FloatProperty), pmessages.FloatField),
-            ((bool, model.BooleanProperty), pmessages.BooleanField),
-            ((bytearray, model.BlobProperty), pmessages.BytesField),
-            ((datetime.datetime, model.DateTimeProperty), pmessages.StringField, lambda x: x.isoformat()),
-            ((datetime.date, model.DateProperty), pmessages.StringField, lambda x: x.isoformat()),
-            ((datetime.time, model.TimeProperty), pmessages.StringField, lambda x: x.isoformat()),
-            ((model.GeoPt, model.GeoPtProperty), pmessages.StringField, lambda x: str(x)),
-            ((key.Key, model.KeyProperty), pmessages.StringField, lambda x: x.urlsafe()),
-            ((blobstore.BlobKey, model.BlobKeyProperty), pmessages.StringField, lambda x: x.urlsafe()),
-            (model.UserProperty, pmessages.StringField, lambda x: x.email()),
-            ((_AppToolsModel, model.StructuredProperty, model.LocalStructuredProperty), pmessages.MessageField, lambda x: x.to_message()),
-            ((object, dict, model.JsonProperty), pmessages.StringField, json.dumps),
-            ((object, dict, model.PickleProperty), pmessages.StringField, pickle.dumps),
-            ((None, model.GenericProperty, model.ComputedProperty), services.VariantField)
-
-        ])
-
-    else:
-        _MESSAGE_FIELD_TO_BASETYPE = frozenset([
-
-            ((basestring, str, unicode), pmessages.StringField),
-            ((int), pmessages.IntegerField),
-            ((float), pmessages.FloatField),
-            ((bool), pmessages.BooleanField),
-            ((bytearray), pmessages.BytesField),
-            ((datetime.datetime), pmessages.StringField, lambda x: x.isoformat()),
-            ((datetime.date), pmessages.StringField, lambda x: x.isoformat()),
-            ((datetime.time), pmessages.StringField, lambda x: x.isoformat()),
-            ((_AppToolsModel), pmessages.MessageField, lambda x: x.to_message()),
-            ((object, dict), pmessages.StringField, json.dumps),
-            ((object, dict), pmessages.StringField, pickle.dumps),
-            ((None), services.VariantField)
-
-        ])
-
-
-    def get_fields():
-
-        ''' Build a set of all available ProtoRPC message fields. '''
-
-        names_to_classes, lookup = {}, set([])
-        for bundle in _MESSAGE_FIELD_TO_BASETYPE:
-            if len(bundle) == 2:
-                basetypes, field = bundle
-            elif len(bundle) == 3:
-                basetypes, field, converter = bundle
-            names_to_classes[field.__name__] = field
-            lookup.add(field.__name__)
-        return names_to_classes, lookup
-
-    _MESSAGE_FIELDS, _MESSAGE_FIELD_LOOKUP = get_fields()
-
-
-    def resolve_fieldtype(name, options, fail=False):
-
-        ''' Resolve a field type by name, usually from an `impl` property. '''
-
-        if 'field' in options:
-            # resolve by an explicitly-declared ProtoRPC message field
-            if options['field'] in _MESSAGE_FIELD_LOOKUP:
-                return _MESSAGE_FIELDS.get(options['field'])
-
-        elif 'impl' in options:
-            # resolve by an explicity-declared NDB implementation property
-            proptype = resolve_proptype(name, options, True)
-            for prop_c, field_c in _MODEL_PROP_TO_FIELD:
-                if prop_c.__name__ == proptype.__class__.__name__:
-                    return field_c
-
-        if not fail:
-            return services.VariantField
-        else:
-            return False
-
-
-    def convert_basetype_to_field(basetype, options, fail=False):
-
-        ''' Convert a basetype to a suitable ProtoRPC message field. '''
-
-
-        candidate_f = []
-        for basegroup in _MESSAGE_FIELD_TO_BASETYPE:
-            if basegroup is None:
-                continue  # this field has no basetype conversion path
-
-            if len(basegroup) == 2:
-                basetypes, field = basegroup
-
-            elif len(basegroup) == 3:
-                basetypes, field, converter = basegroup
-
-            if not isinstance(basetypes, tuple):
-                basetypes = (basetypes,)
-            if basetype in basetypes:
-                candidate_f.append(field)
-
-        # if we have no candidates
-        if not candidate_f and candidate_f == []:
-            if not fail:
-                return services.VariantField
-            else:
-                return False  # :( indicate we couldn't resolve the message field
-
-        # if we only have one candidate
-        elif len(candidate_f) == 1:
-            return candidate_f[0]
-
-        # if there are many candidates
-        else:
-            # return the first, the specification order goes compatible => restrictive
-            return candidate_f[0][1]
-
-if _NDB:
-    _MODEL_PROP_TO_BASETYPE = frozenset([
-
-        ((basestring, str, unicode), (model.StringProperty, model.TextProperty), lambda x: model.StringProperty if len(x) < 500 else model.TextProperty),
-        (int, model.IntegerProperty),
-        (float, model.FloatProperty),
-        (bool, model.BooleanProperty),
-        (bytearray, model.BlobProperty),
-        (datetime.datetime, model.DateTimeProperty),
-        (datetime.date, model.DateProperty),
-        (datetime.time, model.TimeProperty),
-        (model.GeoPt, model.GeoPtProperty),
-        (key.Key, model.KeyProperty),
-        (blobstore.BlobKey, model.BlobKeyProperty),
-        (None, model.UserProperty),
-        (_AppToolsModel, model.StructuredProperty),
-        (_AppToolsModel, model.LocalStructuredProperty),
-        (object, model.JsonProperty, json.loads),
-        (object, model.PickleProperty, pickle.loads),
-        (None, model.GenericProperty, None),
-        (None, model.ComputedProperty, None)
-
-    ])
-else:
-    _MODEL_PROP_TO_BASETYPE = frozenset([])
-
-if _PROTORPC and _NDB:
-    _MODEL_PROP_TO_FIELD = frozenset([
-
-        (model.StringProperty, pmessages.StringField),
-        (model.TextProperty, pmessages.StringField),
-        (model.FloatProperty, pmessages.FloatField),
-        (model.IntegerProperty, pmessages.IntegerField),
-        (model.BooleanProperty, pmessages.BooleanField),
-        (model.DateTimeProperty, (pmessages.StringField, lambda x: str(x))),  # TODO: datetime/date/time conversion
-        (model.DateProperty, (pmessages.StringField, lambda x: str(x))),
-        (model.TimeProperty, (pmessages.StringField, lambda x: str(x))),
-        (model.GeoPtProperty, (pmessages.StringField, lambda x: str(x))),
-        (model.KeyProperty, (pmessages.StringField, lambda x: x.urlsafe())),
-        (model.BlobKeyProperty, (pmessages.StringField, lambda x: x.urlsafe())),
-        (model.UserProperty, (pmessages.StringField, lambda x: x.email())),
-        (model.StructuredProperty, pmessages.MessageField),
-        (model.LocalStructuredProperty, pmessages.MessageField),
-        (model.JsonProperty, pmessages.MessageField),
-        (model.PickleProperty, pmessages.MessageField),
-        (model.GenericProperty, None),
-        (model.ComputedProperty, None)
-
-    ])
+except ImportError as e:
+	# flag as unavailable
+	_PIPELINE, _pipeline_root_class = False, object
 
 else:
-    _MODEL_PROP_TO_FIELD = frozenset([])
-
-def get_basetypes():
-
-    ''' Flatten the _MODEL_PROP_TO_BASETYPE structure into a hashable list of basetypes. '''
-
-    # calculate basetype
-    _t = [t for t in
-            filter(lambda x: x not in frozenset([None, object]),
-                [t[0] for t in _MODEL_PROP_TO_BASETYPE])]
-
-    # expand tuples
-    for i, t in enumerate(_t):
-        if isinstance(t, tuple):
-            for v in t[1:]:
-                _t.append(v)
-            _t[i] = t[0]
-
-    return frozenset(_t)
-
-_BASE_TYPES = get_basetypes()
-
-def property_classes(flatten=False):
-
-    ''' Return a mapping of all property classes, optionally flattened into a single list. '''
-
-    global __flattened_properties
-    global __unflattened_properties
-
-    if flatten is False:
-        if __unflattened_properties is not None:
-            return __unflattened_properties
-    else:
-        if __flattened_properties is not None:
-            return __flattened_properties
-
-    class_lists = [db, ndb]
-    p_list = []
-    for class_list in class_lists:
-        for p_name, p_class in class_list.items():
-            if flatten is True:
-                p_list.append(p_name)
-            if flatten is False:
-                p_list.append((p_name, p_class))
-
-    if flatten: __flattened_properties = p_list
-    else: __unflattened_properties = p_list
-
-    return p_list
-
-def resolve_proptype(name, options, fail=False):
-
-    ''' Resolve a property type by name, usually from an `impl` option. '''
-
-    if 'impl' in options:
-        basetype, name = name, options.get('impl')
-        del options['impl']
-    else:
-        basetype = name
-    if name in ndb:
-        return getattr(nndb, name)(**options)
-    elif name in db:
-        return getattr(ldb, name)(**options)
-    else:
-        if fail is False:
-            return nndb.GenericProperty(**options)
-        else:
-            return False
-
-def convert_basetype_to_ndb(basetype, options, fail=False):
-
-    ''' Convert a basetype to an NDB property. '''
-
-    candidate_p = []
-    for basegroup in _MODEL_PROP_TO_BASETYPE:
-        if basegroup is None:
-            continue  # this prop has no basetype conversion path
-
-        if not isinstance(basegroup, tuple):
-            basegroup = (basegroup,)
-        else:
-            if basegroup[0] == None:
-                continue # this prop has no basetype conversion path
-
-            if len(basegroup) == 2:
-                basetypes, proptypes = basegroup
-            else:
-                basetypes, proptypes, converter = basegroup
-
-        if not isinstance(basetypes, tuple):
-            basetypes = (basetypes,)
-        if basetype in basetypes:
-            candidate_p.append(proptypes)
-
-    # if we have no candidates
-    if not candidate_p and candidate_p == []:
-        if not fail:
-            return nndb.GenericProperty(**options)
-        else:
-            return False  # :( indicate we couldn't resolve the property type
-
-    # if we only have one candidate
-    elif len(candidate_p) == 1:
-        if isinstance(candidate_p[0], tuple):
-            if len(candidate_p[0]) == 3:
-                # if there's a converter, use it
-                return candidate_p[0][2](**options)
-            else:
-                # have to default to the first (most compatible)
-                return candidate_p[0][0](**options)
-        else:
-            # there's only one candidate proptype
-            return candidate_p[0](**options)
-    else:
-        return candidate_p[0][0](**options)
-
-
-## ThinModelFactory
-# Metaclass for converting thin model classes to midway objects that can be expressed as models, messages, dictionaries, etc.
-class ThinModelFactory(AbstractModelFactory):
-
-    ''' Root AppTools model metaclass and factory. '''
-
-    def __new__(cls, name, bases, properties, expando=False):
-
-        ''' Create a ThinModel object if supported, otherwise duck out. '''
-
-        global _DEFAULT_ENGINE
-        global _STORAGE_ENGINES
-
-        if name == 'ThinModel' or name == 'AppModel':  # don't init abstract models
-            return type(name, bases, properties)
-
-        # scan for thin mode, enact it if supported
-        thinmode = True
-        c_special = []
-        c_properties = []
-
-        # filter out/scan for properties
-        for k, v in properties.items():
-            if k.startswith('__'):
-                c_special.append((k, v))
-                continue
+	# flag as available
+	_PIPELINE, _pipeline_root_class = True, _pipeline.Pipeline
 
-            if _NDB:
-                if isinstance(v, nndb.Property):
-                    thinmode = False
-                    break
-            c_properties.append((k, v))
+# try to find appengine's NDB
+try:
+	from google.appengine.ext import ndb as nndb
 
-        # if we're not in thinmode, send it over to NDB
-        if not thinmode and _NDB:
-            if expando:
-                return nndb.Expando.__metaclass__.__new__(name, bases, properties)
-            return nndb.Model.__metaclass__.__new__(name, bases, properties)
+# if it's not available, redirect key/model parents to native <object>
+except ImportError as e:
+	_NDB, _key_parent, _model_parent = False, lambda: object, lambda: object
 
-        # otherwise, generate an internal schema and midway object
-        else:
+# if it *is* available, we need to inherit from NDB's key and model classes
+else:
+	_NDB, _key_parent, _model_parent = True, lambda: nndb.Key, lambda: nndb.MetaModel
 
-            # resolve our storage engines
-            _DEFAULT_ENGINE, _STORAGE_ENGINES = ThinModelFactory.resolve_storage_engines()
 
-            obj = {}
-            schema = []
+# Globals / Sentinels
+_MULTITENANCY = False  # toggle multitenant key namespaces
+_DEFAULT_KEY_SCHEMA = frozenset(['id', 'kind', 'parent', 'app'])  # default schema for key classes
 
-            obj = {
-                '__name__': name,
-                '__pmap__': [],
-                '__bases__': bases,
-                '__lookup__': [],
-                '__pclass__': [],
-                '__ndb__': {},
-                '__impl__': [],
-                '__adapt__': {},
-                '__internal__': None,
-                '__messages__': {},
-                '__expando__': expando,
-                '__sentinel__': False
-            }
 
-            obj.update(c_special)
+## == Metaclasses == ##
 
-            if '__metaclass__' in properties:
-                obj['__metaclass__'] = properties.get('__metaclass__')
+## MetaFactory
+# Abstract metaclass parent that provides common construction methods.
+class MetaFactory(type):
 
-            if '_message_class' in properties or '_pipeline_class':
-                obj['__impl__'] = tuple([i for i in obj['__impl__'] + [properties.get('_message_class', False), properties.get('_pipeline_class', False)]])
+	''' Abstract parent for model metaclasses. '''
 
-            for k, v in c_properties:
+	__metaclass__ = abc.ABCMeta
 
-                # if we have explicitly set opts, overlay them on the defaults
-                if isinstance(v, tuple):
-                    propname, proptype, opts = k, v, dict([(k, v) for k, v in _DEFAULT_PROP_OPTS.items()])
-                    proptype, l_opts = v
-                    opts.update(l_opts)
+	## = Internal Methods = ##
+	def __new__(cls, name, bases, properties):
 
-                # just a type and no explicit options
-                elif v in _BASE_TYPES:
-                    propname, proptype, opts = k, v, dict([(k, v) for k, v in _DEFAULT_PROP_OPTS.items()])
+		''' Factory for model metaclasses. '''
 
-                elif inspect.isclass(v) or inspect.isfunction(v) or inspect.ismethod(v) or inspect.ismodule(v):
+		# pass up the inheritance chain to `type`, which properly enforces metaclasses
+		return super(MetaFactory, cls).__new__(cls, *cls.initialize(name, bases, properties))
 
-                    # inline bound classes
-                    if (inspect.isclass(v) and k == v.__name__) or not (inspect.isclass(v)):
-                        obj[k] = v
-                        continue
+	## = Exported Methods = ##
+	@classmethod
+	def resolve(cls, name, bases, properties):
 
-                else:
-                    propname, proptype, opts = k, v, dict([(k, v) for k, v in _DEFAULT_PROP_OPTS.items()[:]])
+		''' Resolve a suitable adapter set for a given class. '''
 
-                if propname not in obj['__lookup__']:
-                    obj['__lookup__'].append(propname)
-                    obj['__pmap__'].append((propname, proptype, opts))
-                    obj[propname] = datastructures.PropertyDescriptor(propname, proptype, opts)
-                    obj['__pclass__'].append(weakref.ref(obj[propname]))
+		## @TODO: Implement actual driver/adapter resolution
+		if '__adapter__' in properties:
+			for available in available_adapters:
+				if available is properties.get('__adapter__') or available.__name__ == properties.get('__adapter__'):
+					return available.acquire()
 
-            # freeze property lookup
-            obj['__internal__'] = collections.namedtuple(name, obj['__lookup__'])
-            obj['__slots__'] = tuple()
+		available_adapters = []
+		for option in adapter.concrete:
+			if option.is_supported():
+				available_adapters.append(option)
 
-            # create adapters for impl management
-            if _STORAGE_ENGINES is not None:
+		# we only have one adapter, the choice is easy
+		return available_adapters[0].acquire()
 
-                obj['__adapt__'] = datastructures.DictProxy(dict([(k.lower(), v) for k, v in _STORAGE_ENGINES.items()]))
+	## = Abstract Methods = ##
+	@abc.abstractmethod
+	def initialize(cls, name, bases, properties):
 
-                # mix in default adapter
-                if _DEFAULT_ENGINE is not None:
-                    bases = obj['__bases__'] = tuple([_DEFAULT_ENGINE.model] + list(bases[:]))
-                    obj['__default__'] = _DEFAULT_ENGINE.__class__.__name__.lower()
+		''' Initialize a subclass. Must be overridden by child metaclasses. '''
 
-            # construct class and return
-            return type(name, bases, obj)
+		raise NotImplemented()
 
-    @classmethod
-    def expando(cls, name, bases, obj):
 
-        ''' Expando entrypoint. '''
+## == Abstract Classes == ##
 
-        return cls.__new__(name, bases, obj, expando=True)
+## AbstractKey
+# Metaclass for a datamodel key class.
+class AbstractKey(_key_parent()):
 
-    @staticmethod
-    def resolve_storage_engines():
+	''' Abstract Key class. '''
 
-        ''' Construct installed storage engines. '''
+	__schema__ = _DEFAULT_KEY_SCHEMA if not _MULTITENANCY else frozenset(['id', 'kind', 'parent', 'namespace', 'app'])
 
-        global _DEFAULT_ENGINE
-        global _STORAGE_ENGINES
+	## = Encapsulated Classes = ##
 
-        if len(_STORAGE_ENGINES) > 0:
+	## AbstractKey.__metaclass__
+	# Constructs and prepares Key classes for use in the AppTools model subsystem.
+	class __metaclass__(MetaFactory):
 
-            # if we've already resolved our engines, return
-            return _DEFAULT_ENGINE, _STORAGE_ENGINES
+		''' Metaclass for model keys. '''
 
-        logging.info('Platform storage support enabled... considering storage adapters.')
+		__schema__ = _DEFAULT_KEY_SCHEMA
 
-        # load storage config
-        mconfig = config.config.get('apptools.model', {})
-        if 'engines' in mconfig:
-            storage_engines = mconfig.get('engines')
+		@classmethod
+		def initialize(cls, name, bases, properties):
 
-            # import and construct each engine
-            installed_engines = []
-            for engine in storage_engines:
-                logging.debug('Considering storage engine "%s"...' % engine.get('name'))
+			''' Initialize a Key class. '''
 
-                # make sure this engine is enabled
-                if engine.get('enabled', False):
-                    epath = engine.get('path').split('.')
-                    epath, ename = '.'.join(epath[0:-1]), epath[-1]
+			# build initial key class structure
+			key_class = {
+				'__slots__': set(),  # seal object attributes, keys don't need any new space
+				'__format__': set(),  # store the format for a key at the class level (allows easy de-serialization)
+			}
 
-                    logging.debug('Engine "%s" is enabled. Importing.' % engine.get('name'))
+			# provision each key schema point in our format pointer and slots allocation
+			for name in properties.get('__schema__', cls.__schema__):
+				key_class['__format__'].add(name)  # regular name goes into format (for example, `id`)
+				key_class['__slots__'].add('__%s__' % name)  # special name goes into slots (for example, `__id__`)
 
-                    # import the engine
-                    try:
-                        engine_impl_class = _loadModule((epath, ename))
+			if '__adapter__' not in properties:
+				key_class['__adapter__'] = cls.resolve(name, bases, properties)
 
-                    except webapp2.ImportStringError as e:
-                        logging.error("Failed to import storage adapter at name/path %s:%s." % (epath, ename))
-                        if config.debug and config.strict:
-                            raise
+			# return an argset for `type`
+			return name, bases, key_class
 
-                        else:
-                            continue
 
-                    else:
-                        logging.debug("Successfully imported storage adapter.")
+## AbstractModel
+# Metaclass for a datamodel class.
+class AbstractModel(_model_parent()):
 
-                        if engine_impl_class.supported():
-                            # construct and prepare engine
-                            logging.info("Engine '%s' is supported." % ename)
-                            engine_impl = engine_impl_class()
-                        else:
-                            logging.info("Engine '%s' is not supported in this environment." % ename)
-                            continue  # advance if this engine isn't supported
+	''' Abstract Model class. '''
 
-                        if not hasattr(engine_impl, 'name'):
-                            engine_impl.name = engine.get('name').lower()
+	__slots__ = tuple()
 
-                        if hasattr(engine_impl, 'supported'):
-                            if not engine_impl.supported():
-                                logging.warning('Loaded storage engine "%s" not supported in this environment.' % ename)
-                                continue
+	## = Encapsulated Classes = ##
 
-                        # it's valid and constructed
-                        installed_engines.append((ename, engine_impl))
+	## AbstractModel.__metaclass__
+	# Initializes class-level property descriptors and re-writes model internals.
+	class __metaclass__(MetaFactory):
 
-                else:
-                    continue
+		''' Metaclass for data models. '''
 
-            # if there's any engines at all, copy 'em over
-            if len(installed_engines) > 0:
-                _STORAGE_ENGINES = dict([(k, v) for k, v in installed_engines[:]])
+		@classmethod
+		def initialize(cls, name, bases, properties):
 
-                if 'default' in mconfig:
-                    for name, engine in _STORAGE_ENGINES.items():
-                        if name.lower() == mconfig.get('default').lower():
-                            _DEFAULT_ENGINE = engine
-                            break
-
-                elif 'default' not in mconfig or _DEFAULT_ENGINE is None:
-                    try:
-                        from google.appengine.ext import ndb
-                        assert 'ndb' in _STORAGE_ENGINES
-
-                    except (ImportError, AssertionError) as e:
-                        _DEFAULT_ENGINE = _STORAGE_ENGINES.items()[0][1]
-
-            return _DEFAULT_ENGINE, _STORAGE_ENGINES
-
-
-## ThinKey
-# Base class used for ThinModel keys.
-class ThinKey(object): pass
-
-
-## ThinModel
-# Base class for flexible, universal, efficient datamodels.
-class ThinModel(_AppToolsModel, MessageConverter, PipelineTrigger):
-
-    ''' Base model class for all AppTools models. '''
-
-    __metaclass__ = ThinModelFactory
-
-
-## BaseModel
-# This is the root base model for all AppTools-based models.
-class BaseModel(ThinModel):
-
-    ''' This is the root base model for all AppTools-based models. '''
-
-## BaseExpando
-# This is the root base expando for all expando-based models.
-class BaseExpando(ThinModel):
-
-    ''' This is the root base model for all AppTools-based expandos. '''
-
-
-if _GAE:
-
-    ## Property, Key & Model Classes
-
-    if _NDB:
-
-        # NDB/New Style
-        ndb = ObjectProxy({
-
-                'key': key.Key,
-                'model': ThinModel,
-                'Property': nndb.Property,
-                'StringProperty': nndb.StringProperty,
-                'TextProperty': nndb.TextProperty,
-                'BlobProperty': nndb.BlobProperty,
-                'IntegerProperty': nndb.IntegerProperty,
-                'FloatProperty': nndb.FloatProperty,
-                'BooleanProperty': nndb.BooleanProperty,
-                'BlobKeyProperty': nndb.BlobKeyProperty,
-                'DateTimeProperty': nndb.DateTimeProperty,
-                'TimeProperty': nndb.TimeProperty,
-                'GeoPt': nndb.GeoPt,
-                'GeoPtProperty': nndb.GeoPtProperty,
-                'KeyProperty': nndb.KeyProperty,
-                'UserProperty': nndb.UserProperty,
-                'JsonProperty': nndb.JsonProperty,
-                'PickleProperty': nndb.PickleProperty,
-                'StructuredProperty': nndb.StructuredProperty,
-                'LocalStructuredProperty': nndb.LocalStructuredProperty,
-                'ComputedProperty': nndb.ComputedProperty,
-                'GenericProperty': nndb.GenericProperty
-
-        }, case_sensitive=False)
-
-    # DB/Old Style
-    db = ObjectProxy({
-
-            'key': ldb.Key,
-            'model': BaseModel,
-            'StringProperty': ldb.StringProperty,
-            'ByteStringProperty': ldb.ByteStringProperty,
-            'BooleanProperty': ldb.BooleanProperty,
-            'IntegerProperty': ldb.IntegerProperty,
-            'FloatProperty': ldb.FloatProperty,
-            'DateTimeProperty': ldb.DateTimeProperty,
-            'DateProperty': ldb.DateProperty,
-            'TimeProperty': ldb.TimeProperty,
-            'ListProperty': ldb.ListProperty,
-            'StringListProperty': ldb.StringListProperty,
-            'ReferenceProperty': ldb.ReferenceProperty,
-            'BlobReferenceProperty': blobstore.BlobReferenceProperty,
-            'UserProperty': ldb.UserProperty,
-            'BlobProperty': ldb.BlobProperty,
-            'TextProperty': ldb.TextProperty,
-            'CategoryProperty': ldb.CategoryProperty,
-            'LinkProperty': ldb.LinkProperty,
-            'EmailProperty': ldb.EmailProperty,
-            'GeoPtProperty': ldb.GeoPtProperty,
-            'IMProperty': ldb.IMProperty,
-            'PhoneNumberProperty': ldb.PhoneNumberProperty,
-            'PostalAddressProperty': ldb.PostalAddressProperty,
-            'RatingProperty': ldb.RatingProperty
-
-    }, case_sensitive=False)
+			''' Initialize a Model class. '''
 
+			if name not in frozenset(['AbstractModel', 'Model']):
+
+				# parse property spec (`name = <basetype>` or `name = <basetype>, <options>`)
+				property_map = {}
+
+				# model properties that start with '_' are ignored
+				for prop, spec in filter(lambda x: not x[0].startswith('_'), properties.items()):
+					if isinstance(spec, tuple):
+						basetype, options = spec
+					else:
+						basetype, options = spec, {}
+
+					# build a descriptor object and data slot
+					property_map[prop] = Property(prop, basetype, **options)
+
+				# build class layout
+				modelclass = {
+
+					# initialize core model class attributes.
+					'__impl__': {},  # holds cached implementation classes generated from this model
+					'__kind__': name,  # kindname defaults to model class name (keep track of it here so we have it if __name__ changes)
+					'__bases__': bases,  # stores a model class's bases, so proper MRO can work
+					'__lookup__': frozenset(property_map.keys()),  # frozenset of allocated attributes, for quick lookup
+					'__adapter__': cls.resolve(name, bases, properties),  # resolves default adapter class for this key/model
+					'__slots__': ()  # seal-off object attributes (but allow weakrefs and explicit flag)
+
+				}
+
+				# update at class-level with descriptor map
+				modelclass.update(property_map)
+
+				# inject our own property map, pass-through to `type`
+				return name, bases, modelclass
+
+			# pass-through to `type`
+			return name, bases, properties
+
+
+	## AbstractModel.PropertyValue
+	# Small, ultra-lightweight datastructure responsible for holding a property value bundle for an entity attribute.
+	class _PropertyValue(tuple):
+
+		''' Named-tuple class for property value bundles. '''
+
+		__slots__ = tuple()
+		__fields__ = ('dirty', 'data')
+
+		def __new__(_cls, data, dirty=False):
+
+			''' Create a new `PropertyValue` instance. '''
+
+			# pass up-the-chain to `tuple`
+			return tuple.__new__(_cls, (data, dirty))
+
+		@classmethod
+		def _from_iterable(cls, iterable, new=tuple.__new__, len=len):
+
+			''' Make a new `PropertyValue` object from a sequence or iterable. '''
+
+			result = new(cls, iterable)
+			if len(result) != 2:
+				raise TypeError('`PropertyValue` expected 2 arguments, got %s.' % len(result))
+			return result
+
+		def __repr__(self):
+
+			''' Return a nicely-formatted representation string. '''
+
+			return "Value(data=\"%s\", dirty=%s)" % self
+
+		def _as_dict(self):
+
+			''' Return a new OrderedDict which maps field names to their values. '''
+
+			return collections.OrderedDict(zip(self.__fields__, self))
+
+		__dict__ = property(_as_dict)
+
+		def _replace(self, **kwargs):
+
+			''' Re-create this `PropertyValue` with a new value and dirty flag. '''
+
+			result = self._from_iterable(map(kwargs.pop, self.__fields__), self)
+			if kwargs:
+				raise ValueError("`PropertyValue` got unexpected field names \"%r\"." % kwargs.keys())
+			return result
+
+		def __getnewargs__(self):
+
+			''' Return self as a plain tuple. Used by copy/deepcopy/pickle. '''
+
+			return tuple(self)
+
+		data = property(operator.itemgetter(0), doc='Alias for `PropertyValue.data` at index 0.')
+		dirty = property(operator.itemgetter(1), doc='Alias for `PropertyValue.dirty` at index 1.')
+
+	# = Internal Methods = #
+	def __repr__(self):
+
+		''' Generate a string representation of this Entity. '''
+
+		return "<%s at ID %s>" % (self.__kind__, 'TEST')
+
+	__str__ = __unicode__ = __repr__
+
+
+## == Concrete Classes == ##
+
+## Key
+# Model datastore key concrete class.
+class Key(AbstractKey):
+
+	''' Concrete Key class. '''
+
+	__separator__ = u':'
+
+	## = Internal Methods = ##
+	def __new__(cls, urlsafe=None, raw=None, json=None, *parts):
+
+		''' Constructs keys from various formats. '''
+
+		# delegate full-key decoding to classmethods
+		if raw:
+			return cls.from_raw(raw)  # raw, deserialized keys
+		elif urlsafe:
+			return cls.from_urlsafe(urlsafe)  # URL-encoded keys
+		elif json:
+			return cls.from_json(json)  # JSON-formatted keys
+
+		# delegate ordinal/positional decoding to parent class
+		return cls(*parts)
+
+	## = Internal Methods = ##
+	def __init__(self, _persisted=False, *parts):
+
+		''' Initialize this Key. '''
+
+		# if we're handed initial parts, fill them up in order...
+		if parts:
+			for name, value in zip(self.__schema__, parts):
+				setattr(self, '__%s__' % name, value)  # fill each schema item with a value, if available, in order
+		self.__persisted__ = _persisted  # if we *know* this is an existing key, this should be `true`
+
+	def __repr__(self):
+
+		''' Generate a string representation of this Key. '''
+
+		return "<%s of kind '%s' at ID '%s'>" % (self.__class__.__name__, self.kind, id(self))
+
+	__str__ = __unicode__ = __repr__
+
+	def _set_id(self, id):
+
+		''' Set the ID of this Key. '''
+
+		if self.__persisted__:  # disallow changing ID after persistence is achieved
+			raise AttributeError('Cannot set the ID of an already-persisted key.')
+		self.__id__ = id
+		return self
+
+	def _set_kind(self, kind):
+
+		''' Set the kind of this Key. '''
+
+		if self.__persisted__:  # disallow changing kind after persistence is achieved
+			raise AttributeError('Cannot set the kind of an already-persisted key.')
+		self.__kind__ = kind
+		return self
+
+	def _set_parent(self, parent):
+
+		''' Set the parent of this Key. '''
+
+		if self.__persisted__:  # disallow changing parent after persistence is achieved
+			raise AttributeError('Cannot change the key parent of an already-persisted key.')
+		self.__parent__ = parent
+		return self
+
+	def _set_namespace(self, namespace):
+
+		''' Set the namespace of this Key, if supported. '''
+
+		if not _MULTITENANCY:  # multitenancy must be allowed to enable namespaces
+			raise RuntimeError('Multitenant key namespaces are not supported in this environment.')
+		if self.__persisted__:  # disallow changing namespace after persistence is achieved
+			raise AttributeError('Cannot change the key namespace of an already-persisted key.')
+		self.__namespace__ = namespace
+		return self
+
+	## = Bound Properties = ##
+	@property
+	def id(self):
+
+		''' Retrieve this Key's ID. '''
+
+		return self.__id__
+
+	@property
+	def kind(self):
+
+		''' Retrieve this Key's kind. '''
+
+		return self.__kind__
+
+	@property
+	def ancestry(self):
+
+		''' Retrieve this Key's ancestry path. '''
+
+		# if we have a parent, yield to that
+		if self.__parent__:
+			yield self.__parent__.ancestry
+
+		# yield self to signify the end of the chain, and stop iteration
+		yield self
+		raise StopIteration()
+
+	## = Object Methods = ##
+	def get(self):
+
+		''' Retrieve a previously-constructed key from available persistence mechanisms. '''
+
+		return self.__class__.__adapter__.get_key(self)
+
+	def delete(self):
+
+		''' Delete a previously-constructed key from available persistence mechanisms. '''
+
+		return self.__class__.__adapter__.delete_key(self)
+
+	def flatten(self):
+
+		''' Flatten this Key into a basic structure suitable for transport or storage. '''
+
+		return tuple([getattr(self, i) for i in self.__schema__])
+
+	def urlsafe(self):
+
+		''' Generate an encoded version of this Key, suitable for use in URLs. '''
+
+		return base64.b64encode(self.__class__.__separator__.join([self.flatten()]))
+
+	## = Class Methods = ##
+	@classmethod
+	def from_raw(cls, encoded, _persisted=False):
+
+		''' Inflate a Key from a raw, internal representation. '''
+
+		return cls(*[chunk for chunk in encoded.split(cls.__separator__)], _persisted=_persisted)
+
+	@classmethod
+	def from_urlsafe(cls, encoded, _persisted=False):
+
+		''' Inflate a Key from a URL-encoded representation. '''
+
+		return cls.from_raw(base64.b64decode(encoded), _persisted)
+
+
+## Property
+# Data-descriptor property class.
+class Property(object):
+
+	''' Concrete Property class. '''
+
+	## = Internals = ##
+	_name = None  # owner property name
+	_default = None  # default property value (if any)
+	_options = None  # extra, implementation-specific options
+	_indexed = False  # index this property, to make it queryable?
+	_required = False  # except if this property is unset on put
+	_repeated = False  # signifies an array of self._basetype(s)
+	_sentinel = _EMPTY  # default sentinel for basetypes/values
+	_basetype = _sentinel  # base datatype for the current property
+
+	## = Internal Methods = ##
+	def __init__(self, name, basetype,
+								default=None,
+								required=False,
+								repeated=False,
+								indexed=None,
+								**options):
+
+		''' Initialize this Property. '''
+
+		# copy in property name + basetype
+		self.name, self.basetype = name, basetype
+
+		# if we're passed any locally-supported options
+		if default is not None: self._default = default
+		if indexed is not None: self._indexed = indexed
+		if required is not False: self._required = required
+		if repeated is not False: self._repeated = repeated
+
+		# extra options
+		if options: self._options = options
+
+	## = Descriptor Methods = ##
+	def __get__(self, instance, owner):
+
+		''' Descriptor attribute access. '''
+
+		# Proxy to internal method.
+		return instance._get_value(self.name)
+
+	def __set__(self, instance, value):
+
+		''' Descriptor attribute write. '''
+
+		return instance._set_value(self.name, value)
+
+	def __delete__(self, instance):
+
+		''' Delete the value of this Descriptor. '''
+
+		return instance._set_value(self.name)
+
+	def valid(self, instance):
+
+		''' Validate the value of this property, if any. '''
+
+		# check for subclass-defined validator
+		if hasattr(self, 'validate') and self.__class__ != Property:
+			return self.validate(instance)
+		else:
+			value = instance._get_value(self.name)
+			return not any([
+				((value in (None, Property._sentinel)) and self._required),  # check null-ness for required properties
+				((value is not Property._sentinel) and not isinstance(self._basetype, value))  # check isinstance for regular types
+			])
+
+	def validate(self, instance):
+
+		''' Child-overridable validate function. '''
+
+		# must be overridden by child classes
+		raise NotImplemented()
+
+
+## Model
+# Concrete class for a data model.
+class Model(AbstractModel):
+
+	''' Concrete Model class. '''
+
+	__key__ = Key
+
+	## = Internal Methods = ##
+	def __init__(self, key=None, _persisted=False, **properties):
+
+		''' Initialize this Model. '''
+
+		# if we're handed a key at construction time, it's manually set...
+		if isinstance(key, basestring):
+			self._set_key(urlsafe=key)
+		elif key:
+			self._set_key(constructed=key)
+		else:
+			self._set_key(self.__key__(self.kind))  # create an empty, kinded key
+
+		# initialize internals and map any kwargs into data
+		self._initialize(_persisted)._set_value(properties, _dirty=(not _persisted))
+
+	def __setattr__(self, name, value):
+
+		''' Attribute write override. '''
+
+		if name.startswith('__') or name in self.__lookup__:
+			super(Model, self).__setattr__(name, value)
+		else:
+			raise AttributeError("Cannot set nonexistent attribute \"%s\" of model class \"%s\"." % (name, self.kind))
+
+	def _initialize(self, _persisted):
+
+		''' Initialize core properties. '''
+
+		# initialize core properties
+		self.__data__, self.__dirty__, self.__persisted__, self.__explicit__, self.__initialized__ = {}, (not _persisted), _persisted, False, True
+		return self
+
+	def _set_key(self, urlsafe=None, constructed=None, raw=None):
+
+		''' Set this Entity's key manually. '''
+
+		if urlsafe:
+			self.__key__ = Key.from_urlsafe(urlsafe)
+		elif constructed:
+			self.__key__ = constructed
+		elif raw:
+			self.__key__ = Key.from_raw(raw)
+
+	def _get_value(self, name, sentinel=_EMPTY):
+
+		''' Retrieve the value of a named property on this Entity. '''
+
+		if name in self.__lookup__:
+			value = self.__data__.get(name, None)
+
+			if value:
+				return value.data
+			else:
+				# return sentinel in explicit mode, if property is unset
+				if self.__explicit__ and value is Property._sentinel:
+					return Property._sentinel
+				else:
+					return None
+
+		raise AttributeError("Model \"%s\" has no property \"%s\"." % (self.kind, name))
+
+	def _set_value(self, name, value=_EMPTY, _dirty=True):
+
+		''' Set (or reset) the value of a named property on this Entity. '''
+
+		# empty strings or dicts or iterables return self
+		if not name:
+			return self
+
+		# allow a list of (name, value) pairs, just delegate to self and recurse
+		if isinstance(name, (list, tuple)) and isinstance(name[0], tuple):
+			return (self._set_value(i, _dirty=_dirty) for i in name)
+
+		# allow a tuple of (name, value), for use in map/filter/etc
+		if isinstance(name, tuple):
+			name, value = name
+
+		# check property lookup
+		if name in self.__lookup__:
+			# if it's a valid property, create a namedtuple value placeholder
+			self.__data__[name] = self.__class__._PropertyValue(value, _dirty)
+
+			# set as dirty if this is after first construction
+			if not (value == _EMPTY) and not self.__dirty__ and _dirty:
+				self.__dirty__ = True
+			return self
+		raise AttributeError("Model \"%s\" has no property \"%s\"." % (self.kind, name))
+
+	## = Properties = ##
+	@property
+	def key(self):
+
+		''' Retrieve this Model's Key, if any. '''
+
+		return self.__key__
+
+	## = Class Methods = ##
+	@classmethod
+	def kind(cls):
+
+		''' Retrieve this Model's kind name. '''
+
+		return cls.__name__
+
+	@classmethod
+	def get(cls, key=None, name=None):
+
+		''' Retrieve a persisted version of this model via the current datastore adapter. '''
+
+		if key:
+			if isinstance(key, basestring):
+				# assume URL-encoded key, this is user-facing
+				key = Key.from_urlsafe(key)
+			elif isinstance(key, (list, tuple)):
+				# an ordered partslist is fine too
+				key = Key(*key)
+			return cls.__adapter__.get_key(key)
+		if name:
+			# if we're passed a name, construct a key with the local kind
+			return cls.__adapter__.get_key(Key(cls.kind(), name))
+		raise ValueError('Must pass either a Key or key name into `%s.get`.' % cls.kind())
+
+	## = Public Methods = ##
+	def put(self, adapter=None):
+
+		''' Persist this entity via the current datastore adapter. '''
+
+		if not adapter:
+			adapter = self.__class__.__adapter__
+		if not self.key:
+			self.key = self.__class__.__key__(self.kind)
+		return adapter.put_entity(self)
+
+	def update(self, mapping={}, **kwargs):
+
+		''' Update properties on this model via a merged dict of mapping + kwargs. '''
+
+		if kwargs: mapping.update(kwargs)
+		map(lambda x: setattr(self, x[0], x[1]), mapping.items())
+		return self
+
+	def to_dict(self, exclude=tuple(), include=tuple(), filter_fn=lambda x: True, map_fn=lambda x: x):
+
+		''' Export this Entity as a dictionary, excluding/including/filtering/mapping as we go. '''
+
+		if not include: include = self.__lookup__
+		return dict([i for i in map(map_fn, filter(filter_fn, ((name, getattr(self, name)) for name in self.__lookup__ if (name in include and name not in exclude))))])
+
+	def to_json(self, exclude=tuple(), include=tuple(), filter_fn=lambda x: True, map_fn=lambda x: x):
+
+		''' Export this Entity as a JSON string, excluding/including/filtering/mapping as we go. '''
+
+		return json.dumps(self.to_dict(exclude, include, filter_fn, map_fn))
+
+
+## == Test Models == ##
+
+## Car
+# Simple model simulating a car.
+class Car(Model):
+
+	''' An automobile. '''
+
+	make = basestring, {'indexed': True}
+	model = basestring, {'indexed': True}
+	year = int, {'choices': xrange(1900, 2015)}
+	color = basestring, {'choices': ('blue', 'green', 'red', 'silver', 'white', 'black')}
+
+
+## Person
+# Simple model simulating a person.
+class Person(Model):
+
+	''' A human being. '''
+
+	firstname = basestring
+	lastname = basestring
+	active = bool, {'default': True}
+	cars = Car, {'repeated': True}

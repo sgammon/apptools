@@ -21,6 +21,7 @@ from protorpc.webapp import forms
 from protorpc.webapp import service_handlers
 
 # AppTools Imports
+from apptools.util import _loadModule
 from apptools.services import RemoteServiceHandlerFactory
 
 
@@ -48,6 +49,22 @@ def _normalize_services(mixed_services):
     return services
 
 
+def resolveServices(svcs=config.config.get('apptools.project.services'), load=False):
+
+    ''' Resolve installed service classes, optionally importing them as we go. '''
+
+    services = []
+    for service, cfg in svcs['services'].items():
+        if cfg.get('enabled', True):
+            urlpath = '/'.join(svcs.get('config', {}).get('url_prefix').split('/') + [service])
+            servicepath = cfg['service']
+            if load:
+                sp_split = servicepath.split('.')
+                servicepath = _loadModule(('.'.join(sp_split[0:-1]), sp_split[-1]))
+            services.append((urlpath, servicepath))
+    return services
+
+
 def generateServiceMappings(svc_cfg, registry_path=forms.DEFAULT_REGISTRY_PATH, handler=RemoteServiceHandlerFactory):
 
     ''' Utility function that reads the services config and generates URL mappings to service classes. '''
@@ -55,14 +72,8 @@ def generateServiceMappings(svc_cfg, registry_path=forms.DEFAULT_REGISTRY_PATH, 
     if registry_path is None:
         registry_path = forms.DEFAULT_REGISTRY_PATH
 
-    services = []
-
     ## Generate service mappings in tuple(<invocation_url>, <classpath>) format
-    for service, cfg in svc_cfg['services'].items():
-        if cfg['enabled'] == True:
-            services.append(('/'.join(svc_cfg['config']['url_prefix'].split('/') + [service]), cfg['service']))
-
-    services = _normalize_services(services)
+    services = _normalize_services(resolveServices(svc_cfg))
     mapping = []
     registry_map = {}
 
@@ -96,7 +107,7 @@ def generateServiceMappings(svc_cfg, registry_path=forms.DEFAULT_REGISTRY_PATH, 
     return mapping
 
 
-_application = webapp2.WSGIApplication(generateServiceMappings(config.config.get('apptools.project.services')), debug=config.debug, config=config.config)
+_application = Application = webapp2.WSGIApplication(generateServiceMappings(config.config.get('apptools.project.services')), debug=config.debug, config=config.config)
 
 
 if __name__ == '__main__':

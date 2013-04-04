@@ -323,16 +323,35 @@ class SystemService(BaseService):
 
         # Basic Info
         response.name = project.get('name', 'AppTools')
-        response.appid = self.api.identity.get_application_id()
+        if hasattr(self, 'api') and hasattr(self.api, 'identity'):
+            response.appid = self.api.identity.get_application_id()
+
+            # Identity Info
+            response.default_hostname = self.api.identity.get_default_version_hostname()
+            certificates = []
+            for certificate in self.api.identity.get_public_certificates():
+                certificates.append(WhoAreYouResponse.AppCertificate(keyname=certificate.key_name, x509=certificate.x509_certificate_pem))
+            response.certificates = certificates
+            response.service_account = self.api.identity.get_service_account_name()
+
+        else:
+            if hasattr(config, 'appname'):
+                response.appid = config.appname
+            elif config.config.get('apptools.project'):
+                response.appid = config.config.get('apptools.project').get('name', 'apptools')
+            else:
+                response.appid = 'apptools'
         response.version = '-'.join(map(lambda x: str(x), ['.'.join(map(lambda x: str(x), [project_version.get('major', 1), project_version.get('minor', 0), project_version.get('micro', 0)])), project_version.get('build', '0PRE'), project_version.get('release', 'ALPHA')]))
 
         # Infrastructure Info
         response.datacenter = self.request.environ.get('DATACENTER', '_default_')
         response.instance = self.request.environ.get('INSTANCE_ID', '_default_')
         response.runtime = self.request.environ.get('APPENGINE_RUNTIME', '_default_')
-        if self.api.backends.get_backend() is not None:
-            response.backend = self.api.backends.get_backend()
-            response.backend_instance = self.api.backends.get_instance()
+
+        if hasattr(self, 'api') and hasattr(self.api, 'backends'):
+            if self.api.backends.get_backend() is not None:
+                response.backend = self.api.backends.get_backend()
+                response.backend_instance = self.api.backends.get_instance()
         response.debug = config.debug
         response.app_version = self.request.environ.get('CURRENT_VERSION_ID', '_default_')
 
@@ -352,17 +371,10 @@ class SystemService(BaseService):
 
         # Performance Info
         response.walltime = int((time.time() - self.request.clock.get('threadstart')) * 100000)
-        if hasattr(self.api.quota, 'get_request_cpu_usage'):
-            response.cpu_time = self.api.quota.get_request_cpu_usage()
-        response.api_time = self.api.quota.get_request_api_cpu_usage()
-
-        # Identity Info
-        response.default_hostname = self.api.identity.get_default_version_hostname()
-        certificates = []
-        for certificate in self.api.identity.get_public_certificates():
-            certificates.append(WhoAreYouResponse.AppCertificate(keyname=certificate.key_name, x509=certificate.x509_certificate_pem))
-        response.certificates = certificates
-        response.service_account = self.api.identity.get_service_account_name()
+        if hasattr(self, 'api') and hasattr(self.api, 'quota'):
+            if hasattr(self.api.quota, 'get_request_cpu_usage'):
+                response.cpu_time = self.api.quota.get_request_cpu_usage()
+            response.api_time = self.api.quota.get_request_api_cpu_usage()
 
         return response
 

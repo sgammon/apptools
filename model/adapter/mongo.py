@@ -2,13 +2,13 @@
 
 '''
 
-	apptools2: model adapter for memcache
+	apptools2: model adapter for mongo
 	-------------------------------------------------
 	|												|	
-	|	`apptools.model.adapter.memcache`			|
+	|	`apptools.model.adapter.mongo`				|
 	|												|
 	|	allows apptools models to be stored and 	|
-	|	retrieved using memcache.					|
+	|	retrieved using mongoDB.					|
 	|												|	
 	-------------------------------------------------
 	|	authors:									|
@@ -24,11 +24,11 @@
 from .abstract import ModelAdapter
 
 
-## MemcacheAdapter
-# Adapt apptools models to Memcache.
-class MemcacheAdapter(ModelAdapter):
+## MongoAdapter
+# Adapt apptools models to MongoDB.
+class MongoAdapter(ModelAdapter):
 
-	''' Adapt model classes to Memcache. '''
+	''' Adapt model classes to MongoDB. '''
 
 	@classmethod
 	def is_supported(cls):

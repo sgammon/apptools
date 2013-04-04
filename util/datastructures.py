@@ -708,6 +708,8 @@ class PropertyDescriptor(object):
 
         ''' Property initialized and descriptor class. '''
 
+        import pdb; pdb.set_trace()
+        
         options.update(kwargs)
         self.__name, self.__type, self.__opts = name, proptype, DictProxy(options)
 
@@ -715,6 +717,8 @@ class PropertyDescriptor(object):
 
         ''' Set this property's internal value. '''
 
+        import pdb; pdb.set_trace()
+        
         # check type
         if 'validate' not in self.__opts and 'typeless' not in self.__opts and self.__opts.get('typeless', False) != True:
             if not isinstance(value, self.__type):
@@ -732,6 +736,8 @@ class PropertyDescriptor(object):
     def __get__(self, instance, owner):
 
         ''' Get this property's internal value. '''
+
+        import pdb; pdb.set_trace()
 
         # if empty, return None
         if self.__value == _EMPTY:

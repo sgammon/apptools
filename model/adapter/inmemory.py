@@ -2,13 +2,13 @@
 
 '''
 
-	apptools2: model adapter for redis
+	apptools2: model adapter for thread memory
 	-------------------------------------------------
 	|												|	
-	|	`apptools.model.adapter.redis`				|
+	|	`apptools.model.adapter.inmemory`			|
 	|												|
-	|	allows apptools models to be efficiently 	|
-	|	stored in and retrieved from redis.			|
+	|	allows apptools models to be stored in 		|
+	|	main RAM, as a testing tool.				|
 	|												|	
 	-------------------------------------------------
 	|	authors:									|
@@ -20,19 +20,15 @@
 
 '''
 
-# stdlib
-import json
-import base64
-
 # adapter API
 from .abstract import ModelAdapter
 
 
-## RedisAdapter
-# Adapt apptools models to Redis.
-class RedisAdapter(ModelAdapter):
+## InMemoryAdapter
+# Adapt apptools models to Python RAM.
+class InMemoryAdapter(ModelAdapter):
 
-	''' Adapt model classes to Redis. '''
+	''' Adapt model classes to RAM. '''
 
 	# key encoding
 	_key_encoder = base64.b64encode
@@ -51,7 +47,7 @@ class RedisAdapter(ModelAdapter):
 	@classmethod
 	def get_key(cls, key):
 
-		''' Retrieve an entity by Key from Redis. '''
+		''' Retrieve an entity by Key from memory. '''
 
 		import pdb; pdb.set_trace()
 		return True
@@ -59,7 +55,7 @@ class RedisAdapter(ModelAdapter):
 	@classmethod
 	def delete_key(cls, key):
 
-		''' Delete an entity by Key from Redis. '''
+		''' Delete an entity by Key from memory. '''
 
 		import pdb; pdb.set_trace()
 		return True
@@ -67,7 +63,7 @@ class RedisAdapter(ModelAdapter):
 	@classmethod
 	def encode_key(cls, key):
 
-		''' Encode a Key for storage in Redis. '''
+		''' Encode a Key for storage in memory. '''
 
 		import pdb; pdb.set_trace()
 		return True
@@ -75,7 +71,7 @@ class RedisAdapter(ModelAdapter):
 	@classmethod
 	def put_entity(cls, entity):
 
-		''' Persist an entity to storage in Redis. '''
+		''' Persist an entity to storage in memory. '''
 		
 		import pdb; pdb.set_trace()
 		return True
