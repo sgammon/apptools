@@ -20,6 +20,10 @@
 
 '''
 
+# stdlib
+import json
+import base64
+
 # adapter API
 from .abstract import ModelAdapter
 

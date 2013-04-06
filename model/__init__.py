@@ -27,6 +27,14 @@ import weakref
 import operator
 import collections
 
+# app config
+try:
+	import config
+except ImportError as e:
+	_APPCONFIG = False
+else:
+	_APPCONFIG = True
+
 # relative imports
 from . import adapter
 from .adapter import concrete
@@ -85,7 +93,7 @@ else:
 
 # Globals / Sentinels
 _MULTITENANCY = False  # toggle multitenant key namespaces
-_DEFAULT_KEY_SCHEMA = frozenset(['id', 'kind', 'parent', 'app'])  # default schema for key classes
+_DEFAULT_KEY_SCHEMA = tuple(['id', 'kind', 'parent', 'app'])  # default schema for key classes
 
 
 ## == Metaclasses == ##
@@ -96,19 +104,34 @@ class MetaFactory(type):
 
 	''' Abstract parent for model metaclasses. '''
 
-	__metaclass__ = abc.ABCMeta
+	class __metaclass__(abc.ABCMeta):
+
+		''' Local metaclass for enforcing ABC compliance and __class__.__name__ formatting. '''
+
+		__owner__ = 'MetaFactory'
+
+		def __new__(cls, name=None, bases=tuple(), properties={}):
+
+			''' Factory for metaclasses classes. '''
+
+			if name == '__metaclass__' and hasattr(cls, '__owner__'):
+				name = cls.__name__ = cls.__owner__
+			return super(cls, cls).__new__(cls, name, bases, properties)
 
 	## = Internal Methods = ##
-	def __new__(cls, name, bases, properties):
+	def __new__(cls, name=None, bases=tuple(), properties={}):
 
 		''' Factory for model metaclasses. '''
+
+		# fail on regular class construction
+		if not name: raise NotImplementedError('Cannot directly instantiate abstract class `MetaFactory`.')
 
 		# pass up the inheritance chain to `type`, which properly enforces metaclasses
 		return super(MetaFactory, cls).__new__(cls, *cls.initialize(name, bases, properties))
 
 	## = Exported Methods = ##
 	@classmethod
-	def resolve(cls, name, bases, properties):
+	def resolve(cls, name, bases, properties, default=True):
 
 		''' Resolve a suitable adapter set for a given class. '''
 
@@ -124,7 +147,12 @@ class MetaFactory(type):
 				available_adapters.append(option)
 
 		# we only have one adapter, the choice is easy
-		return available_adapters[0].acquire()
+		if len(available_adapters) > 0:
+			if not default:
+				return available_adapters[0].acquire(), tuple()
+			return available_adapters[0].acquire()
+		else:
+			raise RuntimeError('No Model adapters currently supported.')
 
 	## = Abstract Methods = ##
 	@abc.abstractmethod
@@ -132,7 +160,7 @@ class MetaFactory(type):
 
 		''' Initialize a subclass. Must be overridden by child metaclasses. '''
 
-		raise NotImplemented()
+		raise NotImplementedError()
 
 
 ## == Abstract Classes == ##
@@ -143,7 +171,6 @@ class AbstractKey(_key_parent()):
 
 	''' Abstract Key class. '''
 
-	__schema__ = _DEFAULT_KEY_SCHEMA if not _MULTITENANCY else frozenset(['id', 'kind', 'parent', 'namespace', 'app'])
 
 	## = Encapsulated Classes = ##
 
@@ -153,6 +180,7 @@ class AbstractKey(_key_parent()):
 
 		''' Metaclass for model keys. '''
 
+		__owner__ = 'Key'
 		__schema__ = _DEFAULT_KEY_SCHEMA
 
 		@classmethod
@@ -160,23 +188,39 @@ class AbstractKey(_key_parent()):
 
 			''' Initialize a Key class. '''
 
-			# build initial key class structure
-			key_class = {
-				'__slots__': set(),  # seal object attributes, keys don't need any new space
-				'__format__': set(),  # store the format for a key at the class level (allows easy de-serialization)
-			}
+			if name != 'AbstractKey':
 
-			# provision each key schema point in our format pointer and slots allocation
-			for name in properties.get('__schema__', cls.__schema__):
-				key_class['__format__'].add(name)  # regular name goes into format (for example, `id`)
-				key_class['__slots__'].add('__%s__' % name)  # special name goes into slots (for example, `__id__`)
+				# build initial key class structure
+				key_class = {
+					'__slots__': set(),  # seal object attributes, keys don't need any new space
+					'__bases__': bases,  # define bases for class
+					'__name__': name,  # set class name internals
+					'__persisted__': False  # default to not knowing whether this key is persisted
+				}
 
-			if '__adapter__' not in properties:
-				key_class['__adapter__'] = cls.resolve(name, bases, properties)
+				if '__adapter__' not in properties:
+					key_class['__adapter__'] = cls.resolve(name, bases, properties)
 
-			# return an argset for `type`
-			return name, bases, key_class
+				# add key format items, initted to None
+				special_properties = dict([('__%s__' % k, None) for k in properties.get('__schema__', cls.__schema__)])
+				key_class.update(special_properties)
 
+				# doing this after adding the resolved adapter allows override via `__adapter__`
+				key_class.update(properties)  # merge-in properties
+
+				# return an argset for `type`
+				return name, bases, key_class
+
+			return name, bases, properties
+
+	def __new__(cls, *args, **kwargs):
+
+		''' Intercepts construction requests for directly Abstract model classes. '''
+
+		if cls.__name__ == 'AbstractKey':
+			raise TypeError('Cannot directly instantiate abstract class `AbstractKey`.')
+		else:
+			super(_key_parent(), cls).__new__(*args, **kwargs)
 
 ## AbstractModel
 # Metaclass for a datamodel class.
@@ -193,6 +237,8 @@ class AbstractModel(_model_parent()):
 	class __metaclass__(MetaFactory):
 
 		''' Metaclass for data models. '''
+
+		__owner__ = 'Model'
 
 		@classmethod
 		def initialize(cls, name, bases, properties):
@@ -219,6 +265,7 @@ class AbstractModel(_model_parent()):
 
 					# initialize core model class attributes.
 					'__impl__': {},  # holds cached implementation classes generated from this model
+					'__name__': name,  # map-in internal class name (should be == to Model kind)
 					'__kind__': name,  # kindname defaults to model class name (keep track of it here so we have it if __name__ changes)
 					'__bases__': bases,  # stores a model class's bases, so proper MRO can work
 					'__lookup__': frozenset(property_map.keys()),  # frozenset of allocated attributes, for quick lookup
@@ -296,6 +343,15 @@ class AbstractModel(_model_parent()):
 		dirty = property(operator.itemgetter(1), doc='Alias for `PropertyValue.dirty` at index 1.')
 
 	# = Internal Methods = #
+	def __new__(cls, *args, **kwargs):
+
+		''' Intercepts construction requests for directly Abstract model classes. '''
+
+		if cls.__name__ == 'AbstractModel':
+			raise TypeError('Cannot directly instantiate abstract class `AbstractModel`.')
+		else:
+			return super(AbstractModel, cls).__new__(cls, *args, **kwargs)
+
 	def __repr__(self):
 
 		''' Generate a string representation of this Entity. '''
@@ -314,33 +370,45 @@ class Key(AbstractKey):
 	''' Concrete Key class. '''
 
 	__separator__ = u':'
+	__schema__ = _DEFAULT_KEY_SCHEMA if not _MULTITENANCY else tuple(['id', 'kind', 'parent', 'namespace', 'app'])
 
 	## = Internal Methods = ##
-	def __new__(cls, urlsafe=None, raw=None, json=None, *parts):
+	def __new__(cls, *parts, **formats):
 
 		''' Constructs keys from various formats. '''
 
 		# delegate full-key decoding to classmethods
-		if raw:
+		if formats.get('raw'):
 			return cls.from_raw(raw)  # raw, deserialized keys
-		elif urlsafe:
+		elif formats.get('urlsafe'):
 			return cls.from_urlsafe(urlsafe)  # URL-encoded keys
-		elif json:
+		elif formats.get('json'):
 			return cls.from_json(json)  # JSON-formatted keys
 
 		# delegate ordinal/positional decoding to parent class
-		return cls(*parts)
+		return super(AbstractKey, cls).__new__(cls, *parts)
 
 	## = Internal Methods = ##
-	def __init__(self, _persisted=False, *parts):
+	def __init__(self, *parts, **kwargs):
 
 		''' Initialize this Key. '''
 
-		# if we're handed initial parts, fill them up in order...
-		if parts:
-			for name, value in zip(self.__schema__, parts):
-				setattr(self, '__%s__' % name, value)  # fill each schema item with a value, if available, in order
-		self.__persisted__ = _persisted  # if we *know* this is an existing key, this should be `true`
+		if len(parts) == len(self.__schema__):  # it's a fully-spec'ed key
+			for name, value in zip(reversed(self.__schema__), parts): setattr(self, name, value)
+			return
+
+		elif len(parts) < len(self.__schema__):  # it's a partially-spec'ed key
+			# lop off top-level spec items for the negative diff amount of parts specified
+			for name, value in zip([i for i in reversed(self.__schema__)][(len(self.__schema__) - len(parts)):], parts):
+				setattr(self, name, value)
+			return
+
+		else:
+			# for some reason the schema falls short of our parts
+			raise TypeError("Key type \"%s\" takes a maximum of %s positional arguments to populate the format \"%s\"." % (self.__class__.__name__, len(self.__schema__), str(self.__schema__)))
+
+		self.__persisted__ = kwargs.get('_persisted', False)  # if we *know* this is an existing key, this should be `true`
+		return
 
 	def __repr__(self):
 
@@ -350,6 +418,7 @@ class Key(AbstractKey):
 
 	__str__ = __unicode__ = __repr__
 
+	## = Property Setters = ##
 	def _set_id(self, id):
 
 		''' Set the ID of this Key. '''
@@ -357,6 +426,15 @@ class Key(AbstractKey):
 		if self.__persisted__:  # disallow changing ID after persistence is achieved
 			raise AttributeError('Cannot set the ID of an already-persisted key.')
 		self.__id__ = id
+		return self
+
+	def _set_app(self, app):
+
+		''' Set the appname of this Key. '''
+
+		if self.__persisted__:  # disallow changing the app after persistence is achieved
+			raise AttributeError('Cannot set the app of an already-persisted key.')
+		self.__app__ = app
 		return self
 
 	def _set_kind(self, kind):
@@ -388,23 +466,38 @@ class Key(AbstractKey):
 		self.__namespace__ = namespace
 		return self
 
-	## = Bound Properties = ##
-	@property
-	def id(self):
+	## = Property Getters = ##
+	def _get_id(self):
 
 		''' Retrieve this Key's ID. '''
 
 		return self.__id__
 
-	@property
-	def kind(self):
+	def _get_kind(self):
 
 		''' Retrieve this Key's kind. '''
 
 		return self.__kind__
 
-	@property
-	def ancestry(self):
+	def _get_app(self):
+
+		''' Retrieve this Key's app. '''
+
+		return self.__app__
+
+	def _get_parent(self):
+
+		''' Retrieve this Key's parent. '''
+
+		return self.__parent__
+
+	def _get_namespace(self):
+
+		''' Retrieve this Key's namespace. '''
+
+		return self.__namespace__
+
+	def _get_ancestry(self):
 
 		''' Retrieve this Key's ancestry path. '''
 
@@ -415,6 +508,14 @@ class Key(AbstractKey):
 		# yield self to signify the end of the chain, and stop iteration
 		yield self
 		raise StopIteration()
+
+	## = Property Bindings  = ##
+	id = property(_get_id, _set_id)
+	app = property(_get_app, _set_app)
+	kind = property(_get_kind, _set_kind)
+	parent = property(_get_parent, _set_parent)
+	ancestry = property(_get_ancestry, None)
+	namespace = property(_get_namespace, _set_namespace)
 
 	## = Object Methods = ##
 	def get(self):
@@ -429,11 +530,14 @@ class Key(AbstractKey):
 
 		return self.__class__.__adapter__.delete_key(self)
 
-	def flatten(self):
+	def flatten(self, keyed=False):
 
 		''' Flatten this Key into a basic structure suitable for transport or storage. '''
 
-		return tuple([getattr(self, i) for i in self.__schema__])
+		if not keyed:
+			return tuple(filter(lambda x: x is not None, [getattr(self, i) for i in reversed(self.__schema__)]))
+		else:
+			return tuple(filter(lambda x: x[1] is not None, [(i, getattr(self, i)) for i in reversed(self.__schema__)]))
 
 	def urlsafe(self):
 
@@ -501,13 +605,20 @@ class Property(object):
 		''' Descriptor attribute access. '''
 
 		# Proxy to internal method.
-		return instance._get_value(self.name)
+		if instance:
+			return instance._get_value(self.name)
+		else:
+			# class-level access is always None
+			return None
 
 	def __set__(self, instance, value):
 
 		''' Descriptor attribute write. '''
 
-		return instance._set_value(self.name, value)
+		if instance:
+			return instance._set_value(self.name, value)
+		else:
+			raise AttributeError("Cannot write to model property \"%s\" before instantiation." % self.name)
 
 	def __delete__(self, instance):
 
@@ -546,20 +657,21 @@ class Model(AbstractModel):
 	__key__ = Key
 
 	## = Internal Methods = ##
-	def __init__(self, key=None, _persisted=False, **properties):
+	def __init__(self, **properties):
 
 		''' Initialize this Model. '''
+
+		# grab key / persisted flag, if any
+		key, persisted = properties.get('key'), properties.get('_persisted', False)
 
 		# if we're handed a key at construction time, it's manually set...
 		if isinstance(key, basestring):
 			self._set_key(urlsafe=key)
 		elif key:
 			self._set_key(constructed=key)
-		else:
-			self._set_key(self.__key__(self.kind))  # create an empty, kinded key
-
+		
 		# initialize internals and map any kwargs into data
-		self._initialize(_persisted)._set_value(properties, _dirty=(not _persisted))
+		self._initialize(persisted)._set_value(properties, _dirty=(not persisted))
 
 	def __setattr__(self, name, value):
 
@@ -578,14 +690,28 @@ class Model(AbstractModel):
 		self.__data__, self.__dirty__, self.__persisted__, self.__explicit__, self.__initialized__ = {}, (not _persisted), _persisted, False, True
 		return self
 
-	def _set_key(self, urlsafe=None, constructed=None, raw=None):
+	def _set_key(self, value=None, urlsafe=None, constructed=None, raw=None):
 
 		''' Set this Entity's key manually. '''
 
+		# unknown value
+		if value:
+			if isinstance(value, basestring):
+				return Key.from_urlsafe(value)
+			elif isinstance(value, tuple):
+				return Key.from_raw(value)
+			elif isinstance(value, self.__key__):
+				return Key(constructed=value)
+
+		# URLsafe
 		if urlsafe:
 			self.__key__ = Key.from_urlsafe(urlsafe)
+
+		# constructed key
 		elif constructed:
 			self.__key__ = constructed
+
+		# raw key
 		elif raw:
 			self.__key__ = Key.from_raw(raw)
 
@@ -615,13 +741,19 @@ class Model(AbstractModel):
 		if not name:
 			return self
 
-		# allow a list of (name, value) pairs, just delegate to self and recurse
+		# allow a dict or list of (name, value) pairs, just delegate to self and recurse
+		if isinstance(name, dict):
+			name = name.items()
 		if isinstance(name, (list, tuple)) and isinstance(name[0], tuple):
-			return (self._set_value(i, _dirty=_dirty) for i in name)
+			return [self._set_value(k, i, _dirty=_dirty) for k, i in name]
 
 		# allow a tuple of (name, value), for use in map/filter/etc
 		if isinstance(name, tuple):
 			name, value = name
+
+		# if it's a key, set through _set_key
+		if name == 'key':
+			self._set_key(value)
 
 		# check property lookup
 		if name in self.__lookup__:
@@ -699,29 +831,3 @@ class Model(AbstractModel):
 		''' Export this Entity as a JSON string, excluding/including/filtering/mapping as we go. '''
 
 		return json.dumps(self.to_dict(exclude, include, filter_fn, map_fn))
-
-
-## == Test Models == ##
-
-## Car
-# Simple model simulating a car.
-class Car(Model):
-
-	''' An automobile. '''
-
-	make = basestring, {'indexed': True}
-	model = basestring, {'indexed': True}
-	year = int, {'choices': xrange(1900, 2015)}
-	color = basestring, {'choices': ('blue', 'green', 'red', 'silver', 'white', 'black')}
-
-
-## Person
-# Simple model simulating a person.
-class Person(Model):
-
-	''' A human being. '''
-
-	firstname = basestring
-	lastname = basestring
-	active = bool, {'default': True}
-	cars = Car, {'repeated': True}

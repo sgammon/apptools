@@ -1,9 +1,26 @@
 # -*- coding: utf-8 -*-
 import webapp2
 from config import config
-from google.appengine.api import memcache
-
+from apptools.util import debug
 from jinja2 import MemcachedBytecodeCache as BytecodeCache
+
+logger = debug.AppToolsLogger(path='apptools.api.output.extensions', name='memcached')
+
+
+try:
+    from google.appengine.api import memcache
+except ImportError as e:
+    try:
+        import memcache
+    except ImportError as e:
+        try:
+            import umemcache as memcache
+        except ImportError as e:
+            logger.critical('No memcache adapter found!')
+            pass
+    _APPENGINE = False
+else:
+    _APPENGINE = True
 
 
 ## MemcachedBytecodeCache - caches and loads compiled template bytecode with memcache

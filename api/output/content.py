@@ -29,17 +29,36 @@ from apptools.util import AppToolsJSONEncoder
 from apptools.util import timesince
 from apptools.util import byteconvert
 
-## NDB Imports
-from google.appengine.ext import ndb
-from google.appengine.ext.ndb import context
-from google.appengine.ext.ndb import tasklet
-from google.appengine.ext.ndb import synctasklet
+try:
+    ## NDB Imports
+    from google.appengine.ext import ndb
+    from google.appengine.ext.ndb import context
+    from google.appengine.ext.ndb import tasklet as ntasklet
+    from google.appengine.ext.ndb import synctasklet as stasklet
 
-## SDK Imports
-from google.appengine.api import memcache
-from google.appengine.ext import blobstore
+    ## SDK Imports
+    from google.appengine.api import memcache
+    from google.appengine.ext import blobstore
 
-## Openfire Imports
+except ImportError as e:
+    _APPENGINE = False  # we're not running on appengine
+
+    def tasklet(func):
+
+        ''' Shim for missing tasklets. '''
+
+        return func
+
+    toplevel = tasklet  # shim toplevel too
+
+else:
+    _APPENGINE = True  # we are running on appengine
+    tasklet = mtasklet  # patch in tasklets
+    toplevel = ndb.toplevel  # patch in toplevel
+
+
+## Builtin models
+from apptools import model
 from apptools.model import builtin as models
 
 
@@ -56,8 +75,9 @@ _blocktypes = frozenset(['area', 'snippet', 'summary'])
 _dynamic_inheritance_nodes = (nodes.Extends, nodes.FromImport, nodes.Import, nodes.Include)
 
 ## Global Query Options
-_keys_only_opt = ndb.QueryOptions(keys_only=True, limit=3, read_policy=ndb.EVENTUAL_CONSISTENCY, produce_cursors=False, hint=ndb.QueryOptions.ANCESTOR_FIRST, deadline=3)
-_projection_opt = ndb.QueryOptions(keys_only=False, limit=3, read_policy=ndb.EVENTUAL_CONSISTENCY, produce_cursors=False, hint=ndb.QueryOptions.ANCESTOR_FIRST, deadline=3)
+if _APPENGINE:
+    _keys_only_opt = ndb.QueryOptions(keys_only=True, limit=3, read_policy=ndb.EVENTUAL_CONSISTENCY, produce_cursors=False, hint=ndb.QueryOptions.ANCESTOR_FIRST, deadline=3)
+    _projection_opt = ndb.QueryOptions(keys_only=False, limit=3, read_policy=ndb.EVENTUAL_CONSISTENCY, produce_cursors=False, hint=ndb.QueryOptions.ANCESTOR_FIRST, deadline=3)
 
 
 ## CoreContentAPI - manages the retrieval and update of dynamically editable site content
@@ -69,7 +89,7 @@ class CoreContentAPI(CoreAPI):
     ## == API State == ##
 
     # Content Models
-    seen = set([])        # seen keys
+    seen = set([])   # seen keys
     areas = {}       # content areas
     futures = {}     # data futures
     snippets = {}    # content snippets
@@ -87,21 +107,34 @@ class CoreContentAPI(CoreAPI):
 
         ''' Filter a key in a batch key list. '''
 
-        if isinstance(k, basestring):
-            try:
-                k = ndb.Key(urlsafe=k)
-            except:
-                raise
-        elif isinstance(k, ndb.Model):
-            return k.key
+        if _APPENGINE:
+            if isinstance(k, basestring):
+                try:
+                    k = ndb.Key(urlsafe=k)
+                except:
+                    raise
+            elif isinstance(k, ndb.Model):
+                k = k.key
+        else:
+            if isinstance(k, basestring):
+                try:
+                    k = model.Key.from_urlsafe(k)
+                except:
+                    raise
+            elif isinstance(k, model.Model):
+                k = k.key
         return k
 
     def _filter_model(self, m):
 
         ''' Filter a model in a batch model list. '''
 
-        if not isinstance(m, ndb.Model):
-            return False
+        if _APPENGINE:
+            if not isinstance(m, ndb.Model):
+                return False
+        else:
+            if not isinstance(m, model.Model):
+                return False
         return True
 
     def _fulfill(self, key):
@@ -564,7 +597,7 @@ class CoreContentAPI(CoreAPI):
 
 
     ## == High-level Methods == ##
-    @ndb.toplevel
+    @toplevel
     def preload_namespace(self, namespace, snippet=True, summary=False):
 
         ''' Preload an entire namespace of content '''

@@ -1,5 +1,5 @@
 # -*- coding: utf-8 -*-
-from apptools.pipeline import BasePipeline
+from apptools.pipelines import BasePipeline
 
 
 ## ContentPipeline

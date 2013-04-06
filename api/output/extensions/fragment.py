@@ -1,8 +1,25 @@
 # -*- coding: utf-8 -*-
 from jinja2 import nodes
 from config import config
-from google.appengine.api import memcache
+from apptools.util import debug
 from apptools.api.output.extensions import OutputExtension
+
+logger = debug.AppToolsLogger(path='apptools.api.output.extensions', name='fragment')
+
+try:
+    from google.appengine.api import memcache
+except ImportError as e:
+    try:
+        import memcache
+    except ImportError as e:
+        try:
+            import umemcache as memcache
+        except ImportError as e:
+            logger.critical('No memcache adapter found!')
+            pass
+    _APPENGINE = False
+else:
+    _APPENGINE = True
 
 _extensionConfig = config.get('apptools.output.extension.FragmentCache')
 

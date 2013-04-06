@@ -344,16 +344,16 @@ class SystemService(BaseService):
         response.version = '-'.join(map(lambda x: str(x), ['.'.join(map(lambda x: str(x), [project_version.get('major', 1), project_version.get('minor', 0), project_version.get('micro', 0)])), project_version.get('build', '0PRE'), project_version.get('release', 'ALPHA')]))
 
         # Infrastructure Info
-        response.datacenter = self.request.environ.get('DATACENTER', '_default_')
-        response.instance = self.request.environ.get('INSTANCE_ID', '_default_')
-        response.runtime = self.request.environ.get('APPENGINE_RUNTIME', self.request.environ.get('RUNTIME', '_default_'))
+        response.datacenter = self.request.environ.get('DATACENTER', os.environ.get('DATACENTER', '_default_'))
+        response.instance = self.request.environ.get('INSTANCE_ID', os.environ.get('INSTANCE_ID', '_default_'))
+        response.runtime = self.request.environ.get('APPENGINE_RUNTIME', os.environ.get('RUNTIME', '_default_'))
 
         if hasattr(self, 'api') and hasattr(self.api, 'backends'):
             if self.api.backends.get_backend() is not None:
                 response.backend = self.api.backends.get_backend()
                 response.backend_instance = self.api.backends.get_instance()
         response.debug = config.debug
-        response.app_version = self.request.environ.get('CURRENT_VERSION_ID', '_default_')
+        response.app_version = self.request.environ.get('CURRENT_VERSION_ID', os.environ.get('CURRENT_VERSION_ID', '_default_'))
 
         # Request Info
         response.request_id = self.request.environ.get('REQUEST_ID_HASH', self.request.headers.get('XAF-Request-ID', '_default_'))

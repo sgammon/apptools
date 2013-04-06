@@ -1,32 +1,59 @@
 # -*- coding: utf-8 -*-
 
+'''
+
+	apptools2: testsuite
+	-------------------------------------------------
+	|												|	
+	|	`apptools.tests`							|
+	|												|
+	|	a suite of unit and integration testing 	|
+	|	tools and test cases for apptools and		|
+	|	encapsulating apps.							|
+	|												|	
+	-------------------------------------------------
+	|	authors:									|
+	|		-- sam gammon (sam@momentum.io)			|
+	-------------------------------------------------	
+	|	changelog:									|
+	|		-- apr 1, 2013: initial draft			|
+	-------------------------------------------------
+
+'''
+
 # Base Imports
 import webapp2
 import unittest
 
 # App Engine API Imports
-from google.appengine.ext import db
-from google.appengine.ext import testbed
-from google.appengine.api import memcache
+try:
+	from google.appengine.ext import db
+	from google.appengine.ext import testbed
+	from google.appengine.api import memcache
 
+except ImportError as e:
+	_APPENGINE = False
 
-## Constants
-_APPENGINE_SERVICE_BINDINGS = {
-	'mail': 'mail',
-	'user': 'user',
-	'xmpp': 'xmpp',
-	'images': 'images',
-	'channel': 'channel',
-	'urlfetch': 'urlfetch',
-	'memcache': 'memcache',
-	'blobstore': 'blobstore',
-	'taskqueue': 'taskqueue',
-	'identity': 'app_identity',
-	'capability': 'capability',
-	'logservice': 'logservice',
-	'datastore': 'datastore_v3'
-}
-_APPENGINE_SERVICES = frozenset(_APPENGINE_SERVICE_BINDINGS.keys())
+else:
+	_APPENGINE = True
+
+	## Constants
+	_APPENGINE_SERVICE_BINDINGS = {
+		'mail': 'mail',
+		'user': 'user',
+		'xmpp': 'xmpp',
+		'images': 'images',
+		'channel': 'channel',
+		'urlfetch': 'urlfetch',
+		'memcache': 'memcache',
+		'blobstore': 'blobstore',
+		'taskqueue': 'taskqueue',
+		'identity': 'app_identity',
+		'capability': 'capability',
+		'logservice': 'logservice',
+		'datastore': 'datastore_v3'
+	}
+	_APPENGINE_SERVICES = frozenset(_APPENGINE_SERVICE_BINDINGS.keys())
 
 
 ## AppToolsTestCase - Parent class for AppTools and Application-level tests.
@@ -50,20 +77,21 @@ class AppToolsTestCase(unittest.TestCase):
 		''' Set up an App Engine testbed, with related tools. '''
 
 		## Construct + activate testbed
-		if hasattr(self, 'services') and len(self.services) > 0:
-			self.testbed = testbed.Testbed()
-			self.testbed.activate()
+		if _APPENGINE:
+			if hasattr(self, 'services') and len(self.services) > 0:
+				self.testbed = testbed.Testbed()
+				self.testbed.activate()
 
-		## Construct stubs
-		for service in self.services:
-			if service in _APPENGINE_SERVICES:
-				stub_init = '_'.join(['init', _APPENGINE_SERVICE_BINDINGS.get(service), 'stub'])
-				if hasattr(self.testbed, stub_init):
-					getattr(self.testbed, stub_init)()
+			## Construct stubs
+			for service in self.services:
+				if service in _APPENGINE_SERVICES:
+					stub_init = '_'.join(['init', _APPENGINE_SERVICE_BINDINGS.get(service), 'stub'])
+					if hasattr(self.testbed, stub_init):
+						getattr(self.testbed, stub_init)()
+					else:
+						raise RuntimeError('Could not init API by the name of "%s".' % service)
 				else:
-					raise RuntimeError('Could not init API by the name of "%s".' % service)
-			else:
-				raise RuntimeError('Could not resolve API by the name of "%s".' % service)
+					raise RuntimeError('Could not resolve API by the name of "%s".' % service)
 
 		self.request = webapp2.Request.blank(self.path)
 
@@ -71,7 +99,7 @@ class AppToolsTestCase(unittest.TestCase):
 
 		''' Tear down App Engine testbed stuff. '''
 
-		if self.testbed:
+		if _APPENGINE and self.testbed:
 			self.testbed.deactivate()
 
 
