@@ -697,26 +697,25 @@ class Model(AbstractModel):
 		else:
 			raise AttributeError("Cannot set nonexistent attribute \"%s\" of model class \"%s\"." % (name, self.kind))
 
-	def __enter__(self):
+	def __context__(self, _type=None, value=None, traceback=None):
 
-		''' Context enter - apply explicit or generator mode. '''
+		''' Context enter/ext - apply explicit mode. '''
 
-		self.__explicit__ = True
+		self.__explicit__ = (not self.__explicit__)
 		return self
 
-	def __exit__(self, type, value, traceback):
-
-		''' Context exit - tear-down explicit or generator mode. '''
-
-		self.__explicit__ = False
-		return self
+	__enter__ = __exit__ = __context__
 
 	def __iter__(self):
 
 		''' Allow models to be used as dict-like generators. '''
 
 		for name in self.__lookup__:
-			value = getattr(self, name)
+			value = self._get_value(name, default=Property._sentinel)
+			if (value == Property._sentinel and (not self.__explicit__)):
+				if self.__class__.__dict__[name]._default != Property._sentinel:
+					yield name, self.__class__.__dict__[name]._default  # return a property's default in `implicit` mode, if any
+				continue  # skip unset properties without a default, except in `explicit` mode
 			yield name, value
 		raise StopIteration()
 
@@ -726,20 +725,6 @@ class Model(AbstractModel):
 
 		# initialize core properties
 		self.__data__, self.__dirty__, self.__persisted__, self.__explicit__, self.__initialized__ = {}, (not _persisted), _persisted, False, True
-		return self
-
-	def _generate(self, force=False):
-
-		''' Set or unset generator mode. '''
-
-		# if forcing the mode, copy in directly, otherwise toggle
-		if force:
-			self.__generate__ = force
-		else:
-			if self.__generate__:
-				self.__generate__ = False
-			else:
-				self.__generate__ = True
 		return self
 
 	def _set_key(self, value=None, urlsafe=None, constructed=None, raw=None):
@@ -887,8 +872,7 @@ class Model(AbstractModel):
 		_default_map = False  # flag for default map lambda, so we can exclude only on custom map
 		_default_include = False  # flag for including properties unset and explicitly listed in a custom inclusion list
 
-		if not _all:
-			_all = self.__explicit__  # explicit mode implies returning all properties raw
+		if not _all: _all = self.__explicit__  # explicit mode implies returning all properties raw
 
 		if not include:
 			include = self.__lookup__  # default include list is model properties
@@ -912,17 +896,19 @@ class Model(AbstractModel):
 			filtered = filter((name, value))
 			if not filtered: continue
 
+			# filter out via exclude/include
+			if name in exclude:
+				continue
+			if not _default_include:
+				if name not in include: continue
+
 			if value is Property._sentinel:  # property is unset
 				if not _all and not ((not _default_include) and name in include):  # if it matches an item in a custom include list, and/or we don't want all properties...
 					continue  # skip if all properties not requested
 				else:
 					if not self.__explicit__:  # None == sentinel in implicit mode
 						value = None
-					dictionary[name] = value
-			else:
-				# we have a value. only let it through if it's both in the include and not in the exclude list, or we have a custom map fn and it's not in the exclude list
-				if ((not _default_include) and (name in include and name not in exclude)) or (_default_include and (name not in exclude)):
-					dictionary[name] = value
+			dictionary[name] = value		
 		return dictionary
 
 	def to_json(self, *args, **kwargs):
