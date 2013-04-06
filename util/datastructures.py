@@ -22,12 +22,14 @@ class Sentinel(object):
     ''' Create a named sentinel object. '''
 
     name = None
+    _falsy = False
+    _fake_instance = None
 
-    def __init__(self, name):
+    def __init__(self, name, falsy=False):
 
         ''' Construct a new sentinel. '''
 
-        self.name = name
+        self.name, self._falsy = name, falsy
 
     def __repr__(self):
 
@@ -35,8 +37,14 @@ class Sentinel(object):
 
         return '<Sentinel "%s">' % self.name
 
+    def __nonzero__(self):
+
+        ''' Test whether this sentinel is falsy. '''
+
+        return (not self._falsy)
+
 # Sentinels
-_EMPTY, _TOMBSTONE = Sentinel("EMPTY"), Sentinel("TOMBSTONE")
+_EMPTY, _TOMBSTONE = Sentinel("EMPTY", True), Sentinel("TOMBSTONE", True)
 
 
 ## UtilStruct

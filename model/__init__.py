@@ -393,22 +393,24 @@ class Key(AbstractKey):
 
 		''' Initialize this Key. '''
 
-		if len(parts) == len(self.__schema__):  # it's a fully-spec'ed key
-			for name, value in zip(reversed(self.__schema__), parts): setattr(self, name, value)
+		if len(parts) == 1:  # special case: it's a kinded, empty key
+			self.__kind__ = parts[0]
 			return
+
+		elif len(parts) == len(self.__schema__):  # it's a fully-spec'ed key
+			for name, value in zip(reversed(self.__schema__), parts): setattr(self, name, value)
 
 		elif len(parts) < len(self.__schema__):  # it's a partially-spec'ed key
 			# lop off top-level spec items for the negative diff amount of parts specified
 			for name, value in zip([i for i in reversed(self.__schema__)][(len(self.__schema__) - len(parts)):], parts):
 				setattr(self, name, value)
-			return
 
 		else:
 			# for some reason the schema falls short of our parts
 			raise TypeError("Key type \"%s\" takes a maximum of %s positional arguments to populate the format \"%s\"." % (self.__class__.__name__, len(self.__schema__), str(self.__schema__)))
 
+		self.__parent__ = kwargs.get('parent') # kwarg-passed parent
 		self.__persisted__ = kwargs.get('_persisted', False)  # if we *know* this is an existing key, this should be `true`
-		return
 
 	def __repr__(self):
 
@@ -569,13 +571,15 @@ class Property(object):
 
 	## = Internals = ##
 	_name = None  # owner property name
-	_default = None  # default property value (if any)
 	_options = None  # extra, implementation-specific options
 	_indexed = False  # index this property, to make it queryable?
 	_required = False  # except if this property is unset on put
 	_repeated = False  # signifies an array of self._basetype(s)
 	_sentinel = _EMPTY  # default sentinel for basetypes/values
 	_basetype = _sentinel  # base datatype for the current property
+
+	## Default property value
+	_default = _sentinel  # default property value (if any)
 
 	## = Internal Methods = ##
 	def __init__(self, name, basetype,
@@ -604,12 +608,20 @@ class Property(object):
 
 		''' Descriptor attribute access. '''
 
-		# Proxy to internal method.
-		if instance:
-			return instance._get_value(self.name)
-		else:
-			# class-level access is always None
-			return None
+		if instance:  # proxy to internal entity method.
+
+			# grab value, returning special a) property default or b) sentinel if we're in explicit mode and it is unset
+			if self._default != Property._sentinel:  # we have a set default
+				value = instance._get_value(self.name, default=self._default)
+			else:
+				value = instance._get_value(self.name, default=Property._sentinel)
+
+			if not value and value == Property._sentinel and instance.__explicit__ == False:
+				return None  # soak up sentinels via the descriptor API
+			return value
+
+		elif self._default: return self._default  # if we have a default and we're at the class level, who cares just give it up i guess
+		return None # otherwise, class-level access is always None
 
 	def __set__(self, instance, value):
 
@@ -655,6 +667,9 @@ class Model(AbstractModel):
 	''' Concrete Model class. '''
 
 	__key__ = Key
+	__generate__ = False
+	__explicit__ = False
+	__modeswitch__ = None
 
 	## = Internal Methods = ##
 	def __init__(self, **properties):
@@ -682,12 +697,49 @@ class Model(AbstractModel):
 		else:
 			raise AttributeError("Cannot set nonexistent attribute \"%s\" of model class \"%s\"." % (name, self.kind))
 
+	def __enter__(self):
+
+		''' Context enter - apply explicit or generator mode. '''
+
+		self.__explicit__ = True
+		return self
+
+	def __exit__(self, type, value, traceback):
+
+		''' Context exit - tear-down explicit or generator mode. '''
+
+		self.__explicit__ = False
+		return self
+
+	def __iter__(self):
+
+		''' Allow models to be used as dict-like generators. '''
+
+		for name in self.__lookup__:
+			value = getattr(self, name)
+			yield name, value
+		raise StopIteration()
+
 	def _initialize(self, _persisted):
 
 		''' Initialize core properties. '''
 
 		# initialize core properties
 		self.__data__, self.__dirty__, self.__persisted__, self.__explicit__, self.__initialized__ = {}, (not _persisted), _persisted, False, True
+		return self
+
+	def _generate(self, force=False):
+
+		''' Set or unset generator mode. '''
+
+		# if forcing the mode, copy in directly, otherwise toggle
+		if force:
+			self.__generate__ = force
+		else:
+			if self.__generate__:
+				self.__generate__ = False
+			else:
+				self.__generate__ = True
 		return self
 
 	def _set_key(self, value=None, urlsafe=None, constructed=None, raw=None):
@@ -715,22 +767,30 @@ class Model(AbstractModel):
 		elif raw:
 			self.__key__ = Key.from_raw(raw)
 
-	def _get_value(self, name, sentinel=_EMPTY):
+	def _get_value(self, name, default=None):
 
 		''' Retrieve the value of a named property on this Entity. '''
 
+		# calling with no args gives all values in (name, value) form
+		if not name:
+			values = []
+			for i in self.__lookup__:
+				values.append((i, self._get_value(i, default)))
+			return values
+
 		if name in self.__lookup__:
-			value = self.__data__.get(name, None)
+			value = self.__data__.get(name, Property._sentinel)
 
 			if value:
 				return value.data
 			else:
-				# return sentinel in explicit mode, if property is unset
+				# return system _EMPTY sentinel in explicit mode, if property is unset
 				if self.__explicit__ and value is Property._sentinel:
 					return Property._sentinel
-				else:
-					return None
 
+				# otherwise return handed default, which is usually None
+				else:
+					return default
 		raise AttributeError("Model \"%s\" has no property \"%s\"." % (self.kind, name))
 
 	def _set_value(self, name, value=_EMPTY, _dirty=True):
@@ -819,15 +879,54 @@ class Model(AbstractModel):
 		map(lambda x: setattr(self, x[0], x[1]), mapping.items())
 		return self
 
-	def to_dict(self, exclude=tuple(), include=tuple(), filter_fn=lambda x: True, map_fn=lambda x: x):
+	def to_dict(self, exclude=tuple(), include=tuple(), filter=None, map=None, _all=False, filter_fn=filter, map_fn=map):
 
 		''' Export this Entity as a dictionary, excluding/including/filtering/mapping as we go. '''
 
-		if not include: include = self.__lookup__
-		return dict([i for i in map(map_fn, filter(filter_fn, ((name, getattr(self, name)) for name in self.__lookup__ if (name in include and name not in exclude))))])
+		dictionary = {}  # return dictionary
+		_default_map = False  # flag for default map lambda, so we can exclude only on custom map
+		_default_include = False  # flag for including properties unset and explicitly listed in a custom inclusion list
 
-	def to_json(self, exclude=tuple(), include=tuple(), filter_fn=lambda x: True, map_fn=lambda x: x):
+		if not _all:
+			_all = self.__explicit__  # explicit mode implies returning all properties raw
+
+		if not include:
+			include = self.__lookup__  # default include list is model properties
+			_default_include = True  # mark flag that we used the default
+
+		if not map:
+			map = lambda x: x  # substitute no map with a passthrough
+			_default_map = True
+		
+		if not filter: filter = lambda x: True  # substitute no filter with a passthrough
+
+		# freeze our comparison sets
+		exclude, include = frozenset(exclude), frozenset(include)
+
+		for name in self.__lookup__:
+
+			# run map fn over (name, value)
+			name, value = map((name, self._get_value(name, default=self.__class__.__dict__[name]._default)))  # pull with property default
+
+			# run filter fn over (name, vlaue)
+			filtered = filter((name, value))
+			if not filtered: continue
+
+			if value is Property._sentinel:  # property is unset
+				if not _all and not ((not _default_include) and name in include):  # if it matches an item in a custom include list, and/or we don't want all properties...
+					continue  # skip if all properties not requested
+				else:
+					if not self.__explicit__:  # None == sentinel in implicit mode
+						value = None
+					dictionary[name] = value
+			else:
+				# we have a value. only let it through if it's both in the include and not in the exclude list, or we have a custom map fn and it's not in the exclude list
+				if ((not _default_include) and (name in include and name not in exclude)) or (_default_include and (name not in exclude)):
+					dictionary[name] = value
+		return dictionary
+
+	def to_json(self, *args, **kwargs):
 
 		''' Export this Entity as a JSON string, excluding/including/filtering/mapping as we go. '''
 
-		return json.dumps(self.to_dict(exclude, include, filter_fn, map_fn))
+		return json.dumps(self.to_dict(*args, **kwargs))
