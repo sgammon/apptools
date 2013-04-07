@@ -623,7 +623,7 @@ class Property(object):
 		''' Initialize this Property. '''
 
 		# copy in property name + basetype
-		self.name, self.basetype = name, basetype
+		self.name, self._basetype = name, basetype
 
 		# if we're passed any locally-supported options
 		if default is not None: self._default = default
@@ -658,7 +658,7 @@ class Property(object):
 
 		''' Descriptor attribute write. '''
 
-		if instance:
+		if instance is not None:
 			return instance._set_value(self.name, value)
 		else:
 			raise AttributeError("Cannot write to model property \"%s\" before instantiation." % self.name)
@@ -669,7 +669,7 @@ class Property(object):
 
 		return instance._set_value(self.name)
 
-	def valid(self, instance):
+	def valid(self, instance, throw=True):
 
 		''' Validate the value of this property, if any. '''
 
@@ -678,10 +678,38 @@ class Property(object):
 			return self.validate(instance)
 		else:
 			value = instance._get_value(self.name)
-			return not any([
-				((value in (None, Property._sentinel)) and self._required),  # check null-ness for required properties
-				((value is not Property._sentinel) and not isinstance(self._basetype, value))  # check isinstance for regular types
-			])
+
+			# check required-ness
+			if (value in (None, Property._sentinel)) and self._required:
+				if not throw:  # optionally fail quietly
+					return False
+				raise ValueError("Property \"%s\" of Model class \"%s\" is marked as `required`, but was left unset." % (self.name, instance.kind()))
+
+			# check multi-ness
+			if isinstance(value, (list, tuple, set, frozenset, dict)):
+				if not self._repeated:
+					if not throw:  # optionally fail silently
+						return False
+					raise ValueError("Property \"%s\" of Model class \"%s\" is not marked as repeated, and cannot accept iterable values." % (self.name, instance.kind()))
+			else:
+				if self._repeated:
+					if not throw:  # optionally fail silently
+						return False
+					raise ValueError("Property \"%s\" of Model class \"%s\" is marked as iterable, and cannot accept non-iterable values." % (self.name, instance.kind()))
+				value = [value]
+
+			for v in value:
+
+				# check basetype
+				if v is not Property._sentinel and (self._basetype is not Property._sentinel and isinstance(v, self._basetype)):
+					continue  # valid instance of basetype
+				else:
+					if not throw:  # optionally fail quietly
+						return False
+					raise ValueError("Property \"%s\" of Model class \"%s\" cannot accept value of type \"%s\" (was expecting type \"%s\")." % (self.name, instance.kind(), type(v).__name__, self._basetype.__name__))
+
+			# validation passed! :)
+			return True
 
 	def validate(self, instance):
 
@@ -698,9 +726,7 @@ class Model(AbstractModel):
 	''' Concrete Model class. '''
 
 	__key__ = Key
-	__generate__ = False
 	__explicit__ = False
-	__modeswitch__ = None
 
 	## = Internal Methods = ##
 	def __init__(self, **properties):
@@ -736,6 +762,14 @@ class Model(AbstractModel):
 		return self
 
 	__enter__ = __exit__ = __context__
+
+	def __len__(self):
+
+		''' Return the number of written properties. '''
+
+		return len(self.__data__)
+
+	__nonzero__ = __len__
 
 	def __iter__(self):
 
@@ -881,6 +915,11 @@ class Model(AbstractModel):
 
 		''' Persist this entity via the current datastore adapter. '''
 
+		# Validate property values
+		for name in self.__lookup__:
+			self.__class__.__dict__[name].valid(self)
+
+		# Allow adapter override
 		if not adapter:
 			adapter = self.__class__.__adapter__
 		if not self.key:

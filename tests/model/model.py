@@ -313,18 +313,6 @@ class ModelTests(AppToolsTest):
 			self.assertEqual(mapped_dict['active-cool'], True)
 		return mapped_dict
 
-	def test_todict_crazy(self, method='to_dict'):
-
-		''' Test `Model.to_dict` making use of a bunch of crazy arguments. '''
-
-		pass
-
-	def test_raw(self):
-
-		''' Try serializing a Model into its raw form. '''
-
-		pass
-
 	def test_json(self):
 
 		''' Try serializing a Model into a JSON struct. '''
@@ -442,16 +430,37 @@ class ModelTests(AppToolsTest):
 
 		''' Test a Model's behavior when used with `len()`. '''
 
-		pass
+		# sample person
+		p = Person()
+		self.assertEqual(len(p), 0)
+
+		# set 1st property
+		p.firstname = 'John'
+		self.assertEqual(len(p), 1)
+
+		# set 2nd property
+		p.lastname = 'Doe'
+		self.assertEqual(len(p), 2)
 
 	def test_nonzero(self):
 
 		''' Test a Model's falsyness with no properties. '''
 
-		pass
+		# sample peron
+		p = Person()
+		self.assertTrue((not p))  # empty model should be falsy
+
+		p.firstname = 'John'
+		self.assertTrue(p)  # non-empty model is not falsy
 
 	def test_parent(self):
 
 		''' Test ancestor functionality with a parented Model. '''
 
 		pass  # @TODO: test parented models
+
+	def test_raw(self):
+
+		''' Try serializing a Model into and out of its raw form. '''
+
+		pass  # @TODO: raw entity format

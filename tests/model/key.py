@@ -84,37 +84,37 @@ class KeyTests(AppToolsTest):
 
 		''' Make sure there's a proper format spec on `model.Key`. '''
 
-		pass
+		pass  # @TODO: test __schema__
 
 	def test_setattr(self):
 
 		''' Try setting an unknown and known attribute. '''
 
-		pass
+		pass  # @TODO: test __setattr__
 
 	def test_adapter(self):
 
 		''' Make sure the adapter is attached correctly to `model.Key`. '''
 
-		pass
+		pass  # @TODO: test __adapter__
 
 	def test_repr(self):
 
 		''' Test the string representation of a Key object. '''
 
-		pass
+		pass  # @TODO: test __repr__()
 
 	def test_autoid(self):
 
 		''' Test an integer-based ID field. '''
 
-		pass
+		pass  # @TODO: test auto ID's
 
 	def test_namespace(self):
 
 		''' Test a namespaced Key. '''
 
-		pass
+		pass  # @TODO: test namespacing
 
 	def test_abstract(self):
 
@@ -160,7 +160,7 @@ class KeyTests(AppToolsTest):
 
 		''' Try constructing a key from JSON. '''
 
-		pass
+		pass  # @TODO: JSON functionality
 
 	def test_urlsafe(self):
 
