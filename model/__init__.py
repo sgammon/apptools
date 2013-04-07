@@ -156,11 +156,11 @@ class MetaFactory(type):
 
 	## = Abstract Methods = ##
 	@abc.abstractmethod
-	def initialize(cls, name, bases, properties):
+	def initialize(cls, name, bases, properties):  # pragma: no cover
 
 		''' Initialize a subclass. Must be overridden by child metaclasses. '''
 
-		raise NotImplementedError()
+		raise NotImplementedError()  
 
 
 ## == Abstract Classes == ##
@@ -356,7 +356,7 @@ class AbstractModel(_model_parent()):
 
 		''' Generate a string representation of this Entity. '''
 
-		return "<%s at ID %s>" % (self.__kind__, 'TEST')
+		return "<%s at ID %s>" % (self.__kind__, self.key.id if self.key else id(self))
 
 	__str__ = __unicode__ = __repr__
 
