@@ -93,7 +93,7 @@ else:
 
 # Globals / Sentinels
 _MULTITENANCY = False  # toggle multitenant key namespaces
-_DEFAULT_KEY_SCHEMA = tuple(['id', 'kind', 'parent', 'app'])  # default schema for key classes
+_DEFAULT_KEY_SCHEMA = tuple(['id', 'kind', 'parent'])  # default schema for key classes
 
 
 ## == Metaclasses == ##
@@ -379,14 +379,14 @@ class Key(AbstractKey):
 
 		# delegate full-key decoding to classmethods
 		if formats.get('raw'):
-			return cls.from_raw(raw)  # raw, deserialized keys
+			return cls.from_raw(formats.get('raw'))  # raw, deserialized keys
 		elif formats.get('urlsafe'):
-			return cls.from_urlsafe(urlsafe)  # URL-encoded keys
+			return cls.from_urlsafe(formats.get('urlsafe'))  # URL-encoded keys
 		elif formats.get('json'):
-			return cls.from_json(json)  # JSON-formatted keys
+			return cls.from_json(formats.get('json'))  # JSON-formatted keys
 
 		# delegate ordinal/positional decoding to parent class
-		return super(AbstractKey, cls).__new__(cls, *parts)
+		return super(AbstractKey, cls).__new__(cls, *parts, **formats)
 
 	## = Internal Methods = ##
 	def __init__(self, *parts, **kwargs):
@@ -409,14 +409,29 @@ class Key(AbstractKey):
 			# for some reason the schema falls short of our parts
 			raise TypeError("Key type \"%s\" takes a maximum of %s positional arguments to populate the format \"%s\"." % (self.__class__.__name__, len(self.__schema__), str(self.__schema__)))
 
-		self.__parent__ = kwargs.get('parent') # kwarg-passed parent
+		self._set_parent(kwargs.get('parent'))  # kwarg-passed parent
 		self.__persisted__ = kwargs.get('_persisted', False)  # if we *know* this is an existing key, this should be `true`
+
+	def __eq__(self, other):
+
+		''' Test whether two keys are functionally identical. '''
+
+		# if schemas or classes don't match, immediate no. otherwise check all set values.
+		if not other: return other
+		if len(self.__schema__) != len(other.__schema__) or not isinstance(other, self.__class__): return False
+		return all([i for i in map(lambda x: hasattr(other, x) and (getattr(other, x) == getattr(self, x)), self.__schema__)])
+
+	def __nonzero__(self):
+
+		''' Test whether a key is nonzero, indicating it does/does not have an ID. '''
+
+		return isinstance(self.__id__, (basestring, str))
 
 	def __repr__(self):
 
 		''' Generate a string representation of this Key. '''
 
-		return "<%s of kind '%s' at ID '%s'>" % (self.__class__.__name__, self.kind, id(self))
+		return "<%s of kind %s at ID %s>" % (self.__class__.__name__, self.kind, id(self) if not self.id else str(self.id))
 
 	__str__ = __unicode__ = __repr__
 
@@ -454,7 +469,8 @@ class Key(AbstractKey):
 
 		if self.__persisted__:  # disallow changing parent after persistence is achieved
 			raise AttributeError('Cannot change the key parent of an already-persisted key.')
-		self.__parent__ = parent
+		if parent:
+			self.__parent__ = parent
 		return self
 
 	def _set_namespace(self, namespace):
@@ -497,7 +513,9 @@ class Key(AbstractKey):
 
 		''' Retrieve this Key's namespace. '''
 
-		return self.__namespace__
+		if _MULTITENANCY:
+			return self.__namespace__
+		return
 
 	def _get_ancestry(self):
 
@@ -505,7 +523,8 @@ class Key(AbstractKey):
 
 		# if we have a parent, yield to that
 		if self.__parent__:
-			yield self.__parent__.ancestry
+			ancestry = (i for i in self.__parent__.ancestry)
+			for i in ancestry: yield i
 
 		# yield self to signify the end of the chain, and stop iteration
 		yield self
@@ -532,35 +551,47 @@ class Key(AbstractKey):
 
 		return self.__class__.__adapter__.delete_key(self)
 
-	def flatten(self, keyed=False):
+	def flatten(self, join=False):
 
 		''' Flatten this Key into a basic structure suitable for transport or storage. '''
 
-		if not keyed:
-			return tuple(filter(lambda x: x is not None, [getattr(self, i) for i in reversed(self.__schema__)]))
-		else:
-			return tuple(filter(lambda x: x[1] is not None, [(i, getattr(self, i)) for i in reversed(self.__schema__)]))
+		flattened = tuple((i if not isinstance(i, self.__class__) else i.flatten(join)) for i in map(lambda x: getattr(self, x), reversed(self.__schema__)))
+		if join:
+			return self.__class__.__separator__.join(['' if i is None else i for i in flattened])
+		return flattened
 
 	def urlsafe(self):
 
 		''' Generate an encoded version of this Key, suitable for use in URLs. '''
 
-		return base64.b64encode(self.__class__.__separator__.join([self.flatten()]))
+		return base64.b64encode(self.flatten(True))
 
 	## = Class Methods = ##
 	@classmethod
-	def from_raw(cls, encoded, _persisted=False):
+	def from_raw(cls, encoded, **kwargs):
 
 		''' Inflate a Key from a raw, internal representation. '''
 
-		return cls(*[chunk for chunk in encoded.split(cls.__separator__)], _persisted=_persisted)
+		# if it's still a string, split by separator (probably coming from a DB driver, `urlsafe` does this for us, for instance)
+		if isinstance(encoded, basestring): encoded = encoded.split(cls.__separator__)
+		encoded = collections.deque(encoded)
+
+		key, keys = [], []
+		if not (len(encoded) > len(cls.__schema__)):
+			return cls(*encoded, **kwargs)
+		else:  # we're dealing with ancestry here
+			last_key = encoded.popleft()
+			while len(encoded) > 2:
+				# recursively decode, removing chunks as we go. extract argset by argset.
+				last_key = cls(*(encoded.popleft() for i in xrange(0, len(cls.__schema__) - 1)), parent=last_key, _persisted=kwargs.get('_persisted', False))
+			return cls(*encoded, parent=last_key, _persisted=kwargs.get('_persisted', False))
 
 	@classmethod
 	def from_urlsafe(cls, encoded, _persisted=False):
 
 		''' Inflate a Key from a URL-encoded representation. '''
 
-		return cls.from_raw(base64.b64decode(encoded), _persisted)
+		return cls.from_raw(base64.b64decode(encoded), _persisted=_persisted)
 
 
 ## Property
