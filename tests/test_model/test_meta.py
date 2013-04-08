@@ -41,7 +41,7 @@ class MetaFactoryTests(AppToolsTest):
 
 	''' Tests `model.MetaFactory`. '''
 
-	def test_abstract(self):
+	def test_abstract_factory(self):
 
 		''' Make sure `model.MetaFactory` is only usable abstractly. '''
 
@@ -50,7 +50,7 @@ class MetaFactoryTests(AppToolsTest):
 		with self.assertRaises(NotImplementedError):
 			a = MetaFactory()
 
-	def test_enforce(self):
+	def test_abstract_enforcement(self):
 
 		''' Define a class that violates enforced abstraction rules. '''
 
@@ -64,7 +64,7 @@ class MetaFactoryTests(AppToolsTest):
 		with self.assertRaises(TypeError):
 			c = InsolentClass(InsolentClass.__name__, (MetaFactory, type), dict([(k, v) for k, v in InsolentClass.__dict__.items()]))
 
-	def test_resolve(self):
+	def test_resolve_adapters(self):
 
 		''' Make sure `model.MetaFactory` resolves adapters correctly. '''
 

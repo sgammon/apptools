@@ -68,7 +68,7 @@ class ModelTests(AppToolsTest):
 
 	''' Tests `model.Model` and `model.AbstractModel`. '''
 
-	def test_construct(self):
+	def test_construct_model(self):
 
 		''' Try constructing a Model manually. '''
 
@@ -94,7 +94,7 @@ class ModelTests(AppToolsTest):
 		# test unsets
 		self.assertEqual(person.lastname, None)
 
-	def test_inheritance(self):
+	def test_model_inheritance(self):
 
 		''' Make sure there's a proper inheritance structure for `model.Model`. '''
 
@@ -102,7 +102,7 @@ class ModelTests(AppToolsTest):
 		self.assertTrue(issubclass(Person, model.Model))
 		self.assertTrue(issubclass(model.Model, model.AbstractModel))
 
-	def test_schema(self):
+	def test_model_schema(self):
 
 		''' Make sure there's a proper schema spec on `model.Model`. '''
 
@@ -129,7 +129,7 @@ class ModelTests(AppToolsTest):
 		self.assertTrue(hasattr(Person, 'key'))
 		self.assertTrue(hasattr(Person, '__key__'))
 
-	def test_setattr(self):
+	def test_model_set_attribute(self):
 
 		''' Try setting an unknown and known attribute. '''
 
@@ -145,7 +145,7 @@ class ModelTests(AppToolsTest):
 		with self.assertRaises(AttributeError):
 			john.blabs = 'John'
 
-	def test_adapter(self):
+	def test_model_adapter(self):
 
 		''' Make sure the adapter is attached correctly to `model.Model`. '''
 
@@ -153,13 +153,13 @@ class ModelTests(AppToolsTest):
 		self.assertTrue(hasattr(Person, '__adapter__'))
 		self.assertIsInstance(Person.__adapter__, adapter.ModelAdapter)
 
-	def test_repr(self):
+	def test_model_stringify(self):
 
 		''' Test the string representation of a Model object. '''
 
 		self.assertIsInstance(Person().__repr__(), basestring)
 
-	def test_kind(self):
+	def test_model_kind(self):
 
 		''' Make sure the `Model.kind` is properly set. '''
 
@@ -172,7 +172,7 @@ class ModelTests(AppToolsTest):
 		self.assertIsInstance(john.kind(), basestring)
 		self.assertEqual(john.kind(), "Person")
 
-	def test_abstract(self):
+	def test_abstract_model(self):
 
 		''' Make sure `model.AbstractModel` works abstractly. '''
 
@@ -183,7 +183,7 @@ class ModelTests(AppToolsTest):
 		with self.assertRaises(TypeError):
 			m = model.AbstractModel()
 
-	def test_concrete(self):
+	def test_concrete_model(self):
 
 		''' Make sure `model.Model` works concretely. '''
 
@@ -207,7 +207,7 @@ class ModelTests(AppToolsTest):
 		self.assertIsInstance(SampleSubModel(), SampleModel)
 		self.assertIsInstance(SampleSubModel(), model.Model)
 
-	def test_todict(self, method='to_dict'):
+	def test_model_to_dict(self, method='to_dict'):
 
 		''' Try flattening a Model into a raw dictionary. '''
 
@@ -226,7 +226,7 @@ class ModelTests(AppToolsTest):
 				raw_dict['lastname']
 		return raw_dict
 
-	def test_todict_all(self, method='to_dict'):
+	def test_model_to_dict_all_arguments(self, method='to_dict'):
 
 		''' Try using `Model.to_dict` with the `all` flag. '''
 
@@ -242,7 +242,7 @@ class ModelTests(AppToolsTest):
 			self.assertEqual(all_dict['active'], True)
 		return all_dict
 
-	def test_todict_filter(self, method='to_dict'):
+	def test_model_to_dict_with_filter(self, method='to_dict'):
 
 		''' Try using `Model.to_dict` with a filter function. '''
 
@@ -260,7 +260,7 @@ class ModelTests(AppToolsTest):
 				filtered_dict['active']
 		return filtered_dict
 
-	def test_todict_include(self, method='to_dict'):
+	def test_model_to_dict_with_include(self, method='to_dict'):
 
 		''' Try using `Model.to_dict` with an inclusion list. '''
 
@@ -279,7 +279,7 @@ class ModelTests(AppToolsTest):
 				included_dict['active']  # should not include `active`
 		return included_dict
 
-	def test_todict_exclude(self, method='to_dict'):
+	def test_model_to_dict_with_exclude(self, method='to_dict'):
 
 		''' Try using `Model.to_dict` with an exclusion list. '''
 
@@ -297,7 +297,7 @@ class ModelTests(AppToolsTest):
 				excluded_dict['active']  # should not include `active`
 		return excluded_dict
 
-	def test_todict_map(self, method='to_dict'):
+	def test_model_to_dict_with_map(self, method='to_dict'):
 
 		''' Try using `Model.to_dict` with a map function. '''
 
@@ -313,7 +313,7 @@ class ModelTests(AppToolsTest):
 			self.assertEqual(mapped_dict['active-cool'], True)
 		return mapped_dict
 
-	def test_json(self):
+	def test_JSON_model_format(self):
 
 		''' Try serializing a Model into a JSON struct. '''
 
@@ -345,12 +345,12 @@ class ModelTests(AppToolsTest):
 
 		# test all to_dict permutations with json
 		test_structs = {
-			'raw_dict': self.test_todict,
-			'all_dict': self.test_todict_all,
-			'mapped_dict': self.test_todict_map,
-			'filtered_dict': self.test_todict_filter,
-			'included_dict': self.test_todict_include,
-			'excluded_dict': self.test_todict_exclude
+			'raw_dict': self.test_model_to_dict,
+			'all_dict': self.test_model_to_dict_all_arguments,
+			'mapped_dict': self.test_model_to_dict_with_map,
+			'filtered_dict': self.test_model_to_dict_with_filter,
+			'included_dict': self.test_model_to_dict_with_include,
+			'excluded_dict': self.test_model_to_dict_with_exclude
 		}
 
 		# test each dict => json flow

@@ -34,7 +34,7 @@ class KeyTests(AppToolsTest):
 
 	''' Tests `model.Key` and `model.AbstractKey`. '''
 
-	def test_construct(self):
+	def test_construct_key(self):
 
 		''' Try constructing a key manually. '''
 
@@ -59,7 +59,7 @@ class KeyTests(AppToolsTest):
 		self.assertEqual(k.__class__.__name__, "Key")
 		self.assertEqual(k.__class__.__slots__, set())
 
-	def test_inheritance(self):
+	def test_key_inheritance(self):
 
 		''' Make sure there's a proper inheritance structure for `model.Key`. '''
 
@@ -80,31 +80,31 @@ class KeyTests(AppToolsTest):
 		self.assertTrue(type(k) == Key)
 		self.assertTrue(issubclass(Key, object))
 
-	def test_format(self):
+	def test_key_format(self):
 
 		''' Make sure there's a proper format spec on `model.Key`. '''
 
 		pass  # @TODO: test __schema__
 
-	def test_setattr(self):
+	def test_key_set_attribute(self):
 
 		''' Try setting an unknown and known attribute. '''
 
 		pass  # @TODO: test __setattr__
 
-	def test_adapter(self):
+	def test_key_adapter(self):
 
 		''' Make sure the adapter is attached correctly to `model.Key`. '''
 
 		pass  # @TODO: test __adapter__
 
-	def test_repr(self):
+	def test_key_stringify(self):
 
 		''' Test the string representation of a Key object. '''
 
 		pass  # @TODO: test __repr__()
 
-	def test_autoid(self):
+	def test_key_auto_id(self):
 
 		''' Test an integer-based ID field. '''
 
@@ -116,7 +116,7 @@ class KeyTests(AppToolsTest):
 
 		pass  # @TODO: test namespacing
 
-	def test_abstract(self):
+	def test_abstract_key(self):
 
 		''' Make sure `model.AbstractKey` works abstractly. '''
 
@@ -126,7 +126,7 @@ class KeyTests(AppToolsTest):
 
 		self.assertIsInstance(Key(), AbstractKey)
 
-	def test_concrete(self):
+	def test_concrete_key(self):
 
 		''' Make sure `model.Key` works concretely. '''
 
@@ -141,7 +141,7 @@ class KeyTests(AppToolsTest):
 		self.assertTrue(hasattr(SampleKey, '__schema__'))
 		self.assertEqual(len(SampleKey.__schema__), 2)
 
-	def test_raw(self):
+	def test_raw_key_format(self):
 
 		''' Try constructing a key from a raw iterable. '''
 
@@ -156,13 +156,13 @@ class KeyTests(AppToolsTest):
 		self.assertEqual(Key(raw=k.flatten(True)), k)
 		self.assertEqual(Key.from_raw(k.flatten(True)), k)
 
-	def test_json(self):
+	def test_json_key_format(self):
 
 		''' Try constructing a key from JSON. '''
 
 		pass  # @TODO: JSON functionality
 
-	def test_urlsafe(self):
+	def test_urlsafe_key_format(self):
 
 		''' Try constructing a key from its URL-encoded form. '''
 
@@ -173,7 +173,7 @@ class KeyTests(AppToolsTest):
 		self.assertEqual(Key(urlsafe=k.urlsafe()), k)
 		self.assertEqual(Key.from_urlsafe(k.urlsafe()), k)
 
-	def test_flatten(self):
+	def test_key_flatten(self):
 
 		''' Try flattening a Key into a raw iterable. '''
 
@@ -184,7 +184,7 @@ class KeyTests(AppToolsTest):
 		self.assertEqual(Key(raw=k.flatten()), k)
 		self.assertEqual(Key.from_raw(k.flatten()), k)
 
-	def test_nonzero(self):
+	def test_key_nonzero(self):
 
 		''' Test nonzero functionality in a key. '''
 
