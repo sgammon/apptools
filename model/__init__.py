@@ -30,7 +30,7 @@ import collections
 # app config
 try:
 	import config
-except ImportError as e:
+except ImportError as e:  # pragma: no cover
 	_APPCONFIG = False
 else:
 	_APPCONFIG = True
@@ -53,7 +53,7 @@ try:
 	from protorpc import messages as pmessages
 	from protorpc import message_types as pmessage_types
 
-except ImportError as e:
+except ImportError as e:  # pragma: no cover
 	# flag as unavailable
 	_PROTORPC, _root_message_class = False, object
 
@@ -65,7 +65,7 @@ else:
 ## == appengine support == ##
 
 # try to find appengine pipelines
-try:
+try:  # pragma: no cover
 	import pipeline
 	from pipeline import common as _pcommon
 	from pipeline import pipeline as _pipeline
@@ -74,7 +74,7 @@ except ImportError as e:
 	# flag as unavailable
 	_PIPELINE, _pipeline_root_class = False, object
 
-else:
+else:  # pragma: no cover
 	# flag as available
 	_PIPELINE, _pipeline_root_class = True, _pipeline.Pipeline
 
@@ -83,11 +83,11 @@ try:
 	from google.appengine.ext import ndb as nndb
 
 # if it's not available, redirect key/model parents to native <object>
-except ImportError as e:
+except ImportError as e:  # pragma: no cover
 	_NDB, _key_parent, _model_parent = False, lambda: object, lambda: object
 
 # if it *is* available, we need to inherit from NDB's key and model classes
-else:
+else:  # pragma: no cover
 	_NDB, _key_parent, _model_parent = True, lambda: nndb.Key, lambda: nndb.MetaModel
 
 
@@ -215,12 +215,13 @@ class AbstractKey(_key_parent()):
 
 	def __new__(cls, *args, **kwargs):
 
-		''' Intercepts construction requests for directly Abstract model classes. '''
+		''' Intercepts construction requests for directly Abstract Key classes. '''
 
 		if cls.__name__ == 'AbstractKey':
 			raise TypeError('Cannot directly instantiate abstract class `AbstractKey`.')
 		else:
 			super(_key_parent(), cls).__new__(*args, **kwargs)
+
 
 ## AbstractModel
 # Metaclass for a datamodel class.
