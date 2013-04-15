@@ -4,16 +4,16 @@
 
     apptools2: model adapter for protorpc
     -------------------------------------------------
-    |                                               |   
+    |                                               |
     |   `apptools.model.adapter.protorpc`           |
     |                                               |
     |   allows apptools models to be inflated       |
     |   from and expressed as protorpc messages.    |
-    |                                               |   
+    |                                               |
     -------------------------------------------------
     |   authors:                                    |
     |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------   
+    -------------------------------------------------
     |   changelog:                                  |
     |       -- apr 1, 2013: initial draft           |
     -------------------------------------------------

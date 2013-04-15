@@ -4,16 +4,16 @@
 
     apptools2: model adapter for redis
     -------------------------------------------------
-    |                                               |   
+    |                                               |
     |   `apptools.model.adapter.redis`              |
     |                                               |
     |   allows apptools models to be efficiently    |
     |   stored in and retrieved from redis.         |
-    |                                               |   
+    |                                               |
     -------------------------------------------------
     |   authors:                                    |
     |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------   
+    -------------------------------------------------
     |   changelog:                                  |
     |       -- apr 1, 2013: initial draft           |
     -------------------------------------------------
@@ -81,7 +81,7 @@ class RedisAdapter(ModelAdapter):
         return True
 
     @classmethod
-    def allocate_ids(cls, count=1):
+    def allocate_ids(cls, kind, count=1):
 
         ''' Allocate new Key IDs up to `count`. '''
 

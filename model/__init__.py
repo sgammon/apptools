@@ -4,16 +4,16 @@
 
     apptools2: model API
     -------------------------------------------------
-    |                                               |   
+    |                                               |
     |   `apptools.model`                            |
     |                                               |
     |   a general-purpose, minimalist toolkit for   |
     |   extensible pythonic data modelling.         |
-    |                                               |   
+    |                                               |
     -------------------------------------------------
     |   authors:                                    |
     |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------   
+    -------------------------------------------------
     |   changelog:                                  |
     |       -- apr 1, 2013: initial draft           |
     -------------------------------------------------
@@ -305,16 +305,6 @@ class AbstractModel(_model_parent()):
             # pass up-the-chain to `tuple`
             return tuple.__new__(_cls, (data, dirty))
 
-        @classmethod
-        def _from_iterable(cls, iterable, new=tuple.__new__, len=len):
-
-            ''' Make a new `PropertyValue` object from a sequence or iterable. '''
-
-            result = new(cls, iterable)
-            if len(result) != 2:
-                raise TypeError('`PropertyValue` expected 2 arguments, got %s.' % len(result))
-            return result
-
         def __repr__(self):
 
             ''' Return a nicely-formatted representation string. '''
@@ -328,15 +318,6 @@ class AbstractModel(_model_parent()):
             return collections.OrderedDict(zip(self.__fields__, self))
 
         __dict__ = property(_as_dict)
-
-        def _replace(self, **kwargs):
-
-            ''' Re-create this `PropertyValue` with a new value and dirty flag. '''
-
-            result = self._from_iterable(map(kwargs.pop, self.__fields__), self)
-            if kwargs:
-                raise ValueError("`PropertyValue` got unexpected field names \"%r\"." % kwargs.keys())
-            return result
 
         def __getnewargs__(self):  # pragma: no cover
 
@@ -361,6 +342,9 @@ class AbstractModel(_model_parent()):
 
         ''' Generate a string representation of this Entity. '''
 
+        if self.__data__:
+            properties = ", ".join([("%s=%s" % (k, v)) for k, v in self.__data__.items()])
+            return "<%s {%s} at ID %s>" % (self.__kind__, properties, self.key.id if self.key else id(self))
         return "<%s at ID %s>" % (self.__kind__, self.key.id if self.key else id(self))
 
     __str__ = __unicode__ = __repr__
@@ -801,7 +785,7 @@ class Model(AbstractModel):
         ''' Initialize core properties. '''
 
         # initialize core properties
-        self.__data__, self.__dirty__, self.__explicit__, self.__initialized__ = {}, (not _persisted), False, True
+        self.__data__, self.__explicit__, self.__initialized__ = {}, False, True
         return self
 
     def _get_key(self):
@@ -838,11 +822,30 @@ class Model(AbstractModel):
     key = property(_get_key, _set_key)
 
     @property
+    def __dirty__(self):
+
+        ''' Indicate whether this model has been modified outside of persistence mechanisms. '''
+
+        for prop_value in self.__data__.itervalues():
+            if prop_value[1]: return True
+        return False
+
+    @property
     def __persisted__(self):
 
         ''' Indicate whether this model is consistently persisted. '''
 
-        return (not self.__dirty__) and (self.key.__persisted__)
+        return self.key.__persisted__
+
+    def _set_persisted(self, flag=False):
+
+        ''' Notify this entity that it has been persisted to storage. '''
+
+        self.key.__persisted__ = True
+        for name in self.__data__:  # iterate over set properties
+            # set value to previous, with `False` dirty flag
+            self._set_value(name, self._get_value(name, default=Property._sentinel), False)
+        return self
 
     def _get_value(self, name, default=None):
 
@@ -896,10 +899,6 @@ class Model(AbstractModel):
         if name in self.__lookup__:
             # if it's a valid property, create a namedtuple value placeholder
             self.__data__[name] = self.__class__._PropertyValue(value, _dirty)
-
-            # set as dirty if this is after first construction
-            if not (value == _EMPTY) and not self.__dirty__ and _dirty:
-                self.__dirty__ = True
             return self
         raise AttributeError("Model \"%s\" has no property \"%s\"." % (self.kind, name))
 

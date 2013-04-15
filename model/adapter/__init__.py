@@ -2,21 +2,21 @@
 
 '''
 
-	apptools2: model adapters
-	-------------------------------------------------
-	|												|	
-	|	`apptools.model.adapter`					|
-	|												|
-	|	allows apptools models to be adapted to 	|
-	|	just about any backend storage engine!		|
-	|												|	
-	-------------------------------------------------
-	|	authors:									|
-	|		-- sam gammon (sam@momentum.io)			|
-	-------------------------------------------------	
-	|	changelog:									|
-	|		-- apr 1, 2013: initial draft			|
-	-------------------------------------------------
+    apptools2: model adapters
+    -------------------------------------------------
+    |                                               |
+    |   `apptools.model.adapter`                    |
+    |                                               |
+    |   allows apptools models to be adapted to     |
+    |   just about any backend storage engine!      |
+    |                                               |
+    -------------------------------------------------
+    |   authors:                                    |
+    |       -- sam gammon (sam@momentum.io)         |
+    -------------------------------------------------
+    |   changelog:                                  |
+    |       -- apr 1, 2013: initial draft           |
+    -------------------------------------------------
 
 '''
 

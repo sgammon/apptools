@@ -4,16 +4,16 @@
 
     apptools2: model adapter for SQL
     -------------------------------------------------
-    |                                               |   
+    |                                               |
     |   `apptools.model.adapter.sql`                |
     |                                               |
     |   allows apptools models to be used across    |
     |   SQL tables, with enhanced mySQL support.    |
-    |                                               |   
+    |                                               |
     -------------------------------------------------
     |   authors:                                    |
     |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------   
+    -------------------------------------------------
     |   changelog:                                  |
     |       -- apr 1, 2013: initial draft           |
     -------------------------------------------------

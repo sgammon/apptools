@@ -120,7 +120,7 @@ class InMemoryAdapter(ModelAdapter):
                 
                 _metadata['lookup'].add(encoded)  # add to lookup
 
-                if entity.key.kind not in _metadata['kinds']:
+                if entity.key.kind not in _metadata['kinds']:  # pragma: no cover
                     _metadata['kinds'][entity.key.kind] = {
                         'id_pointer': 0,  # keep current key ID pointer
                         'entity_count': 0  # keep count of seen entities for each kind
@@ -151,7 +151,7 @@ class InMemoryAdapter(ModelAdapter):
 
         if encoded in _metadata['lookup']:
             try:
-                del _datastore[flattened]  # delete from datastore
+                del _datastore[encoded]  # delete from datastore
 
             except KeyError, e:  # pragma: no cover
                 _metadata['lookup'].remove(encoded)
@@ -162,9 +162,10 @@ class InMemoryAdapter(ModelAdapter):
                 _metadata['lookup'].remove(encoded)
                 _metadata['ops']['delete'] = _metadata['ops'].get('delete', 0) + 1
                 _metadata['global']['entity_count'] = _metadata['global'].get('entity_count', 1) - 1
-                _metadata['kinds'][key.kind]['entity_count'] = _metadata['kinds'][kind].get('entity_count', 1) - 1
+                _metadata['kinds'][kind]['entity_count'] = _metadata['kinds'][kind].get('entity_count', 1) - 1
 
-        return True
+            return True
+        return False
 
     @classmethod
     def allocate_ids(cls, kind, count=1):
@@ -175,12 +176,17 @@ class InMemoryAdapter(ModelAdapter):
 
         # resolve kind meta and increment pointer
         kind_blob = _metadata['kinds'].get(kind, {})
-        pointer = kind_blob['id_pointer'] = (kind_blob.get('id_pointer', 0) + count)
+        current = kind_blob.get('id_pointer', 0)
+        pointer = kind_blob['id_pointer'] = (current + count)
 
         # update kind blob
         _metadata['kinds'][kind] = kind_blob
 
         # return IDs
         if count > 1:
-            return [x for x in xrange(current, pointer)]
+            def _generate_id_range():
+                for x in xrange(current, pointer):
+                    yield x
+                raise StopIteration()
+            return _generate_id_range
         return pointer

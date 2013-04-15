@@ -4,16 +4,16 @@
 
     apptools2: abstract model adapters
     -------------------------------------------------
-    |                                               |   
+    |                                               |
     |   `apptools.model.adapter.abstract`           |
     |                                               |
     |   specifies interface classes that plug-in    |
     |   to models to allow agnostic storage.        |
-    |                                               |   
+    |                                               |
     -------------------------------------------------
     |   authors:                                    |
     |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------   
+    -------------------------------------------------
     |   changelog:                                  |
     |       -- apr 1, 2013: initial draft           |
     -------------------------------------------------
@@ -43,7 +43,7 @@ class ModelAdapter(object):
         ''' Internal method for retrieving an entity by Key. '''
 
         # immediately fail with no overriden `get`
-        if not hasattr(self.__class__, 'get') and self.__class__ != ModelAdapter:
+        if not hasattr(self.__class__, 'get') and self.__class__ != ModelAdapter:  # pragma: no cover
             raise RuntimeError("ModelAdapter `%s` does not implement `get`, and thus cannot be used for reads." % self.__class__.__name__)
         else:
             # grab getter method
@@ -63,9 +63,12 @@ class ModelAdapter(object):
         # pass off to delegated `get`
         try:
             entity = getter((encoded, flattened))
-        except RuntimeError as e:
+        except RuntimeError as e:  # pragma: no cover
             raise
         else:
+            if entity is None:
+                return  # not found
+
             # inflate key + model and return
             return self.registry[kind](key=self.registry[kind].__keyclass__(*(x for x in flattened if x is not None), _persisted=True), **entity)
 
@@ -74,12 +77,12 @@ class ModelAdapter(object):
         ''' Internal method for persisting an Entity. '''
 
         # immediately fail with no overridden `put`
-        if not hasattr(self.__class__, 'put') and self.__class__ != ModelAdapter:
+        if not hasattr(self.__class__, 'put') and self.__class__ != ModelAdapter:  # pragma: no cover
             raise RuntimeError("ModelAdapter `%s` does not implement `put`, and thus cannot be used for writes." % self.__class__.__name__)
 
         # resolve model class
         _model = self.registry.get(entity.kind())
-        if not _model:
+        if not _model:  # pragma: no cover
             raise ValueError('Could not resolve model class "%s".' % model.kind())
 
         # validate entity
@@ -104,14 +107,22 @@ class ModelAdapter(object):
         saved_key = self.put((encoded, flattened), entity, _model)
 
         # set key as persisted
-        entity.key.__persisted__ = True
-        return entity.key
+        return entity._set_persisted(True).key
 
     def _delete(self, key):
 
         ''' Internal method for deleting an entity by Key. '''
 
-        pass
+        joined, flattened = key.flatten(True)
+
+        # optionally allow adapter to encode key
+        encoded = self.encode_key(joined, flattened)
+
+        if not encoded:
+            # otherwise, use regular base64 via `AbstractKey`
+            encoded = key.urlsafe(joined)
+
+        return self.delete((encoded, flattened))
 
     @classmethod
     def _register(cls, model):

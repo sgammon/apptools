@@ -4,16 +4,16 @@
 
     apptools2: model adapter for memcache
     -------------------------------------------------
-    |                                               |   
+    |                                               |
     |   `apptools.model.adapter.memcache`           |
     |                                               |
     |   allows apptools models to be stored and     |
     |   retrieved using memcache.                   |
-    |                                               |   
+    |                                               |
     -------------------------------------------------
     |   authors:                                    |
     |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------   
+    -------------------------------------------------
     |   changelog:                                  |
     |       -- apr 1, 2013: initial draft           |
     -------------------------------------------------

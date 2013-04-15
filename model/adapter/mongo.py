@@ -4,16 +4,16 @@
 
     apptools2: model adapter for mongo
     -------------------------------------------------
-    |                                               |   
+    |                                               |
     |   `apptools.model.adapter.mongo`              |
     |                                               |
     |   allows apptools models to be stored and     |
     |   retrieved using mongoDB.                    |
-    |                                               |   
+    |                                               |
     -------------------------------------------------
     |   authors:                                    |
     |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------   
+    -------------------------------------------------
     |   changelog:                                  |
     |       -- apr 1, 2013: initial draft           |
     -------------------------------------------------
