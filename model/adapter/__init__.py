@@ -21,7 +21,7 @@
 '''
 
 # module constants
-__version__ = (0, 1)  # module version-string
+__version__ = (0, 2)  # module version-string
 __doc__ = "Contains modules that adapt apptools models to various storage backends."
 
 
@@ -30,7 +30,7 @@ from . import abstract
 from .abstract import ModelAdapter
 from .abstract import IndexedModelAdapter
 
-abstract_adapters = [abstract, ModelAdapter, IndexedModelAdapter]
+abstract_adapters = (abstract, ModelAdapter, IndexedModelAdapter)
 
 
 # adapter modules
@@ -42,7 +42,7 @@ from . import pipeline
 from . import memcache
 from . import inmemory
 
-modules = [sql, redis, mongo, protorpc, pipeline, memcache, inmemory]
+modules = (sql, redis, mongo, protorpc, pipeline, memcache, inmemory)
 
 
 # concrete adapters
@@ -54,6 +54,6 @@ from .pipeline import PipelineAdapter
 from .memcache import MemcacheAdapter
 from .inmemory import InMemoryAdapter
 
-concrete = [InMemoryAdapter, RedisAdapter, SQLAdapter, MongoAdapter, ProtoRPCAdapter, PipelineAdapter, MemcacheAdapter]
+concrete = (InMemoryAdapter, RedisAdapter, SQLAdapter, MongoAdapter, ProtoRPCAdapter, PipelineAdapter, MemcacheAdapter)
 
 __all__ = abstract_adapters + modules + concrete

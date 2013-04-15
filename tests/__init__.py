@@ -28,14 +28,14 @@ import unittest
 # App Engine API Imports
 try:
 	from google.appengine.ext import db
-	from google.appengine.ext import testbed
-	from google.appengine.api import memcache
 
 except ImportError as e:
 	_APPENGINE = False
 
-else:
+else:  # pragma: no cover
 	_APPENGINE = True
+	from google.appengine.ext import testbed
+	from google.appengine.api import memcache
 
 	## Constants
 	_APPENGINE_SERVICE_BINDINGS = {
@@ -77,7 +77,7 @@ class AppToolsTestCase(unittest.TestCase):
 		''' Set up an App Engine testbed, with related tools. '''
 
 		## Construct + activate testbed
-		if _APPENGINE:
+		if _APPENGINE:  # pragma: no cover
 			if hasattr(self, 'services') and len(self.services) > 0:
 				self.testbed = testbed.Testbed()
 				self.testbed.activate()
@@ -99,7 +99,7 @@ class AppToolsTestCase(unittest.TestCase):
 
 		''' Tear down App Engine testbed stuff. '''
 
-		if _APPENGINE and self.testbed:
+		if _APPENGINE and self.testbed:  # pragma: no cover
 			self.testbed.deactivate()
 
 

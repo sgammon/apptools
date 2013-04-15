@@ -127,7 +127,8 @@ class ModelTests(AppToolsTest):
 
 		# check key
 		self.assertTrue(hasattr(Person, 'key'))
-		self.assertTrue(hasattr(Person, '__key__'))
+		self.assertTrue((not hasattr(Person, '__key__')))  # should not have key until instantiation
+		self.assertTrue(hasattr(Person(), '__key__'))
 
 	def test_model_set_attribute(self):
 

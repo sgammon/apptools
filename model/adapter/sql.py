@@ -2,21 +2,21 @@
 
 '''
 
-	apptools2: model adapter for SQL
-	-------------------------------------------------
-	|												|	
-	|	`apptools.model.adapter.sql`				|
-	|												|
-	|	allows apptools models to be used across 	|
-	|	SQL tables, with enhanced mySQL support.	|
-	|												|	
-	-------------------------------------------------
-	|	authors:									|
-	|		-- sam gammon (sam@momentum.io)			|
-	-------------------------------------------------	
-	|	changelog:									|
-	|		-- apr 1, 2013: initial draft			|
-	-------------------------------------------------
+    apptools2: model adapter for SQL
+    -------------------------------------------------
+    |                                               |   
+    |   `apptools.model.adapter.sql`                |
+    |                                               |
+    |   allows apptools models to be used across    |
+    |   SQL tables, with enhanced mySQL support.    |
+    |                                               |   
+    -------------------------------------------------
+    |   authors:                                    |
+    |       -- sam gammon (sam@momentum.io)         |
+    -------------------------------------------------   
+    |   changelog:                                  |
+    |       -- apr 1, 2013: initial draft           |
+    -------------------------------------------------
 
 '''
 
@@ -28,11 +28,11 @@ from .abstract import ModelAdapter
 # Adapt apptools models to SQL-like engines.
 class SQLAdapter(ModelAdapter):
 
-	''' Adapt model classes to SQL. '''
+    ''' Adapt model classes to SQL. '''
 
-	@classmethod
-	def is_supported(cls):
+    @classmethod
+    def is_supported(cls):
 
-		''' Check whether this adapter is supported in the current environment. '''
+        ''' Check whether this adapter is supported in the current environment. '''
 
-		return False
+        return False

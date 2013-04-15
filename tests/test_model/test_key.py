@@ -153,8 +153,9 @@ class KeyTests(AppToolsTest):
 		self.assertEqual(Key.from_raw(k.flatten()), k)
 
 		# joined raw
-		self.assertEqual(Key(raw=k.flatten(True)), k)
-		self.assertEqual(Key.from_raw(k.flatten(True)), k)
+		joined, struct = k.flatten(True)
+		self.assertEqual(Key(raw=joined), k)
+		self.assertEqual(Key.from_raw(joined), k)
 
 	def test_json_key_format(self):
 

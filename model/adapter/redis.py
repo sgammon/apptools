@@ -2,21 +2,21 @@
 
 '''
 
-	apptools2: model adapter for redis
-	-------------------------------------------------
-	|												|	
-	|	`apptools.model.adapter.redis`				|
-	|												|
-	|	allows apptools models to be efficiently 	|
-	|	stored in and retrieved from redis.			|
-	|												|	
-	-------------------------------------------------
-	|	authors:									|
-	|		-- sam gammon (sam@momentum.io)			|
-	-------------------------------------------------	
-	|	changelog:									|
-	|		-- apr 1, 2013: initial draft			|
-	-------------------------------------------------
+    apptools2: model adapter for redis
+    -------------------------------------------------
+    |                                               |   
+    |   `apptools.model.adapter.redis`              |
+    |                                               |
+    |   allows apptools models to be efficiently    |
+    |   stored in and retrieved from redis.         |
+    |                                               |   
+    -------------------------------------------------
+    |   authors:                                    |
+    |       -- sam gammon (sam@momentum.io)         |
+    -------------------------------------------------   
+    |   changelog:                                  |
+    |       -- apr 1, 2013: initial draft           |
+    -------------------------------------------------
 
 '''
 
@@ -32,57 +32,57 @@ from .abstract import ModelAdapter
 # Adapt apptools models to Redis.
 class RedisAdapter(ModelAdapter):
 
-	''' Adapt model classes to Redis. '''
+    ''' Adapt model classes to Redis. '''
 
-	# key encoding
-	_key_encoder = base64.b64encode
+    # key encoding
+    _key_encoder = base64.b64encode
 
-	# data compression / encoding
-	_data_encoder = json.dumps
-	_data_compressor = None
+    # data compression / encoding
+    _data_encoder = json.dumps
+    _data_compressor = None
 
-	@classmethod
-	def is_supported(cls):
+    @classmethod
+    def is_supported(cls):
 
-		''' Check whether this adapter is supported in the current environment. '''
+        ''' Check whether this adapter is supported in the current environment. '''
 
-		return True
+        return True
 
-	@classmethod
-	def get_key(cls, key):
+    @classmethod
+    def get(cls, key):
 
-		''' Retrieve an entity by Key from Redis. '''
+        ''' Retrieve an entity by Key from Redis. '''
 
-		import pdb; pdb.set_trace()
-		return True
+        import pdb; pdb.set_trace()
+        return True
 
-	@classmethod
-	def delete_key(cls, key):
+    @classmethod
+    def put(cls, key, entity, model):
 
-		''' Delete an entity by Key from Redis. '''
+        ''' Persist an entity to storage in Redis. '''
+        
+        import pdb; pdb.set_trace()
+        return True
 
-		import pdb; pdb.set_trace()
-		return True
+    @classmethod
+    def delete(cls, key):
 
-	@classmethod
-	def encode_key(cls, key):
+        ''' Delete an entity by Key from Redis. '''
 
-		''' Encode a Key for storage in Redis. '''
+        import pdb; pdb.set_trace()
+        return True
 
-		import pdb; pdb.set_trace()
-		return True
+    @classmethod
+    def encode_key(cls, key):
 
-	@classmethod
-	def put_entity(cls, entity):
+        ''' Encode a Key for storage in Redis. '''
 
-		''' Persist an entity to storage in Redis. '''
-		
-		import pdb; pdb.set_trace()
-		return True
+        import pdb; pdb.set_trace()
+        return True
 
-	@classmethod
-	def allocate_ids(cls, count=1):
+    @classmethod
+    def allocate_ids(cls, count=1):
 
-		''' Allocate new Key IDs up to `count`. '''
+        ''' Allocate new Key IDs up to `count`. '''
 
-		pass
+        pass

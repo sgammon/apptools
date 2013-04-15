@@ -45,7 +45,7 @@ class ModelExportTests(AppToolsTest):
 			from apptools.model import AbstractKey
 			from apptools.model import AbstractModel
 
-		except ImportError as e:
+		except ImportError as e:  # pragma: no cover
 			return self.fail("Failed to import concrete classes exported by Model.")
 
 		else:
