@@ -123,5 +123,24 @@ class SampleTest(AppToolsTest):
 
 
 ## AppToolsTests - Gather AppTools testsuites.
-AppToolsTests = unittest.TestSuite()
-AppToolsTests.addTest(SampleTest('test_multiply'))
+def _load_apptools_testsuite():
+
+    ''' __main__ entrypoint '''
+
+    loader = unittest.TestLoader()
+    AppToolsTests = unittest.TestSuite()
+    AppToolsTests.addTest(SampleTest('test_multiply'))
+    AppToolsTests.addTest(loader.loadTestsFromNames([
+        'apptools.tests.test_model',
+        'apptools.tests.test_model.test_key',
+        'apptools.tests.test_model.test_meta',
+        'apptools.tests.test_model.test_model',
+        'apptools.tests.test_model.test_descriptor',
+        'apptools.tests.test_model.test_adapters',
+        'apptools.tests.test_model.test_adapters.test_inmemory'
+    ]))
+
+    return AppToolsTests
+
+if __name__ == '__main__':
+    _load_apptools_testsuite()

@@ -85,9 +85,6 @@ class ModelAdapterTests(AppToolsTest):
         self.assertTrue(hasattr(abstract.ModelAdapter, 'registry'))
         self.assertIsInstance(abstract.ModelAdapter.registry, dict)
 
-        # grab initial length of model class registry
-        initlength = len(abstract.ModelAdapter.registry)
-
         ## SampleModel
         # Quick sample model to make sure class registration happens properly.
         class Sample(model.Model):
@@ -97,7 +94,6 @@ class ModelAdapterTests(AppToolsTest):
             pass
 
         # test that our class was registered
-        self.assertTrue(len(abstract.ModelAdapter.registry) == (initlength + 1))
         self.assertTrue(('Sample' in abstract.ModelAdapter.registry))
         self.assertTrue(abstract.ModelAdapter.registry.get('Sample') == Sample)
 

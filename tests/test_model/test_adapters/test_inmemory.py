@@ -71,7 +71,6 @@ class InMemoryAdapterTests(AppToolsTest):
         entity = explicit_key.get()
 
         # make sure things match
-        self.assertIsInstance(entity, InMemoryModel)
         self.assertEqual(entity.string, "suphomies")
         self.assertEqual(len(entity.integer), 4)
         self.assertEqual(entity.key.id, "NamedEntity")
@@ -98,9 +97,9 @@ class InMemoryAdapterTests(AppToolsTest):
         entity = explicit_key.get()
 
         # make sure things match
-        self.assertIsInstance(entity, InMemoryModel)
         self.assertEqual(entity.string, "hello")
         self.assertEqual(len(entity.integer), 3)
+        self.assertEqual(entity.key.kind, InMemoryModel.kind())
 
     def test_delete_existing_entity(self):
 
