@@ -2,20 +2,20 @@
 
 '''
 
-	apptools2: model key tests
-	-------------------------------------------------
-	|												|	
-	|	`apptools.tests.model.descriptor`			|
-	|												|
-	|	test cases for the `model.Property` class.	|
-	|												|	
-	-------------------------------------------------
-	|	authors:									|
-	|		-- sam gammon (sam@momentum.io)			|
-	-------------------------------------------------	
-	|	changelog:									|
-	|		-- apr 1, 2013: initial draft			|
-	-------------------------------------------------
+    apptools2: model key tests
+    -------------------------------------------------
+    |                                               |
+    |   `apptools.tests.model.descriptor`           |
+    |                                               |
+    |   test cases for the `model.Property` class.  |
+    |                                               |
+    -------------------------------------------------
+    |   authors:                                    |
+    |       -- sam gammon (sam@momentum.io)         |
+    -------------------------------------------------
+    |   changelog:                                  |
+    |       -- apr 1, 2013: initial draft           |
+    -------------------------------------------------
 
 '''
 
@@ -27,6 +27,6 @@ from apptools.tests import AppToolsTest
 # Tests that the Property class works properly.
 class PropertyTests(AppToolsTest):
 
-	''' Tests `model.Property`. '''
+    ''' Tests `model.Property`. '''
 
-	pass
+    pass

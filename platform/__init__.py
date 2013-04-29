@@ -38,6 +38,7 @@ def _lazyloader(self, module):
 
     return module
 
+
 ## Platform
 # Represents a group of features/hooks/utils that can be used as a platform to run AppTools.
 class Platform(object):

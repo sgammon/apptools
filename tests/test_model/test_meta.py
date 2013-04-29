@@ -2,23 +2,23 @@
 
 '''
 
-	apptools2: meta model tests
-	-------------------------------------------------
-	|												|	
-	|	`apptools.tests.model.meta`					|
-	|												|
-	|	test cases for the `model.MetaFactory`,		|
-	|	which acts as an abstract metaclass that	|
-	| 	provides common methods to other meta 		|
-	| 	actors in the model API. 					|
-	|												|	
-	-------------------------------------------------
-	|	authors:									|
-	|		-- sam gammon (sam@momentum.io)			|
-	-------------------------------------------------	
-	|	changelog:									|
-	|		-- apr 1, 2013: initial draft			|
-	-------------------------------------------------
+    apptools2: meta model tests
+    -------------------------------------------------
+    |                                               |
+    |   `apptools.tests.model.meta`                 |
+    |                                               |
+    |   test cases for the `model.MetaFactory`,     |
+    |   which acts as an abstract metaclass that    |
+    |   provides common methods to other meta       |
+    |   actors in the model API.                    |
+    |                                               |
+    -------------------------------------------------
+    |   authors:                                    |
+    |       -- sam gammon (sam@momentum.io)         |
+    -------------------------------------------------
+    |   changelog:                                  |
+    |       -- apr 1, 2013: initial draft           |
+    -------------------------------------------------
 
 '''
 
@@ -39,36 +39,36 @@ from apptools.tests import AppToolsTest
 # Test the `MetaFactory` class.
 class MetaFactoryTests(AppToolsTest):
 
-	''' Tests `model.MetaFactory`. '''
+    ''' Tests `model.MetaFactory`. '''
 
-	def test_abstract_factory(self):
+    def test_abstract_factory(self):
 
-		''' Make sure `model.MetaFactory` is only usable abstractly. '''
+        ''' Make sure `model.MetaFactory` is only usable abstractly. '''
 
-		# constructing metafactory should raise an ABC exception
-		self.assertTrue(inspect.isabstract(MetaFactory))
-		with self.assertRaises(NotImplementedError):
-			a = MetaFactory()
+        # constructing metafactory should raise an ABC exception
+        self.assertTrue(inspect.isabstract(MetaFactory))
+        with self.assertRaises(NotImplementedError):
+            a = MetaFactory()
 
-	def test_abstract_enforcement(self):
+    def test_abstract_enforcement(self):
 
-		''' Define a class that violates enforced abstraction rules. '''
+        ''' Define a class that violates enforced abstraction rules. '''
 
-		class InsolentClass(MetaFactory):
+        class InsolentClass(MetaFactory):
 
-			''' Look at me! I extend without implementing. The nerve! '''
+            ''' Look at me! I extend without implementing. The nerve! '''
 
-			# intentionally not defined: def classmethod(initialize())
-			pass
+            # intentionally not defined: def classmethod(initialize())
+            pass
 
-		with self.assertRaises(TypeError):
-			c = InsolentClass(InsolentClass.__name__, (MetaFactory, type), dict([(k, v) for k, v in InsolentClass.__dict__.items()]))
+        with self.assertRaises(TypeError):
+            c = InsolentClass(InsolentClass.__name__, (MetaFactory, type), dict([(k, v) for k, v in InsolentClass.__dict__.items()]))
 
-	def test_resolve_adapters(self):
+    def test_resolve_adapters(self):
 
-		''' Make sure `model.MetaFactory` resolves adapters correctly. '''
+        ''' Make sure `model.MetaFactory` resolves adapters correctly. '''
 
-		# test that resolve exists
-		self.assertTrue(inspect.ismethod(MetaFactory.resolve))
-		self.assertIsInstance(MetaFactory.resolve(model.Model.__name__, model.Model.__bases__, model.Model.__dict__, False), tuple)
-		self.assertIsInstance(MetaFactory.resolve(model.Model.__name__, model.Model.__bases__, model.Model.__dict__, True), adapter.ModelAdapter)
+        # test that resolve exists
+        self.assertTrue(inspect.ismethod(MetaFactory.resolve))
+        self.assertIsInstance(MetaFactory.resolve(model.Model.__name__, model.Model.__bases__, model.Model.__dict__, False), tuple)
+        self.assertIsInstance(MetaFactory.resolve(model.Model.__name__, model.Model.__bases__, model.Model.__dict__, True), adapter.ModelAdapter)

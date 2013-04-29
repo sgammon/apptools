@@ -2,21 +2,21 @@
 
 '''
 
-	apptools2: model adapter for mongo
-	-------------------------------------------------
-	|												|	
-	|	`apptools.model.adapter.mongo`				|
-	|												|
-	|	allows apptools models to be stored and 	|
-	|	retrieved using mongoDB.					|
-	|												|	
-	-------------------------------------------------
-	|	authors:									|
-	|		-- sam gammon (sam@momentum.io)			|
-	-------------------------------------------------	
-	|	changelog:									|
-	|		-- apr 1, 2013: initial draft			|
-	-------------------------------------------------
+    apptools2: model adapter for mongo
+    -------------------------------------------------
+    |                                               |
+    |   `apptools.model.adapter.mongo`              |
+    |                                               |
+    |   allows apptools models to be stored and     |
+    |   retrieved using mongoDB.                    |
+    |                                               |
+    -------------------------------------------------
+    |   authors:                                    |
+    |       -- sam gammon (sam@momentum.io)         |
+    -------------------------------------------------
+    |   changelog:                                  |
+    |       -- apr 1, 2013: initial draft           |
+    -------------------------------------------------
 
 '''
 
@@ -28,11 +28,11 @@ from .abstract import ModelAdapter
 # Adapt apptools models to MongoDB.
 class MongoAdapter(ModelAdapter):
 
-	''' Adapt model classes to MongoDB. '''
+    ''' Adapt model classes to MongoDB. '''
 
-	@classmethod
-	def is_supported(cls):
+    @classmethod
+    def is_supported(cls):
 
-		''' Check whether this adapter is supported in the current environment. '''
+        ''' Check whether this adapter is supported in the current environment. '''
 
-		return False
+        return False

@@ -1087,14 +1087,14 @@ def rpcmethod(input, output=None, authenticated=False, audiences=_DEFAULT_OAUTH_
     from apptools import model
 
     # convert models to messages
-    if issubclass(input, model.ThinModel):
+    if issubclass(input, model.Model):
         input = input.to_message_model()
 
     if output is None:
         output = input
 
     if not endpoints:
-        def endpoint_wrap(fn):
+        def endpoint_wrap(fn, *args, **kwargs):
 
             ''' Shim to wrap endpoint methods when the `endpoints` lib is unavailable. '''
 
