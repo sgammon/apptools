@@ -142,7 +142,7 @@ class MetaFactory(type):
         if '__adapter__' in properties:
             for available in adapter.concrete:
                 if available is properties.get('__adapter__') or available.__name__ == properties.get('__adapter__'):
-                    return available.acquire()
+                    return available.acquire(name, bases, properties)
             ## @TODO: except here, explicit adapter unavailable
 
         available_adapters = []
@@ -153,8 +153,8 @@ class MetaFactory(type):
         # we only have one adapter, the choice is easy
         if len(available_adapters) > 0:
             if not default:
-                return available_adapters[0].acquire(), tuple()
-            return available_adapters[0].acquire()
+                return available_adapters[0].acquire(name, bases, properties), tuple()
+            return available_adapters[0].acquire(name, bases, properties)
         else:  # pragma: no cover
             raise RuntimeError('No valid model adapters found.')
 
@@ -174,7 +174,6 @@ class MetaFactory(type):
 class AbstractKey(_key_parent()):
 
     ''' Abstract Key class. '''
-
 
     ## = Encapsulated Classes = ##
 
@@ -217,6 +216,21 @@ class AbstractKey(_key_parent()):
 
             return name, bases, properties
 
+        def mro(cls):
+        
+            ''' Generate a fully-mixed method resolution order for `AbstractModel` subclasses. '''
+        
+            chain = [object, adapter.KeyMixin.compound]
+            if cls.__name__ != 'AbstractKey':
+                chain.append(AbstractKey)
+                if cls.__name__ != 'Key':
+                    chain.append(Key)
+                    if len(cls.__bases__) > 1:
+                        for base in [i for i in cls.__bases__ if i not in chain]:
+                            chain.append(base)
+            chain = tuple([cls] + [i for i in reversed(chain)])
+            return chain
+
     def __new__(cls, *args, **kwargs):
 
         ''' Intercepts construction requests for directly Abstract model classes. '''
@@ -225,6 +239,7 @@ class AbstractKey(_key_parent()):
             raise TypeError('Cannot directly instantiate abstract class `AbstractKey`.')
         else:  # pragma: no cover
             return super(_key_parent(), cls).__new__(*args, **kwargs)
+
 
 ## AbstractModel
 # Metaclass for a datamodel class.
@@ -264,6 +279,23 @@ class AbstractModel(_model_parent()):
                     # build a descriptor object and data slot
                     property_map[prop] = Property(prop, basetype, **options)
 
+                if len(bases) > 1 or bases[0] != Model:
+
+                    # clone-in parent properties
+                    base_props = {}
+                    for base in bases:
+                        base_props.update(dict([(i, base.__dict__[i].clone()) for i in base.__lookup__]))
+
+                    # update property map with inherited with base props
+                    base_props.update(property_map)
+                    property_map = base_props  # make sure concrete properties override base properties
+
+                # freeze property lookup
+                prop_lookup = frozenset(property_map.keys())
+
+                # resolve default adapter for model
+                model_adapter = cls.resolve(name, bases, properties)
+
                 # build class layout
                 modelclass = {
 
@@ -272,8 +304,8 @@ class AbstractModel(_model_parent()):
                     '__name__': name,  # map-in internal class name (should be == to Model kind)
                     '__kind__': name,  # kindname defaults to model class name (keep track of it here so we have it if __name__ changes)
                     '__bases__': bases,  # stores a model class's bases, so proper MRO can work
-                    '__lookup__': frozenset(property_map.keys()),  # frozenset of allocated attributes, for quick lookup
-                    '__adapter__': cls.resolve(name, bases, properties),  # resolves default adapter class for this key/model
+                    '__lookup__': prop_lookup,  # frozenset of allocated attributes, for quick lookup
+                    '__adapter__': model_adapter,  # resolves default adapter class for this key/model
                     '__slots__': tuple()  # seal-off object attributes (but allow weakrefs and explicit flag)
 
                 }
@@ -287,6 +319,21 @@ class AbstractModel(_model_parent()):
 
             # pass-through to `type`
             return name, bases, properties
+
+        def mro(cls):
+        
+            ''' Generate a fully-mixed method resolution order for `AbstractModel` subclasses. '''
+        
+            chain = [object, adapter.ModelMixin.compound]
+            if cls.__name__ != 'AbstractModel':
+                chain.append(AbstractModel)
+                if cls.__name__ != 'Model':
+                    chain.append(Model)
+                    if len(cls.__bases__) == 1 and cls.__bases__[0] is not Model:
+                        for base in [i for i in cls.__bases__ if i not in chain]:
+                            chain.append(base)
+            chain = tuple([cls] + [i for i in reversed(chain)])
+            return chain
 
 
     ## AbstractModel.PropertyValue
@@ -342,10 +389,7 @@ class AbstractModel(_model_parent()):
 
         ''' Generate a string representation of this Entity. '''
 
-        if self.__data__:
-            properties = ", ".join([("%s=%s" % (k, v)) for k, v in self.__data__.items()])
-            return "<%s {%s} at ID %s>" % (self.__kind__, properties, self.key.id if self.key else id(self))
-        return "<%s at ID %s>" % (self.__kind__, self.key.id if self.key else id(self))
+        return "<%s %s with key \"%s\">" % (self.__kind__, str(self.__data__), str(self.key))
 
     __str__ = __unicode__ = __repr__
 
@@ -590,39 +634,29 @@ class Property(object):
 
     ''' Concrete Property class. '''
 
-    ## = Internals = ##
-    _name = None  # owner property name
-    _options = None  # extra, implementation-specific options
-    _indexed = False  # index this property, to make it queryable?
-    _required = False  # except if this property is unset on put
-    _repeated = False  # signifies an array of self._basetype(s)
-    _sentinel = _EMPTY  # default sentinel for basetypes/values
-    _basetype = _sentinel  # base datatype for the current property
+    __slots__ = ('name', '_options', '_indexed', '_required', '_repeated', '_basetype', '_default')
 
-    ## Default property value
-    _default = _sentinel  # default property value (if any)
+    # Read-only values
+    _sentinel = _EMPTY  # default sentinel for basetypes/values
 
     ## = Internal Methods = ##
     def __init__(self, name, basetype,
-                                default=None,
+                                default=_sentinel,
                                 required=False,
                                 repeated=False,
-                                indexed=None,
+                                indexed=True,
                                 **options):
 
         ''' Initialize this Property. '''
 
         # copy in property name + basetype
-        self.name, self._basetype = name, basetype
-
-        # if we're passed any locally-supported options
-        if default is not None: self._default = default
-        if indexed is not None: self._indexed = indexed
-        if required is not False: self._required = required
-        if repeated is not False: self._repeated = repeated
-
-        # extra options
-        if options: self._options = options
+        self.name = name  # owner property name
+        self._default = default  # base datatype for the current property
+        self._indexed = indexed  # index this property, to make it queryable?
+        self._options = options  # extra, implementation-specific options
+        self._basetype = basetype  # base type for encapsulated property value
+        self._required = required  # except if this property is unset on put
+        self._repeated = repeated  # signifies an array of self._basetype(s)
 
     ## = Descriptor Methods = ##
     def __get__(self, instance, owner):
@@ -704,6 +738,12 @@ class Property(object):
 
             # validation passed! :)
             return True
+
+    def clone(self):
+
+        ''' Clone this `Property` object. '''
+
+        return self.__class__(self.name, self._basetype, self._default, self._required, self._repeated, self._indexed, **self._options)
 
     def validate(self, instance):
 

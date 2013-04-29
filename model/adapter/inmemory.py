@@ -48,7 +48,7 @@ class InMemoryAdapter(ModelAdapter):
     _data_compressor = None
 
     @classmethod
-    def acquire(cls):
+    def acquire(cls, name, bases, properties):
 
         ''' Perform first initialization. '''
 
@@ -71,7 +71,7 @@ class InMemoryAdapter(ModelAdapter):
             }
 
         # pass up the chain to create a singleton
-        return super(InMemoryAdapter, cls).acquire()
+        return super(InMemoryAdapter, cls).acquire(name, bases, properties)
 
     @classmethod
     def is_supported(cls):
@@ -168,7 +168,7 @@ class InMemoryAdapter(ModelAdapter):
         return False
 
     @classmethod
-    def allocate_ids(cls, kind, count=1):
+    def allocate_ids(cls, key_class, kind, count=1):
 
         ''' Allocate new Key IDs up to `count`. '''
 

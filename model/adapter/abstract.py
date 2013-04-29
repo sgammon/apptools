@@ -23,9 +23,18 @@
 # stdlib
 import abc
 
+# apptools utils
+from apptools.util import debug
+from apptools.util import decorators
+from apptools.util import datastructures
 
 # Globals
 _adapters = {}
+_adapters_by_model = {}
+
+# Computed Classes
+CompoundKey = None
+CompoundModel = None
 
 
 ## ModelAdapter
@@ -76,53 +85,28 @@ class ModelAdapter(object):
 
         ''' Internal method for persisting an Entity. '''
 
-        # immediately fail with no overridden `put`
-        if not hasattr(self.__class__, 'put') and self.__class__ != ModelAdapter:  # pragma: no cover
-            raise RuntimeError("ModelAdapter `%s` does not implement `put`, and thus cannot be used for writes." % self.__class__.__name__)
-
         # resolve model class
         _model = self.registry.get(entity.kind())
-        if not _model:  # pragma: no cover
-            raise ValueError('Could not resolve model class "%s".' % model.kind())
+        if not _model: raise ValueError('Could not resolve model class "%s".' % model.kind())
 
-        # validate entity
-        for name, value in entity.to_dict(_all=True).items():
-            _model.__dict__[name].valid(entity)  # will raise validation exceptions
+        # validate entity, will raise validation exceptions
+        for name, value in entity.to_dict(_all=True).items(): _model.__dict__[name].valid(entity)
 
-        # resolve key
-        if not entity.key:  # we have a zero-y key or a key class
-            entity.key = _model.__keyclass__(entity.kind(), self.allocate_ids(entity.kind()))  # build an ID-based key
+        # resolve key if we have a zero-y key or key class
+        if not entity.key: entity.key = _model.__keyclass__(entity.kind(), self.allocate_ids(_model.__keyclass__, entity.kind()))  # build an ID-based key
 
         # flatten key/entity
         joined, flattened = entity.key.flatten(True)
 
-        # optionally allow adapter to encode key
-        encoded = self.encode_key(joined, flattened)
-
-        if not encoded:
-            # otherwise, use regular base64 via `AbstractKey`
-            encoded = entity.key.urlsafe(joined)
-
         # delegate
-        saved_key = self.put((encoded, flattened), entity, _model)
-
-        # set key as persisted
-        return entity._set_persisted(True).key
+        return self.put((self.encode_key(joined, flattened) or entity.key.urlsafe(joined), flattened), entity._set_persisted(True), _model)
 
     def _delete(self, key):
 
         ''' Internal method for deleting an entity by Key. '''
 
         joined, flattened = key.flatten(True)
-
-        # optionally allow adapter to encode key
-        encoded = self.encode_key(joined, flattened)
-
-        if not encoded:
-            # otherwise, use regular base64 via `AbstractKey`
-            encoded = key.urlsafe(joined)
-
-        return self.delete((encoded, flattened))
+        return self.delete((self.encode_key(joined, flattened) or key.urlsafe(joined), flattened))
 
     @classmethod
     def _register(cls, model):
@@ -134,15 +118,17 @@ class ModelAdapter(object):
 
     ## == Class Methods == ##
     @classmethod
-    def acquire(cls):
+    def acquire(cls, name, bases, properties):
 
         ''' Acquire a new/existing copy of this adapter. '''
 
         global _adapters
+        global _adapters_by_model
 
         # if we don't have one yet, spawn a singleton
         if cls.__name__ not in _adapters:
             _adapters[cls.__name__] = cls()
+        _adapters_by_model[name] = _adapters[cls.__name__]
         return _adapters[cls.__name__]
 
     ## == Abstract Methods == ##
@@ -168,7 +154,7 @@ class ModelAdapter(object):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def allocate_ids(cls, kind, count=0):  # pragma: no cover
+    def allocate_ids(cls, key_class, kind, count=0):  # pragma: no cover
 
         ''' Allocate new Key IDs for `kind` up to `count`. '''
 
@@ -178,7 +164,7 @@ class ModelAdapter(object):
 
         ''' Encode a Key for storage. '''
 
-        return None  # by default, yield to key b64 builtin encoding
+        return False  # by default, yield to key b64 builtin encoding
 
 
 ## IndexedModelAdapter
@@ -207,3 +193,113 @@ class IndexedModelAdapter(ModelAdapter):
         ''' Execute a query across one (or multiple) indexed properties. '''
 
         raise NotImplemented()
+
+
+## Mixin
+# Metaclass for registering mixins and applying them later.
+class Mixin(object):
+
+    ''' Abstract parent for detecting and registering `Mixin` classes. '''
+
+    __slots__ = tuple()
+
+    class __metaclass__(type):
+
+        ''' Local `Mixin` metaclass for registering encountered `Mixin`(s). '''
+
+        ## == Mixin Registry == ##
+        _compound = {}
+        _mixin_lookup = set()
+        _key_mixin_registry = {}
+        _model_mixin_registry = {}
+
+        def __new__(cls, name, bases, properties):
+
+            ''' Factory a new registered `Mixin`. '''
+
+            # apply local metaclass to factoried concrete children
+            klass = super(cls, cls).__new__(cls, name, bases, properties)
+
+            # register mixin if it's not a concrete parent and is unregistered
+            if name not in frozenset(('Mixin', 'KeyMixin', 'ModelMixin', 'CompoundKey', 'CompoundModel')) and name not in cls._mixin_lookup:
+                if KeyMixin not in bases and ModelMixin not in bases:
+                    ## we can only directly extend `Mixin` from `KeyMixin` and `ModelMixin`
+                    raise RuntimeError("Cannot directly extend `Mixin` - you must extend `KeyMixin` or `ModelMixin`.")
+                elif len(bases) > 1:
+                    ## mixins are only allowed to _directly_ extend `KeyMixin` or `ModelMixin` - no midway classes.
+                    raise RuntimeError("Cannot inject classes for inheritance in between `KeyMixin` or `ModelMixin` and a concrete mixin class.")
+                else:
+                    ## add mixin to parent registry
+                    bases[0].__registry__[name] = klass
+                    cls._mixin_lookup.add(name)
+
+                if Mixin._compound.get(cls):
+                    # extend class dict if we already have one
+                    Mixin._compound.__dict__.update(dict(cls.__dict__.items()))
+
+            return klass
+
+        def __repr__(cls):
+
+            ''' Generate a string representation of a `Mixin` subclass. '''
+
+            return "<Mixin '%s.%s'>" % (cls.__module__, cls.__name__)
+
+    internals = __metaclass__
+
+    @decorators.classproperty
+    def methods(cls):
+
+        ''' Recursively return all available `Mixin` methods. '''
+
+        for component in cls.components:
+            for method, func in component.__dict__.items():
+                yield method, func
+
+    @decorators.classproperty
+    def compound(cls):
+
+        ''' Generate a compound mixin class. '''
+
+        if isinstance(cls.__compound__, basestring):
+
+            # if we've never generated a `CompoundModel` or if it's been changed, regenerate...
+            cls.__compound__ = globals()[cls.__compound__] = cls.internals._compound[cls] = type(*(
+                cls.__compound__,
+                (cls, object),
+                dict([
+                    ('__origin__', cls),
+                    ('__slots__', tuple()),
+                ] + [(k, v) for k, v in cls.methods])
+            ))
+
+        return cls.__compound__
+
+    @decorators.classproperty
+    def components(cls):
+
+        ''' Return the individual components of a composed `KeyMixin`. '''
+
+        for mixin in cls.__registry__.itervalues(): yield mixin
+
+
+## KeyMixin
+# Extendable, registered class that mixes in attributes to `Key`.
+class KeyMixin(Mixin):
+
+    ''' Allows injection of attributes into `Key`. '''
+
+    __slots__ = tuple()
+    __compound__ = 'CompoundKey'
+    __registry__ = Mixin._key_mixin_registry
+
+
+## ModelMixin
+# Extendable, registered class that mixes in attributes to `Model`.
+class ModelMixin(Mixin):
+
+    ''' Allows injection of attributes into `Model`. '''
+
+    __slots__ = tuple()
+    __compound__ = 'CompoundModel'
+    __registry__ = Mixin._model_mixin_registry

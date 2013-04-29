@@ -27,6 +27,9 @@ __doc__ = "Contains modules that adapt apptools models to various storage backen
 
 # abstract adapters
 from . import abstract
+from .abstract import Mixin
+from .abstract import KeyMixin
+from .abstract import ModelMixin
 from .abstract import ModelAdapter
 from .abstract import IndexedModelAdapter
 

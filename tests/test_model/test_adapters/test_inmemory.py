@@ -145,7 +145,7 @@ class InMemoryAdapterTests(AppToolsTest):
         self.assertIsInstance(next, int)
 
         # try allocating 10 ID's
-        next_range = [i for i in inmemory.InMemoryAdapter.allocate_ids("Sample", 10)()]
+        next_range = [i for i in inmemory.InMemoryAdapter.allocate_ids(model.Key, "Sample", 10)()]
         self.assertEqual(len(next_range), 10)
         for i in next_range:
             self.assertIsInstance(i, int)

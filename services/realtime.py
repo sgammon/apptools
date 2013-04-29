@@ -27,145 +27,145 @@ from protorpc import transport
 ## RealtimeProtocol - abstract base class for extension into a spec'd realtime protocol
 class RealtimeProtocol(object):
 
-	''' Describes a protocol for realtime communications. '''
+    ''' Describes a protocol for realtime communications. '''
 
-	__metaclass__ = abc.ABCMeta
+    __metaclass__ = abc.ABCMeta
 
-	@classmethod
-	def pack(cls, struct):
+    @classmethod
+    def pack(cls, struct):
 
-		''' Serialize and encode a structure. '''
+        ''' Serialize and encode a structure. '''
 
-		if isinstance(struct, tuple):
-			command, payload = struct
-		elif isinstance(struct, dict):
-			command, payload = struct.get('command'), struct.get('payload')
-		elif isinstance(struct, list):
-			command = payload[0]
-			payload = payload[1]
-		else:
-			command = struct
-			payload = None
-			
-		return cls.encode(cls.serialize(command, payload))
+        if isinstance(struct, tuple):
+            command, payload = struct
+        elif isinstance(struct, dict):
+            command, payload = struct.get('command'), struct.get('payload')
+        elif isinstance(struct, list):
+            command = payload[0]
+            payload = payload[1]
+        else:
+            command = struct
+            payload = None
+            
+        return cls.encode(cls.serialize(command, payload))
 
-	@classmethod
-	def unpack(cls, raw, kind=None):
+    @classmethod
+    def unpack(cls, raw, kind=None):
 
-		''' Decode and deserialize a raw frame. '''
+        ''' Decode and deserialize a raw frame. '''
 
-		return cls.deserialize(cls.decode(raw))
+        return cls.deserialize(cls.decode(raw))
 
-	@decorators.classproperty
-	def config(cls):
+    @decorators.classproperty
+    def config(cls):
 
-		''' Named config pip for all RealtimeProtocol(s). '''
+        ''' Named config pip for all RealtimeProtocol(s). '''
 
-		if hasattr(cls, 'config_path'):
-			return config.config.get('.'.join(['apptools.realtime.protocol', cls.__class__.__name__]), {})
-		else:
-			return config.config.get(cls.config_path, config.config.get('.'.join(['apptools.realtime.protocol', cls.__name__])))
+        if hasattr(cls, 'config_path'):
+            return config.config.get('.'.join(['apptools.realtime.protocol', cls.__class__.__name__]), {})
+        else:
+            return config.config.get(cls.config_path, config.config.get('.'.join(['apptools.realtime.protocol', cls.__name__])))
 
-	@decorators.classproperty
-	def logging(cls):
+    @decorators.classproperty
+    def logging(cls):
 
-		''' Named logging pipe for all RealtimeProtocol(s). '''
+        ''' Named logging pipe for all RealtimeProtocol(s). '''
 
-		return util.debug.AppToolsLogger(path='apptools.realtime.protocol', name=cls.__name__)._setcondition(self.config.get('debug', config.debug))
+        return util.debug.AppToolsLogger(path='apptools.realtime.protocol', name=cls.__name__)._setcondition(self.config.get('debug', config.debug))
 
-	@abc.abstractproperty
-	def name(self): pass
+    @abc.abstractproperty
+    def name(self): pass
 
-	@abc.abstractproperty
-	def commands(self): pass
+    @abc.abstractproperty
+    def commands(self): pass
 
-	@abc.abstractproperty
-	def vocabulary(self): pass
+    @abc.abstractproperty
+    def vocabulary(self): pass
 
-	@abc.abstractproperty
-	def errorcodes(self): pass
+    @abc.abstractproperty
+    def errorcodes(self): pass
 
-	@abc.abstractmethod
-	def encode(self, struct): pass
+    @abc.abstractmethod
+    def encode(self, struct): pass
 
-	@abc.abstractmethod
-	def decode(self, data): pass
+    @abc.abstractmethod
+    def decode(self, data): pass
 
-	@abc.abstractproperty
-	def encoder(self): pass
+    @abc.abstractproperty
+    def encoder(self): pass
 
-	@abc.abstractproperty
-	def decoder(self): pass
+    @abc.abstractproperty
+    def decoder(self): pass
 
-	@abc.abstractmethod
-	def serialize(self, message): pass
+    @abc.abstractmethod
+    def serialize(self, message): pass
 
-	@abc.abstractmethod
-	def deserialize(self, frame): pass
+    @abc.abstractmethod
+    def deserialize(self, frame): pass
 
-	@abc.abstractmethod
-	def error(self, code): pass
+    @abc.abstractmethod
+    def error(self, code): pass
 
 
 ## RealtimeRPCState - replacement for proto's RpcState class, suitable for realtime services
 class RealtimeRPCState(messages.Enum):
 
-	''' Keeps state about the current RPC lifecycle. '''
+    ''' Keeps state about the current RPC lifecycle. '''
 
-	OK = 0
-	RUNNING = 1
-	REQUEST_ERROR = 2
-	SERVER_ERROR = 3
-	NETWORK_ERROR = 4
-	APPLICATION_ERROR = 5
-	METHOD_NOT_FOUND_ERROR = 6
+    OK = 0
+    RUNNING = 1
+    REQUEST_ERROR = 2
+    SERVER_ERROR = 3
+    NETWORK_ERROR = 4
+    APPLICATION_ERROR = 5
+    METHOD_NOT_FOUND_ERROR = 6
 
 
 ## RealtimeRequestState - replacement for proto's HttpRequestState class, suitable for realtime services
 class RealtimeRequestState(remote.RequestState):
 
-	''' Adapts internal ProtoRPC request state structures to allow realtime dispatching. '''
+    ''' Adapts internal ProtoRPC request state structures to allow realtime dispatching. '''
 
-	agent = None
-	clientlib = None
-	remote_host = None
-	remote_address = None
-	server_host = None
-	server_port = None
-	service_path = None
-	protocol = 'realtime'
+    agent = None
+    clientlib = None
+    remote_host = None
+    remote_address = None
+    server_host = None
+    server_port = None
+    service_path = None
+    protocol = 'realtime'
 
-	def __init__(self, **kwargs):
+    def __init__(self, **kwargs):
 
-		''' Map keyword args into state. '''
+        ''' Map keyword args into state. '''
 
-		for k, v in kwargs:
-			setattr(self, k, v)
+        for k, v in kwargs:
+            setattr(self, k, v)
 
 
 ## SocketTransport - protocol and transport mechanism for bridging sockets/realtime data and services
 class SocketTransport(transport.Transport):
 
-	''' Allows ProtoRPC requests to travel and properly be decoded/encoded over a WebSocket. '''
+    ''' Allows ProtoRPC requests to travel and properly be decoded/encoded over a WebSocket. '''
 
-	protocol = None
+    protocol = None
 
-	@staticmethod
-	def encode_message(message):
+    @staticmethod
+    def encode_message(message):
 
-		''' Encode a response payload. '''
+        ''' Encode a response payload. '''
 
-		return self.protocol.pack(message)
+        return self.protocol.pack(message)
 
-	@staticmethod
-	def decode_message(message_type, message):
+    @staticmethod
+    def decode_message(message_type, message):
 
-		''' Decode a request payload. '''
+        ''' Decode a request payload. '''
 
-		return self.protocol.unpack(message, kind=message_type)
+        return self.protocol.unpack(message, kind=message_type)
 
-	def send_rpc(self, remote_info, request):
+    def send_rpc(self, remote_info, request):
 
-		''' Send an RPC over a socket. '''
+        ''' Send an RPC over a socket. '''
 
-		raise NotImplemented()
+        raise NotImplemented()
