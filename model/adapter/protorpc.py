@@ -20,16 +20,6 @@
 
 '''
 
-# stdlib
-import config
-import datetime
-
-# date/time
-from datetime import datetime
-
-# 3rd party
-import webapp2
-
 # adapter API
 from .abstract import KeyMixin
 from .abstract import ModelMixin
@@ -254,10 +244,8 @@ else:
 
             ''' Convert a `Model` instance to a ProtoRPC `Message` class. '''
 
-            if self.key:
-                return self.__class__.to_message_model()(key=self.key.to_message(), **self.to_dict(*args, **kwargs))
-            else:
-                return self.__class__.to_message_model()(**self.to_dict(*args, **kwargs))
+            if self.key: return self.__class__.to_message_model()(key=self.key.to_message(), **self.to_dict(*args, **kwargs))
+            return self.__class__.to_message_model()(**self.to_dict(*args, **kwargs))
 
         @classmethod
         def to_message_model(cls):

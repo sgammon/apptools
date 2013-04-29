@@ -28,6 +28,15 @@ from apptools.util import debug
 from apptools.util import decorators
 from apptools.util import datastructures
 
+# appconfig
+try:
+    import config
+except ImportError as e:
+    _APPCONFIG = False
+else:
+    _APPCONFIG = True
+
+
 # Globals
 _adapters = {}
 _adapters_by_model = {}
@@ -45,6 +54,25 @@ class ModelAdapter(object):
 
     registry = {}
     __metaclass__ = abc.ABCMeta
+
+    _config_path = 'apptools.model'
+
+    @decorators.classproperty
+    def config(cls):
+
+        ''' Cached config shortcut. '''
+
+        if _APPCONFIG:
+            return config.config.get(cls._config_path, {'debug': True})
+        return {'debug': True}  # default to `debug`: True with no available appconfig
+
+    @decorators.classproperty
+    def logging(cls):
+
+        ''' Named logging pipe. '''
+
+        psplit = cls._config_path.split('.')
+        return debug.AppToolsLogger(path='.'.join(psplit[0:-1]), name=psplit[-1])._setcondition(cls.config.get('debug', True))
 
     ## == Internal Methods == ##
     def _get(self, key):
@@ -79,7 +107,7 @@ class ModelAdapter(object):
                 return  # not found
 
             # inflate key + model and return
-            return self.registry[kind](key=self.registry[kind].__keyclass__(*(x for x in flattened if x is not None), _persisted=True), **entity)
+            return self.registry[kind](key=self.registry[kind].__keyclass__(*(x for x in flattened if x is not None), _persisted=True), _persisted=True, **entity)
 
     def _put(self, entity):
 
@@ -93,7 +121,8 @@ class ModelAdapter(object):
         for name, value in entity.to_dict(_all=True).items(): _model.__dict__[name].valid(entity)
 
         # resolve key if we have a zero-y key or key class
-        if not entity.key: entity.key = _model.__keyclass__(entity.kind(), self.allocate_ids(_model.__keyclass__, entity.kind()))  # build an ID-based key
+        if not entity.key or entity.key is None:
+            entity._set_key(_model.__keyclass__(entity.kind(), self.allocate_ids(_model.__keyclass__, entity.kind())))  # build an ID-based key
 
         # flatten key/entity
         joined, flattened = entity.key.flatten(True)

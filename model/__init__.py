@@ -46,39 +46,7 @@ from .adapter import concrete
 # apptools datastructures
 from apptools.util.datastructures import _EMPTY
 
-
-## == protorpc support == ##
-try:
-    import protorpc
-    from protorpc import messages as pmessages
-    from protorpc import message_types as pmessage_types
-
-except ImportError as e:  # pragma: no cover
-    # flag as unavailable
-    _PROTORPC, _root_message_class = False, object
-
-else:
-    # flag as available
-    _PROTORPC, _root_message_class = True, pmessages.Message
-
-
-## == appengine support == ##
-
-# try to find appengine pipelines
-try:
-    import pipeline
-
-except ImportError as e:
-    # flag as unavailable
-    _PIPELINE, _pipeline_root_class = False, object
-
-else:  # pragma: no cover
-    # flag as available
-    from pipeline import common as _pcommon
-    from pipeline import pipeline as _pipeline
-    _PIPELINE, _pipeline_root_class = True, _pipeline.Pipeline
-
-# try to find appengine's NDB
+# === appengine NDB support === #
 try:
     from google.appengine.ext import ndb as nndb
 
@@ -141,9 +109,9 @@ class MetaFactory(type):
         ## @TODO: Implement actual driver/adapter resolution
         if '__adapter__' in properties:
             for available in adapter.concrete:
-                if available is properties.get('__adapter__') or available.__name__ == properties.get('__adapter__'):
+                if available is properties['__adapter__'] or available.__name__ == properties.get('__adapter__'):
                     return available.acquire(name, bases, properties)
-            ## @TODO: except here, explicit adapter unavailable
+            raise RuntimeError("Requested model adapter \"%s\" could not be found or is not supported in this environment." % properties['__adapter__'])
 
         available_adapters = []
         for option in adapter.concrete:
@@ -839,7 +807,7 @@ class Model(AbstractModel):
         ''' Set this Entity's key manually. '''
 
         # unknown value
-        if value:
+        if value is not None:
             if isinstance(value, basestring):
                 self.__key__ = Key.from_urlsafe(value)
             elif isinstance(value, tuple):
