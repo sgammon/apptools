@@ -27,19 +27,21 @@ from .abstract import ModelMixin
 
 ## == protorpc support == ##
 try:
-	import protorpc
-	from protorpc import messages as pmessages
-	from protorpc import message_types as pmessage_types
+    # force absolute import to prevent infinite recursion
+	protorpc = __import__('protorpc', tuple(), tuple(), [], -1)
 
 except ImportError as e:
 	# flag as unavailable
 	_PROTORPC, _root_message_class = False, object
 
 else:
-	# flag as available
-	_PROTORPC, _root_message_class = True, pmessages.Message
+    # extended imports (must be absolute)
+    pmessages = getattr(__import__('protorpc', tuple(), tuple(), ['messages'], -1), 'messages')
+    pmessage_types = getattr(__import__('protorpc', tuple(), tuple(), ['message_types'], -1), 'message_types')
 
-if _PROTORPC:
+    # flag as available
+    _PROTORPC, _root_message_class = True, pmessages.Message
+
     ## ProtoRPCKey
     # Mixin to core `Key` class that enables ProtoRPC message conversion.
     class ProtoRPCKey(KeyMixin):

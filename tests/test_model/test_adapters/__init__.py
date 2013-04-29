@@ -64,8 +64,6 @@ class AdapterExportTests(AppToolsTest):
             self.assertTrue(issubclass(adapter.SQLAdapter, adapter.ModelAdapter))  # SQL adapter
             self.assertTrue(issubclass(adapter.RedisAdapter, adapter.ModelAdapter))  # Redis adapter
             self.assertTrue(issubclass(adapter.MongoAdapter, adapter.ModelAdapter))  # Mongo adapter
-            self.assertTrue(issubclass(adapter.ProtoRPCAdapter, adapter.ModelAdapter))  # ProtoRPC adapter
-            self.assertTrue(issubclass(adapter.PipelineAdapter, adapter.ModelAdapter))  # Pipeline adapter
             self.assertTrue(issubclass(adapter.MemcacheAdapter, adapter.ModelAdapter))  # Memcache adapter
             self.assertTrue(issubclass(adapter.InMemoryAdapter, adapter.ModelAdapter))  # InMemory adapter
 

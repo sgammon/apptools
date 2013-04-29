@@ -26,21 +26,20 @@ from .abstract import ModelAdapter
 
 # try to find appengine pipelines
 try:
-    import pipeline
+    # force absolute import to prevent infinite recursion
+    pipeline = __import__('pipeline', tuple(), tuple(), [], -1)
 
 except ImportError as e:
     # flag as unavailable
     _PIPELINE, _pipeline_root_class = False, object
 
 else:
-
-    # further imports
-    from pipeline import common as _pcommon
-    from pipeline import pipeline as _pipeline
-
+    # extended imports
+    _pcommon = getattr(__import__('pipeline', tuple(), tuple(), ['common'], -1), 'common')
+    _pipeline = getattr(__import__('pipeline', tuple(), tuple(), ['pipeline'], -1), 'pipeline')
+    
     # flag as available
     _PIPELINE, _pipeline_root_class = True, _pipeline.Pipeline
-
     
     ## PipelineModel
     # Adapt apptools models to appengine pipelines.
