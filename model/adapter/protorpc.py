@@ -39,7 +39,7 @@ else:
 	# flag as available
 	_PROTORPC, _root_message_class = True, pmessages.Message
 
-
+if _PROTORPC:
     ## ProtoRPCKey
     # Mixin to core `Key` class that enables ProtoRPC message conversion.
     class ProtoRPCKey(KeyMixin):

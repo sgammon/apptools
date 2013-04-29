@@ -27,27 +27,34 @@ from .abstract import ModelAdapter
 # try to find appengine pipelines
 try:
     import pipeline
-    from pipeline import common as _pcommon
-    from pipeline import pipeline as _pipeline
 
 except ImportError as e:
     # flag as unavailable
     _PIPELINE, _pipeline_root_class = False, object
 
 else:
+
+    # further imports
+    from pipeline import common as _pcommon
+    from pipeline import pipeline as _pipeline
+
     # flag as available
     _PIPELINE, _pipeline_root_class = True, _pipeline.Pipeline
 
+    
+    ## PipelineModel
+    # Adapt apptools models to appengine pipelines.
+    class PipelineModel(ModelAdapter):
 
-## PipelineAdapter
-# Adapt apptools models to appengine pipelines.
-class PipelineAdapter(ModelAdapter):
+        ''' Adapt model classes to Pipelines. '''
 
-    ''' Adapt model classes to Pipelines. '''
+        pass
 
-    @classmethod
-    def is_supported(cls):
 
-        ''' Check whether this adapter is supported in the current environment. '''
+    ## PipelineKey
+    # Adapt apptools keys to appengine pipelines.
+    class PipelineKey(ModelAdapter):
 
-        return False
+        ''' Adapt key classes to Pipelines. '''
+
+        pass

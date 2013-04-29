@@ -52,11 +52,9 @@ modules = (sql, redis, mongo, protorpc, pipeline, memcache, inmemory)
 from .sql import SQLAdapter
 from .redis import RedisAdapter
 from .mongo import MongoAdapter
-from .protorpc import ProtoRPCAdapter
-from .pipeline import PipelineAdapter
 from .memcache import MemcacheAdapter
 from .inmemory import InMemoryAdapter
 
-concrete = (InMemoryAdapter, RedisAdapter, SQLAdapter, MongoAdapter, ProtoRPCAdapter, PipelineAdapter, MemcacheAdapter)
+concrete = (InMemoryAdapter, RedisAdapter, SQLAdapter, MongoAdapter, MemcacheAdapter)
 
 __all__ = abstract_adapters + modules + concrete
