@@ -38,6 +38,7 @@ abstract_adapters = (abstract, ModelAdapter, IndexedModelAdapter)
 
 # adapter modules
 from . import sql
+from . import core
 from . import redis
 from . import mongo
 from . import protorpc
@@ -45,7 +46,7 @@ from . import pipeline
 from . import memcache
 from . import inmemory
 
-modules = (sql, redis, mongo, protorpc, pipeline, memcache, inmemory)
+modules = (core, sql, redis, mongo, protorpc, pipeline, memcache, inmemory)
 
 
 # concrete adapters
@@ -57,4 +58,13 @@ from .inmemory import InMemoryAdapter
 
 concrete = (InMemoryAdapter, RedisAdapter, SQLAdapter, MongoAdapter, MemcacheAdapter)
 
-__all__ = abstract_adapters + modules + concrete
+
+# builtin mixins
+from . import core
+from .core import DictMixin
+from .core import JSONMixin
+
+builtin_mixins = (DictMixin, JSONMixin)
+
+
+__all__ = abstract_adapters + modules + concrete + builtin_mixins

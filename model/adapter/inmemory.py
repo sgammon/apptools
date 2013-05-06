@@ -25,7 +25,7 @@ import json
 import base64
 
 # adapter API
-from .abstract import ModelAdapter
+from .abstract import IndexedModelAdapter
 
 
 ## Globals
@@ -36,7 +36,7 @@ _datastore = {}
 
 ## InMemoryAdapter
 # Adapt apptools models to Python RAM.
-class InMemoryAdapter(ModelAdapter):
+class InMemoryAdapter(IndexedModelAdapter):
 
     ''' Adapt model classes to RAM. '''
 
@@ -64,10 +64,14 @@ class InMemoryAdapter(ModelAdapter):
                     'delete': 0  # track # of entity delete() operations
                 },
                 'kinds': {},  # holds current count and ID increment pointer for each kind
-                'lookup': set(tuple()),  # holds all stringified keys for quick comparison/lookup
                 'global': {  # holds global metadata, like entity count across kind classes
                     'entity_count': 0  # holds global count of all entities
                 },
+                cls._key_prefix: set([]),  # full, simple indexed set of all keys
+                cls._kind_prefix: {},  # maps keys to their kinds
+                cls._group_prefix: {},  # maps keys to their entity groups
+                cls._index_prefix: {},  # maps property values to keys
+                cls._reverse_prefix: {}  # maps keys to indexes they are present in
             }
 
         # pass up the chain to create a singleton
@@ -115,22 +119,16 @@ class InMemoryAdapter(ModelAdapter):
         # perform validation
         with entity:
 
-            # update metadata
-            if encoded not in _metadata['lookup']:
-                
-                _metadata['lookup'].add(encoded)  # add to lookup
+            if entity.key.kind not in _metadata['kinds']:  # pragma: no cover
+                _metadata['kinds'][entity.key.kind] = {
+                    'id_pointer': 0,  # keep current key ID pointer
+                    'entity_count': 0  # keep count of seen entities for each kind
+                }
 
-                if entity.key.kind not in _metadata['kinds']:  # pragma: no cover
-                    _metadata['kinds'][entity.key.kind] = {
-                        'id_pointer': 0,  # keep current key ID pointer
-                        'entity_count': 0  # keep count of seen entities for each kind
-                    }
-
-                # update count
-                _metadata['lookup'].add(encoded)  # add to encoded key lookup
-                _metadata['ops']['put'] = _metadata['ops'].get('put', 0) + 1
-                _metadata['global']['entity_count'] = _metadata['global'].get('entity_count', 0) + 1
-                _metadata['kinds'][entity.key.kind]['entity_count'] = _metadata['kinds'][entity.key.kind].get('entity_count', 0) + 1
+            # update count
+            _metadata['ops']['put'] = _metadata['ops'].get('put', 0) + 1
+            _metadata['global']['entity_count'] = _metadata['global'].get('entity_count', 0) + 1
+            _metadata['kinds'][entity.key.kind]['entity_count'] = _metadata['kinds'][entity.key.kind].get('entity_count', 0) + 1
 
             # save to datastore
             _datastore[encoded] = entity.to_dict()
@@ -146,20 +144,26 @@ class InMemoryAdapter(ModelAdapter):
         global _datastore
 
         # extract key
-        encoded, flattened = key
+        if not isinstance(key, tuple):
+            encoded, flattened = key.flatten(True)
+        else:
+            encoded, flattened = key
+
+        # extract key parts
         parent, kind, id = flattened
 
-        if encoded in _metadata['lookup']:
+        # if we have the key...
+        if encoded in _metadata[cls._key_prefix]:
             try:
                 del _datastore[encoded]  # delete from datastore
 
             except KeyError, e:  # pragma: no cover
-                _metadata['lookup'].remove(encoded)
+                _metadata[cls._key_prefix].remove(encoded)
                 return False  # untrimmed key
 
             else:
                 # update meta
-                _metadata['lookup'].remove(encoded)
+                _metadata[cls._key_prefix].remove(encoded)
                 _metadata['ops']['delete'] = _metadata['ops'].get('delete', 0) + 1
                 _metadata['global']['entity_count'] = _metadata['global'].get('entity_count', 1) - 1
                 _metadata['kinds'][kind]['entity_count'] = _metadata['kinds'][kind].get('entity_count', 1) - 1
@@ -190,3 +194,202 @@ class InMemoryAdapter(ModelAdapter):
                 raise StopIteration()
             return _generate_id_range
         return pointer
+
+    @classmethod
+    def write_indexes(cls, writes):
+
+        ''' Write a set of generated indexes via `generate_indexes`. '''
+
+        global _metadata
+
+        # extract indexes
+        _reverse_index_entries = []
+        encoded, meta, properties = writes
+
+        # write indexes one-by-one, generating reverse entries as we go
+        for write in meta + [value for serializer, value in properties]:
+
+            # filter out strings, convert to 1-tuples
+            if isinstance(write, basestring):
+                write = (write,)
+
+            if len(write) > 3:  # hashed/mapped index
+
+                # extract write, inflate
+                index, path, value = write[0], write[1:-1], write[-1]
+
+                # init index hash
+                if index not in _metadata:
+                    _metadata[index] = {(path, value): set()}
+
+                elif (path, value) not in _metadata[index]:
+                    _metadata[index][(path, value)] = set()
+
+                # write key to index
+                _metadata[index][(path, value)].add(encoded)
+
+                # add reverse index
+                if encoded not in _metadata[cls._reverse_prefix]:
+                    _metadata[cls._reverse_prefix][encoded] = set()
+                _metadata[cls._reverse_prefix][encoded].add((index, path, value))
+
+                continue
+
+            elif len(write) == 3:  # simple map index
+
+                # extract write, inflate
+                index, dimension, value = write
+
+                # init index hash
+                if index not in _metadata:
+                    _metadata[index] = {dimension: set((value,))}
+
+                elif dimension not in _metadata[index]:
+                    _metadata[index][dimension] = set((value,))
+
+                else:
+                    # everything is there, map the value
+                    _metadata[index][dimension].add(value)
+
+                # add reverse index
+                if encoded not in _metadata[cls._reverse_prefix]:
+                    _metadata[cls._reverse_prefix][encoded] = set()
+                _metadata[cls._reverse_prefix][encoded].add((index, dimension))
+                continue
+
+            elif len(write) == 2:  # simple set index
+                
+                # extract write, inflate
+                index, value = write
+
+                # init index hash
+                if index not in _metadata:
+                    _metadata[index] = {value: set()}
+
+                # init value set
+                elif value not in _metadata[index]:
+                    _metadata[index][value] = set()
+
+                # only provision if value and index are different
+                if index != value:
+
+                    # add encoded key
+                    _metadata[index][value].add(encoded)
+
+                # add reverse index
+                if encoded not in _metadata[cls._reverse_prefix]:
+                    _metadata[cls._reverse_prefix][encoded] = set()
+                _metadata[cls._reverse_prefix][encoded].add(index)
+                continue
+
+            elif len(write) == 1:  # simple key mapping
+
+                # extract singular index
+                index = write[0]
+
+                # special case: key index
+                if index == cls._key_prefix:
+                    _metadata[index].add(encoded)
+                    continue
+
+                # provision index
+                if index not in _metadata:
+                    _metadata[index] = {}
+
+                # add value to index
+                _metadata[index][encoded] = set()  # provision with a one-index entry
+
+                # add reverse index
+                if encoded not in _metadata[cls._reverse_prefix]:
+                    _metadata[cls._reverse_prefix][encoded] = set()
+                _metadata[cls._reverse_prefix][encoded].add((index,))
+                continue
+
+            else:  # invalid mapping
+                raise ValueError("Index mapping tuples must have at least 2 entries, for a simple set index, or more for a hashed index.")
+
+    @classmethod
+    def clean_indexes(cls, writes):
+
+        ''' Clean indexes for a key. '''
+
+        global _metadata
+
+        # extract indexes
+        encoded, meta = writes
+
+        # pull reverse indexes
+        reverse = _metadata[cls._reverse_prefix].get(encoded, set())
+
+        # clear reverse indexes
+        _cleaned = set()
+        if len(reverse) or len(meta):
+            for i in reverse | set(meta):
+
+                # convert to tuple to be consistent
+                if not isinstance(i, tuple):
+                    i = (i,)
+
+                # check cleanlist
+                if i in _cleaned:
+                    continue  # we've already cleaned this directive
+                else:
+                    _cleaned.add(i)
+
+                if len(i) == 3:  # hashed index
+
+                    # extract write, clean
+                    index, path, value = i
+
+                    if isinstance(path, tuple):
+                        if index in _metadata and (path, value) in _metadata[index]:
+                            _metadata[index][(path, value)].remove(encoded)
+
+                            # if there's no keys left in the index, trim it
+                            if len(_metadata[index][(path, value)]) == 0:
+                                del _metadata[index][(path, value)]
+
+                        continue
+
+                    if isinstance(path, basestring):
+                        if index in _metadata and path in _metadata[index]:
+                            _metadata[index][path].remove(encoded)
+
+                            # if there's no keys left in the entry, trim it
+                            if len(_metadata[index][path]) == 0:
+                                del _metadata[index][path]
+
+                        continue
+
+                elif len(i) == 2:  # simple set index
+                    # extract write, clean
+                    index, value = i
+
+                    if index in _metadata and value in _metadata[index]:
+                        _metadata[index][value].remove(encoded)  # remove from set at item in mapping
+
+                        # if there's no keys left in the index, trim it
+                        if len(_metadata[index][value]) == 0:
+                            del _metadata[index][value]
+
+                    continue
+
+                elif len(i) == 1:  # simple key mapping
+                    if i[0] == '__key__':
+                        continue  # skip keys, that's done by `delete()`
+                    if encoded in _metadata[i[0]]:
+                        del _metadata[i[0]][encoded]
+                    continue
+
+        if encoded in _metadata[cls._reverse_prefix]:
+            # last step: remove reverse index for key
+            del _metadata[cls._reverse_prefix][encoded]
+
+        return _cleaned
+
+    @classmethod
+    def execute_query(cls, spec):
+
+        ''' Execute a query across one (or multiple) indexed properties. '''
+
+        return

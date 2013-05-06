@@ -207,14 +207,15 @@ else:
             else:
                 raise ValueError("Could not resolve proper serialization for property \"%s\"  (found basetype \"%s\")." % (name, prop._basetype))
 
+        # construct message class on-the-fly
         return type(_model.kind(), (pmessages.Message,), _model_message)
 
 
-    ## DataKey
-    # Expresses a model key as a message.
-    class DataKey(pmessages.Message):
+    ## Key
+    # Expresses a `model.Key` as a message.
+    class Key(pmessages.Message):
 
-        ''' Message that expresses a `Key`. '''
+        ''' Message that expresses a `model.Key`. '''
 
         id = pmessages.StringField(1)
         kind = pmessages.StringField(2)
@@ -231,7 +232,7 @@ else:
 
             ''' Convert a `Key` instance to a ProtoRPC `Message` instance. '''
 
-            return DataKey(id=str(self.id), kind=self.kind, encoded=self.urlsafe())
+            return Key(id=str(self.id), kind=self.kind, encoded=self.urlsafe())
 
 
     ## ProtoRPCModel

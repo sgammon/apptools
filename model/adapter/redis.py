@@ -21,14 +21,13 @@
 '''
 
 # stdlib
-import zlib
-import base64
+import time
 
 # 3rd party
 import webapp2
 
 # adapter API
-from .abstract import ModelAdapter
+from .abstract import IndexedModelAdapter
 
 # apptools util
 from apptools.util import json
@@ -70,8 +69,6 @@ _server_profiles = {}  # holds globally-configured server profiles
 _default_profile = None  # holds the default redis instance mapping
 _client_connections = {}  # holds instantiated redis connection clients
 _profiles_by_model = {}  # holds specific model => redis instance mappings, if any
-_encoder = base64.b64encode  # encoder for key names and special strings, if enabled
-_compressor = zlib.compress  # compressor for data values, if enabled
 
 
 ## RedisMode
@@ -80,16 +77,15 @@ class RedisMode(object):
 
     ''' Map of hard-coded modes of internal operation for the `RedisAdapter`. '''
 
-    hashkey_hash = 0  # HSET <key>, <field> => <value> [...]
-    hashkey_blob = 1  # HSET <entity_group>, <key_id>, <entity>
-    hashkind_blob = 2  # HSET <kind>, <key_id>, <entity>
-    toplevel_blob = 3  # SET <key>, <entity>
-
+    hashkey_hash = 'hashkey'  # HSET <key>, <field> => <value> [...]
+    hashkey_blob = 'hashblob'  # HSET <entity_group>, <key_id>, <entity>
+    hashkind_blob = 'hashkind'  # HSET <kind>, <key_id>, <entity>
+    toplevel_blob = 'toplevel'  # SET <key>, <entity>
 
 
 ## RedisAdapter
 # Adapt apptools models to Redis.
-class RedisAdapter(ModelAdapter):
+class RedisAdapter(IndexedModelAdapter):
 
     ''' Adapt model classes to Redis. '''
 
@@ -127,7 +123,7 @@ class RedisAdapter(ModelAdapter):
         GET = 'GET'  # get a value by key directly
         KEYS = 'KEYS'  # get a list of all keys matching a regex
         DUMP = 'DUMP'  # dump serialized information about a key
-        DELETE = 'DEL'  # delete a key=> value pair, by key
+        DELETE = 'DELETE'  # delete a key=> value pair, by key
         GETBIT = 'GETBIT'  # retrieve a specific bit from a key value
         GETSET = 'GETSET'  # set a value by key, and return the existing value at that key
         GETRANGE = 'GETRANGE'  # return the substring of str value at given key, determined by offsets
@@ -261,6 +257,13 @@ class RedisAdapter(ModelAdapter):
         BACKGROUND_SAVE = 'BGSAVE'  # in the background, save the current dataset to disk
         BACKGROUND_REWRITE = 'BGREWRITEAOF'  # in the background, rewrite the current AOF
 
+    @classmethod
+    def is_supported(cls):
+
+        ''' Check whether this adapter is supported in the current environment. '''
+
+        return _REDIS
+
     @decorators.classproperty
     def serializer(cls):
 
@@ -270,28 +273,6 @@ class RedisAdapter(ModelAdapter):
         if _MSGPACK:
             return msgpack
         return json
-
-    @decorators.classproperty
-    def encoder(cls):
-
-        ''' Encode a stringified blob for storage. '''
-
-        # use local encoder
-        return _encoder
-
-    @decorators.classproperty
-    def compressor(cls):
-
-        ''' Load and return the appropriate compression codec. '''
-
-        return _compressor
-
-    @classmethod
-    def is_supported(cls):
-
-        ''' Check whether this adapter is supported in the current environment. '''
-
-        return _REDIS
 
     @classmethod
     def acquire(cls, name, bases, properties):
@@ -444,7 +425,7 @@ class RedisAdapter(ModelAdapter):
 
         ''' Delete an entity by Key from Redis. '''
 
-        joined, flattened = key
+        joined, flattened = key.flatten(True)
 
         if cls.EngineConfig.mode == RedisMode.toplevel_blob:
 
@@ -515,3 +496,21 @@ class RedisAdapter(ModelAdapter):
         if cls.EngineConfig.encoding:
             return _encoder(joined)
         return joined
+
+    def write_indexes(cls, writes):
+
+        ''' Write a batch of index updates generated earlier via the method above. '''
+
+        raise NotImplementedError()
+
+    def clean_indexes(cls, key):
+
+        ''' Clean indexes and index entries matching a key. '''
+
+        raise NotImplementedError()
+
+    def execute_query(cls, spec):
+
+        ''' Execute a query across one (or multiple) indexed properties. '''
+
+        raise NotImplementedError()

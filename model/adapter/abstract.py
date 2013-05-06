@@ -22,8 +22,12 @@
 
 # stdlib
 import abc
+import zlib
+import base64
+import datetime
 
 # apptools utils
+from apptools.util import json
 from apptools.util import debug
 from apptools.util import decorators
 from apptools.util import datastructures
@@ -40,6 +44,8 @@ else:
 # Globals
 _adapters = {}
 _adapters_by_model = {}
+_encoder = base64.b64encode  # encoder for key names and special strings, if enabled
+_compressor = zlib.compress  # compressor for data values, if enabled
 
 # Computed Classes
 CompoundKey = None
@@ -73,6 +79,29 @@ class ModelAdapter(object):
 
         psplit = cls._config_path.split('.')
         return debug.AppToolsLogger(path='.'.join(psplit[0:-1]), name=psplit[-1])._setcondition(cls.config.get('debug', True))
+
+    @decorators.classproperty
+    def serializer(cls):
+
+        ''' Load and return the appropriate serialization codec. '''
+
+        # default to JSON
+        return json
+
+    @decorators.classproperty
+    def encoder(cls):
+
+        ''' Encode a stringified blob for storage. '''
+
+        # use local encoder
+        return _encoder
+
+    @decorators.classproperty
+    def compressor(cls):
+
+        ''' Load and return the appropriate compression codec. '''
+
+        return _compressor
 
     ## == Internal Methods == ##
     def _get(self, key):
@@ -189,7 +218,8 @@ class ModelAdapter(object):
 
         raise NotImplementedError()
 
-    def encode_key(cls, joined, flattened):  # pragma: no cover
+    @classmethod
+    def encode_key(cls, key, joined=None, flattened=None):  # pragma: no cover
 
         ''' Encode a Key for storage. '''
 
@@ -202,26 +232,194 @@ class IndexedModelAdapter(ModelAdapter):
 
     ''' Abstract base class for model adapters that support additional indexing APIs. '''
 
+    # magic prefixes
+    _key_prefix = '__key__'
+    _kind_prefix = '__kind__'
+    _group_prefix = '__group__'
+    _index_prefix = '__index__'
+    _reverse_prefix = '__reverse__'
+
+    ## Indexer
+    # Holds routines and data type tools for indexing apptools models in Redis.
+    class Indexer(object):
+
+        ''' Holds methods for indexing and handling index data types. '''
+
+        _magic = {
+            'key': 0x1,  # magic ID for `model.Key` references
+            'date': 0x2,  # magic ID for `datetime.date` instances
+            'time': 0x3,  # magic ID for `datetime.time` instances
+            'datetime': 0x4  # magic ID for `datetime.datetime` instances
+        }
+
+        @classmethod
+        def convert_key(cls, key):
+
+            ''' Convert a `Key` to an indexable value. '''
+
+            # flatten and return key structure with magic
+            joined, flattened = key.flatten(True)
+            return (cls._magic['key'], map(lambda x: x is not None, flatten))
+
+        @classmethod
+        def convert_date(cls, date):
+
+            ''' Convert a `date` to an indexable value. '''
+
+            # convert to ISO format, return date with magic
+            return (cls._magic['date'], date.isoformat())
+
+        @classmethod
+        def convert_time(cls, _time):
+
+            ''' Convert a `time` to an indexable value. '''
+
+            # convert to ISO format, return time with magic
+            return (cls._magic['time'], date.isoformat())
+
+        @classmethod
+        def convert_datetime(cls, _datetime):
+
+            ''' Convert a `datetime` to an indexable value. '''
+
+            # convert to integer, return datetime with magic
+            return (cls._magic['datetime'], int(time.mktime(_datetime.timetuple())))
+
+    @decorators.classproperty
+    def _index_basetypes(self):
+
+        ''' Map basetypes to indexer routines. '''
+
+        return {
+
+            int: self.serializer.dumps,
+            bool: self.serializer.dumps,
+            float: self.serializer.dumps,
+            basestring: self.serializer.dumps,
+            datetime.date: self.Indexer.convert_date,
+            datetime.time: self.Indexer.convert_time,
+            datetime.datetime: self.Indexer.convert_datetime
+
+        }
+
+    def _put(self, entity):
+
+        ''' Hook to trigger index writes for a given entity. '''
+
+        # small optimization - with a determined key, we can parrellelize index writes (assuming async is supported in the underlying driver)
+        if entity.key:
+
+            # proxy to `generate_indexes` and write indexes
+            indexes = self.write_indexes(self.generate_indexes(entity.key, self._pluck_indexed(entity)))
+
+            # delegate up the chain for entity write
+            return super(IndexedModelAdapter, self)._put(entity)
+
+        # delegate write up the chain
+        written_key = super(IndexedModelAdapter, self)._put(entity)
+
+        # proxy to `generate_indexes` and write
+        indexes = self.write_indexes(self.generate_indexes(written_key, self._pluck_indexed(entity)))
+
+        return written_key
+
+    def _delete(self, key):
+
+        ''' Hook to trigger index cleanup for a given key. '''
+
+        # generate meta indexes only, then clean
+        indexes = self.clean_indexes(self.generate_indexes(key))
+
+        # delegate delete up the chain
+        return super(IndexedModelAdapter, self)._delete(key)
+
+    def _pluck_indexed(self, entity):
+
+        ''' Zip and pluck only properties that should be indexed. '''
+
+        _map = {}
+
+        # grab only properties enabled for indexing
+        for k, v in filter(lambda x: entity.__class__.__dict__[x[0]]._indexed, entity.to_dict().items()):
+            _map[k] = (entity.__class__.__dict__[k], v)  # attach property name, property class, value
+
+        return _map
+
+    @classmethod
+    def generate_indexes(cls, key, properties=None):
+
+        ''' Generate a set of indexes that should be written to, with associated values. '''
+
+        # provision vars, generate meta indexes
+        encoded_key = cls.encode_key(key) or key.urlsafe()
+
+        _property_indexes, _meta_indexes = [], [
+            (cls._key_prefix,),  # add key to universal key index
+            (cls._kind_prefix, key.kind)  # map kind to encoded key
+        ]
+
+        # consider ancestry
+        if not key.parent:
+
+            # generate group indexes in the case of a nonvoid parent
+            _meta_indexes.append((cls._group_prefix,))
+
+        else:
+
+            # append keyparent-based group prefix
+            root_key = [i for i in key.ancestry][0]
+
+            # encode root key
+            encoded_root_key = cls.encode_key(root_key) or root_key.urlsafe()
+
+            _meta_indexes.append((cls._group_prefix, root_key))
+
+        # add property index entries
+        if properties:
+
+            # we're applying writes
+            for k, v in properties.items():
+
+                # extract property class and value
+                prop, value = v
+
+                # consider repeated properties
+                if not prop._repeated:
+                    value = [value]
+
+                # iterate through property values
+                for v in value:
+                    _property_indexes.append((cls._index_basetypes.get(prop._basetype, basestring), (cls._index_prefix, key.kind, k, v)))
+
+                continue
+
+        else:
+            # we're cleaning indexes
+            return encoded_key, _meta_indexes
+
+        # we're writing indexes
+        return encoded_key, _meta_indexes, _property_indexes
+
     @abc.abstractmethod
-    def generate_indexes(cls, properties):  # pragma: no cover
-
-        ''' Generate index entries from a set of indexed properties. '''
-
-        raise NotImplemented()
-
-    @abc.abstractmethod
-    def write_indexes(cls, indexes):  # pragma: no cover
+    def write_indexes(cls, writes):  # pragma: no cover
 
         ''' Write a batch of index updates generated earlier via the method above. '''
 
-        raise NotImplemented()
+        raise NotImplementedError()
+
+    @abc.abstractmethod
+    def clean_indexes(cls, key):  # pragma: no cover
+
+        ''' Clean indexes and index entries matching a key. '''
+
+        raise NotImplementedError()
 
     @abc.abstractmethod
     def execute_query(cls, spec):  # pragma: no cover
 
         ''' Execute a query across one (or multiple) indexed properties. '''
 
-        raise NotImplemented()
+        raise NotImplementedError()
 
 
 ## Mixin
@@ -255,15 +453,24 @@ class Mixin(object):
                     ## we can only directly extend `Mixin` from `KeyMixin` and `ModelMixin`
                     raise RuntimeError("Cannot directly extend `Mixin` - you must extend `KeyMixin` or `ModelMixin`.")
                 elif len(bases) > 1:
-                    ## mixins are only allowed to _directly_ extend `KeyMixin` or `ModelMixin` - no midway classes.
-                    raise RuntimeError("Cannot inject classes for inheritance in between `KeyMixin` or `ModelMixin` and a concrete mixin class.")
-                else:
-                    ## add mixin to parent registry
-                    bases[0].__registry__[name] = klass
-                    cls._mixin_lookup.add(name)
+                    for base in bases:
+                        if base not in frozenset((KeyMixin, ModelMixin)):
+                            ## mixins are only allowed to _directly_ extend `KeyMixin` or `ModelMixin` - no midway classes.
+                            raise RuntimeError("Cannot inject classes for inheritance in between `KeyMixin` or `ModelMixin` and a concrete mixin class.")
 
+                # add to each registry that the mixin supports
+                for base in bases:
+
+                    ## add mixin to parent registry
+                    base.__registry__[name] = klass
+
+                # add to global mixin lookup to prevent double loading
+                cls._mixin_lookup.add(name)
+
+                # see if we already have a compound class (mixins loaded after models)
                 if Mixin._compound.get(cls):
-                    # extend class dict if we already have one
+
+                    ## extend class dict if we already have one
                     Mixin._compound.__dict__.update(dict(cls.__dict__.items()))
 
             return klass

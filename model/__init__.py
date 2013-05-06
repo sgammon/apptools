@@ -41,6 +41,7 @@ from apptools.util import json
 
 # apptools model adapters
 from . import adapter
+from .adapter import abstract
 from .adapter import concrete
 
 # apptools datastructures
@@ -168,6 +169,7 @@ class AbstractKey(_key_parent()):
                     '__slots__': set(),  # seal object attributes, keys don't need any new space
                     '__bases__': bases,  # define bases for class
                     '__name__': name,  # set class name internals
+                    '__owner__': None,  # reference to current owner entity, if any
                     '__adapter__': cls.resolve(name, bases, properties),  # resolve adapter for key
                     '__persisted__': False  # default to not knowing whether this key is persisted
                 }
@@ -199,6 +201,12 @@ class AbstractKey(_key_parent()):
             chain = tuple([cls] + [i for i in reversed(chain)])
             return chain
 
+        def __repr__(cls):
+
+            ''' Generate a string representation of a Key class. '''
+
+            return '<Key \"%s.%s\">' % (cls.__module__, cls.__name__)
+
     def __new__(cls, *args, **kwargs):
 
         ''' Intercepts construction requests for directly Abstract model classes. '''
@@ -207,6 +215,37 @@ class AbstractKey(_key_parent()):
             raise TypeError('Cannot directly instantiate abstract class `AbstractKey`.')
         else:  # pragma: no cover
             return super(_key_parent(), cls).__new__(*args, **kwargs)
+
+    def __eq__(self, other):
+
+        ''' Test whether two keys are functionally identical. '''
+
+        # if schemas or classes don't match, immediate no. otherwise check all set values.
+        if not other: return other
+        if len(self.__schema__) != len(other.__schema__) or not isinstance(other, self.__class__): return False
+        return all([i for i in map(lambda x: hasattr(other, x) and (getattr(other, x) == getattr(self, x)), self.__schema__)])
+
+    def __nonzero__(self):
+
+        ''' Test whether a key is nonzero, indicating it does/does not have an ID. '''
+
+        return isinstance(self.__id__, (basestring, str, int, unicode))
+
+    def __len__(self):
+
+        ''' Proxy to `__nonzero__`. '''
+
+        if self.__parent__ is not None:
+            return sum([1 for i in self.ancestry])
+        return int(self.__nonzero__())
+
+    def __repr__(self):
+
+        ''' Generate a string representation of this Key. '''
+
+        return "<%s of kind %s at ID %s>" % (self.__class__.__name__, self.kind, id(self) if not self.id else str(self.id))
+
+    __str__ = __unicode__ = __repr__
 
 
 ## AbstractModel
@@ -303,6 +342,12 @@ class AbstractModel(_model_parent()):
             chain = tuple([cls] + [i for i in reversed(chain)])
             return chain
 
+        def __repr__(cls):
+
+            ''' Generate a string representation of a Model class. '''
+
+            return '<Model \"%s.%s\">' % (cls.__module__, cls.__name__)
+
 
     ## AbstractModel.PropertyValue
     # Small, ultra-lightweight datastructure responsible for holding a property value bundle for an entity attribute.
@@ -324,7 +369,7 @@ class AbstractModel(_model_parent()):
 
             ''' Return a nicely-formatted representation string. '''
 
-            return "Value(\"%s\")%s" % (self[0], '*' if self[1] else '')
+            return "Value(%s)%s" % (('"%s"' % self[0]) if isinstance(self[0], basestring) else self[0].__repr__(), '*' if self[1] else '')
 
         def _as_dict(self):
 
@@ -360,6 +405,170 @@ class AbstractModel(_model_parent()):
         return "<%s %s with key \"%s\">" % (self.__kind__, str(self.__data__), str(self.key))
 
     __str__ = __unicode__ = __repr__
+
+    def __setattr__(self, name, value):
+
+        ''' Attribute write override. '''
+
+        if name.startswith('__') or name in self.__lookup__ or name == 'key':
+            super(AbstractModel, self).__setattr__(name, value)
+        else:
+            raise AttributeError("Cannot set nonexistent attribute \"%s\" of model class \"%s\"." % (name, self.kind))
+
+    def __context__(self, _type=None, value=None, traceback=None):
+
+        ''' Context enter/exit - apply explicit mode. '''
+
+        if traceback:
+            return False
+        self.__explicit__ = (not self.__explicit__)
+        return self
+
+    __enter__ = __exit__ = __context__
+
+    def __len__(self):
+
+        ''' Return the number of written properties. '''
+
+        return len(self.__data__)
+
+    __nonzero__ = __len__
+
+    def __iter__(self):
+
+        ''' Allow models to be used as dict-like generators. '''
+
+        for name in self.__lookup__:
+            value = self._get_value(name, default=Property._sentinel)
+            if (value == Property._sentinel and (not self.__explicit__)):
+                if self.__class__.__dict__[name]._default != Property._sentinel:
+                    yield name, self.__class__.__dict__[name]._default  # return a property's default in `implicit` mode, if any
+                continue  # skip unset properties without a default, except in `explicit` mode
+            yield name, value
+        raise StopIteration()
+
+    @property
+    def __dirty__(self):
+
+        ''' Indicate whether this model has been modified outside of persistence mechanisms. '''
+
+        for prop_value in self.__data__.itervalues():
+            if prop_value[1]: return True
+        return False
+
+    @property
+    def __persisted__(self):
+
+        ''' Indicate whether this model is consistently persisted. '''
+
+        return self.key.__persisted__
+
+    def _set_persisted(self, flag=False):
+
+        ''' Notify this entity that it has been persisted to storage. '''
+
+        self.key.__persisted__ = True
+        for name in self.__data__:  # iterate over set properties
+            # set value to previous, with `False` dirty flag
+            self._set_value(name, self._get_value(name, default=Property._sentinel), False)
+        return self
+
+    def _get_value(self, name, default=None):
+
+        ''' Retrieve the value of a named property on this Entity. '''
+
+        # calling with no args gives all values in (name, value) form
+        if not name:
+            values = []
+            for i in self.__lookup__:
+                values.append((i, self._get_value(i, default)))
+            return values
+
+        if name in self.__lookup__:
+            value = self.__data__.get(name, Property._sentinel)
+
+            if value:
+                return value.data
+            else:
+                # return system _EMPTY sentinel in explicit mode, if property is unset
+                if self.__explicit__ and value is Property._sentinel:
+                    return Property._sentinel
+
+                # otherwise return handed default, which is usually None
+                else:
+                    return default
+        raise AttributeError("Model \"%s\" has no property \"%s\"." % (self.kind, name))
+
+    def _set_value(self, name, value=_EMPTY, _dirty=True):
+
+        ''' Set (or reset) the value of a named property on this Entity. '''
+
+        # empty strings or dicts or iterables return self
+        if not name:
+            return self
+
+        # allow a dict or list of (name, value) pairs, just delegate to self and recurse
+        if isinstance(name, dict):
+            name = name.items()
+        if isinstance(name, (list, tuple)) and isinstance(name[0], tuple):
+            return [self._set_value(k, i, _dirty=_dirty) for k, i in name if k not in ('key', '_persisted')]  # filter out flags from caller
+
+        # allow a tuple of (name, value), for use in map/filter/etc
+        if isinstance(name, tuple):
+            name, value = name
+
+        # if it's a key, set through _set_key
+        if name == 'key':
+            self._set_key(value)
+
+        # check property lookup
+        if name in self.__lookup__:
+            # if it's a valid property, create a namedtuple value placeholder
+            self.__data__[name] = self.__class__._PropertyValue(value, _dirty)
+            return self
+        raise AttributeError("Model \"%s\" has no property \"%s\"." % (self.kind(), name))
+
+    def _get_key(self):
+
+        ''' Retrieve this Model's Key, if any. '''
+
+        return self.__key__
+
+    def _set_key(self, value=None, **kwargs):
+
+        ''' Set this Entity's key manually. '''
+
+        # unknown value
+        if value is not None:
+            if isinstance(value, basestring):
+                self.__key__ = Key.from_urlsafe(value)
+            elif isinstance(value, tuple):
+                self.__key__ = Key.from_raw(value)
+            elif isinstance(value, Key):
+                self.__key__ = value
+            else:
+                raise ValueError("Invalid key value (got: \"%s\")." % (value, kwargs))
+            return self.__key__._set_owner(self)
+
+        # URLsafe
+        if 'urlsafe' in kwargs:
+            self.__key__ = Key.from_urlsafe(kwargs['urlsafe'])
+
+        # constructed key
+        elif 'constructed' in kwargs:
+            self.__key__ = kwargs['constructed']
+
+        # raw key
+        elif 'raw' in kwargs:
+            self.__key__ = Key.from_raw(raw)
+
+        else:
+            raise ValueError("Could not operate on undefined key (value: \"%s\", kwargs: \"%s\")." % (value, kwargs))
+
+        # set key owner and return
+        return self.__key__._set_owner(self)
+
+    key = property(_get_key, _set_key)
 
 
 ## == Concrete Classes == ##
@@ -413,29 +622,6 @@ class Key(AbstractKey):
         self._set_parent(kwargs.get('parent'))  # kwarg-passed parent
         self.__persisted__ = kwargs.get('_persisted', False)  # if we *know* this is an existing key, this should be `true`
 
-    def __eq__(self, other):
-
-        ''' Test whether two keys are functionally identical. '''
-
-        # if schemas or classes don't match, immediate no. otherwise check all set values.
-        if not other: return other
-        if len(self.__schema__) != len(other.__schema__) or not isinstance(other, self.__class__): return False
-        return all([i for i in map(lambda x: hasattr(other, x) and (getattr(other, x) == getattr(self, x)), self.__schema__)])
-
-    def __nonzero__(self):
-
-        ''' Test whether a key is nonzero, indicating it does/does not have an ID. '''
-
-        return isinstance(self.__id__, (basestring, str, int, unicode))
-
-    def __repr__(self):
-
-        ''' Generate a string representation of this Key. '''
-
-        return "<%s of kind %s at ID %s>" % (self.__class__.__name__, self.kind, id(self) if not self.id else str(self.id))
-
-    __str__ = __unicode__ = __repr__
-
     ## = Property Setters = ##
     def _set_id(self, id):
 
@@ -485,6 +671,13 @@ class Key(AbstractKey):
         self.__namespace__ = namespace
         return self
 
+    def _set_owner(self, owner):
+
+        ''' Set the current owner. '''
+
+        self.__owner__ = owner
+        return self
+
     ## = Property Getters = ##
     def _get_id(self):
 
@@ -518,6 +711,12 @@ class Key(AbstractKey):
             return self.__namespace__
         return
 
+    def _get_owner(self):
+
+        ''' Retrieve this Key's owner, if any. '''
+
+        return self.__owner__
+
     def _get_ancestry(self):
 
         ''' Retrieve this Key's ancestry path. '''
@@ -535,8 +734,9 @@ class Key(AbstractKey):
     id = property(_get_id, _set_id)
     app = property(_get_app, _set_app)
     kind = property(_get_kind, _set_kind)
+    owner = property(_get_owner, None)  # restrict writing to `owner`
     parent = property(_get_parent, _set_parent)
-    ancestry = property(_get_ancestry, None)
+    ancestry = property(_get_ancestry, None)  # no writing to `ancestry` (derived)
     namespace = property(_get_namespace, _set_namespace)
 
     ## = Object Methods = ##
@@ -550,6 +750,9 @@ class Key(AbstractKey):
 
         ''' Delete a previously-constructed key from available persistence mechanisms. '''
 
+        if self.__owner__:
+            # if possible, delegate to owner model
+            return self.__owner__.__adapter__._delete(self)
         return self.__class__.__adapter__._delete(self)
 
     def flatten(self, join=False):
@@ -558,7 +761,7 @@ class Key(AbstractKey):
 
         flattened = tuple((i if not isinstance(i, self.__class__) else i.flatten(join)) for i in map(lambda x: getattr(self, x), reversed(self.__schema__)))
         if join:
-            return self.__class__.__separator__.join([u'' if i is None else unicode(i) for i in flattened]), flattened
+            return self.__class__.__separator__.join([u'' if i is None else unicode(i) for i in map(lambda x: x[0] if isinstance(x, tuple) else x, flattened)]), flattened
         return flattened
 
     def urlsafe(self, joined=None):
@@ -747,47 +950,6 @@ class Model(AbstractModel):
         # initialize internals and map any kwargs into data
         self._initialize(persisted)._set_value(properties, _dirty=(not persisted))
 
-    def __setattr__(self, name, value):
-
-        ''' Attribute write override. '''
-
-        if name.startswith('__') or name in self.__lookup__ or name == 'key':
-            super(Model, self).__setattr__(name, value)
-        else:
-            raise AttributeError("Cannot set nonexistent attribute \"%s\" of model class \"%s\"." % (name, self.kind))
-
-    def __context__(self, _type=None, value=None, traceback=None):
-
-        ''' Context enter/exit - apply explicit mode. '''
-
-        if traceback:
-            return False
-        self.__explicit__ = (not self.__explicit__)
-        return self
-
-    __enter__ = __exit__ = __context__
-
-    def __len__(self):
-
-        ''' Return the number of written properties. '''
-
-        return len(self.__data__)
-
-    __nonzero__ = __len__
-
-    def __iter__(self):
-
-        ''' Allow models to be used as dict-like generators. '''
-
-        for name in self.__lookup__:
-            value = self._get_value(name, default=Property._sentinel)
-            if (value == Property._sentinel and (not self.__explicit__)):
-                if self.__class__.__dict__[name]._default != Property._sentinel:
-                    yield name, self.__class__.__dict__[name]._default  # return a property's default in `implicit` mode, if any
-                continue  # skip unset properties without a default, except in `explicit` mode
-            yield name, value
-        raise StopIteration()
-
     def _initialize(self, _persisted):
 
         ''' Initialize core properties. '''
@@ -795,120 +957,6 @@ class Model(AbstractModel):
         # initialize core properties
         self.__data__, self.__explicit__, self.__initialized__ = {}, False, True
         return self
-
-    def _get_key(self):
-
-        ''' Retrieve this Model's Key, if any. '''
-
-        return self.__key__
-
-    def _set_key(self, value=None, **kwargs):
-
-        ''' Set this Entity's key manually. '''
-
-        # unknown value
-        if value is not None:
-            if isinstance(value, basestring):
-                self.__key__ = Key.from_urlsafe(value)
-            elif isinstance(value, tuple):
-                self.__key__ = Key.from_raw(value)
-            elif isinstance(value, Key):
-                self.__key__ = value
-
-        # URLsafe
-        if 'urlsafe' in kwargs:
-            self.__key__ = Key.from_urlsafe(kwargs['urlsafe'])
-
-        # constructed key
-        elif 'constructed' in kwargs:
-            self.__key__ = kwargs['constructed']
-
-        # raw key
-        elif 'raw' in kwargs:
-            self.__key__ = Key.from_raw(raw)
-
-    key = property(_get_key, _set_key)
-
-    @property
-    def __dirty__(self):
-
-        ''' Indicate whether this model has been modified outside of persistence mechanisms. '''
-
-        for prop_value in self.__data__.itervalues():
-            if prop_value[1]: return True
-        return False
-
-    @property
-    def __persisted__(self):
-
-        ''' Indicate whether this model is consistently persisted. '''
-
-        return self.key.__persisted__
-
-    def _set_persisted(self, flag=False):
-
-        ''' Notify this entity that it has been persisted to storage. '''
-
-        self.key.__persisted__ = True
-        for name in self.__data__:  # iterate over set properties
-            # set value to previous, with `False` dirty flag
-            self._set_value(name, self._get_value(name, default=Property._sentinel), False)
-        return self
-
-    def _get_value(self, name, default=None):
-
-        ''' Retrieve the value of a named property on this Entity. '''
-
-        # calling with no args gives all values in (name, value) form
-        if not name:
-            values = []
-            for i in self.__lookup__:
-                values.append((i, self._get_value(i, default)))
-            return values
-
-        if name in self.__lookup__:
-            value = self.__data__.get(name, Property._sentinel)
-
-            if value:
-                return value.data
-            else:
-                # return system _EMPTY sentinel in explicit mode, if property is unset
-                if self.__explicit__ and value is Property._sentinel:
-                    return Property._sentinel
-
-                # otherwise return handed default, which is usually None
-                else:
-                    return default
-        raise AttributeError("Model \"%s\" has no property \"%s\"." % (self.kind, name))
-
-    def _set_value(self, name, value=_EMPTY, _dirty=True):
-
-        ''' Set (or reset) the value of a named property on this Entity. '''
-
-        # empty strings or dicts or iterables return self
-        if not name:
-            return self
-
-        # allow a dict or list of (name, value) pairs, just delegate to self and recurse
-        if isinstance(name, dict):
-            name = name.items()
-        if isinstance(name, (list, tuple)) and isinstance(name[0], tuple):
-            return [self._set_value(k, i, _dirty=_dirty) for k, i in name if k not in ('key', '_persisted')]  # filter out flags from caller
-
-        # allow a tuple of (name, value), for use in map/filter/etc
-        if isinstance(name, tuple):
-            name, value = name
-
-        # if it's a key, set through _set_key
-        if name == 'key':
-            self._set_key(value)
-
-        # check property lookup
-        if name in self.__lookup__:
-            # if it's a valid property, create a namedtuple value placeholder
-            self.__data__[name] = self.__class__._PropertyValue(value, _dirty)
-            return self
-        raise AttributeError("Model \"%s\" has no property \"%s\"." % (self.kind, name))
 
     ## = Class Methods = ##
     @classmethod
@@ -936,6 +984,17 @@ class Model(AbstractModel):
             return cls.__adapter__._get(Key(cls.kind(), name))
         raise ValueError('Must pass either a Key or key name into `%s.get`.' % cls.kind())
 
+    @classmethod
+    def query(cls, **kwargs):
+
+        ''' Start building a new `model.Query` object, if the underlying adapter implements `IndexedModelAdapter`. '''
+
+        if issubclass(cls.__adapter__, abstract.IndexedModelAdapter):  # we implement indexer operations
+            raise NotImplementedError()  # @TODO: query functionality needs to be built-out
+
+        else:
+            raise AttributeError("Adapter \"%s\" (currently selected for model \"%s\") does not support indexing, and therefore can't support `model.Query` objects." % (cls.__adapter__.__class__.__name__, cls.kind()))
+
     ## = Public Methods = ##
     def put(self, adapter=None):
 
@@ -945,64 +1004,3 @@ class Model(AbstractModel):
         if not adapter:
             adapter = self.__class__.__adapter__
         return adapter._put(self)
-
-    def update(self, mapping={}, **kwargs):
-
-        ''' Update properties on this model via a merged dict of mapping + kwargs. '''
-
-        if kwargs: mapping.update(kwargs)
-        map(lambda x: setattr(self, x[0], x[1]), mapping.items())
-        return self
-
-    def to_dict(self, exclude=tuple(), include=tuple(), filter=None, map=None, _all=False, filter_fn=filter, map_fn=map):
-
-        ''' Export this Entity as a dictionary, excluding/including/filtering/mapping as we go. '''
-
-        dictionary = {}  # return dictionary
-        _default_map = False  # flag for default map lambda, so we can exclude only on custom map
-        _default_include = False  # flag for including properties unset and explicitly listed in a custom inclusion list
-
-        if not _all: _all = self.__explicit__  # explicit mode implies returning all properties raw
-
-        if not include:
-            include = self.__lookup__  # default include list is model properties
-            _default_include = True  # mark flag that we used the default
-
-        if not map:
-            map = lambda x: x  # substitute no map with a passthrough
-            _default_map = True
-        
-        if not filter: filter = lambda x: True  # substitute no filter with a passthrough
-
-        # freeze our comparison sets
-        exclude, include = frozenset(exclude), frozenset(include)
-
-        for name in self.__lookup__:
-
-            # run map fn over (name, value)
-            name, value = map((name, self._get_value(name, default=self.__class__.__dict__[name]._default)))  # pull with property default
-
-            # run filter fn over (name, vlaue)
-            filtered = filter((name, value))
-            if not filtered: continue
-
-            # filter out via exclude/include
-            if name in exclude:
-                continue
-            if not _default_include:
-                if name not in include: continue
-
-            if value is Property._sentinel:  # property is unset
-                if not _all and not ((not _default_include) and name in include):  # if it matches an item in a custom include list, and/or we don't want all properties...
-                    continue  # skip if all properties not requested
-                else:
-                    if not self.__explicit__:  # None == sentinel in implicit mode
-                        value = None
-            dictionary[name] = value        
-        return dictionary
-
-    def to_json(self, *args, **kwargs):
-
-        ''' Export this Entity as a JSON string, excluding/including/filtering/mapping as we go. '''
-
-        return json.dumps(self.to_dict(*args, **kwargs))

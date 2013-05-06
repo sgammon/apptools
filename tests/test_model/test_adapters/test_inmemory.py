@@ -20,6 +20,9 @@
 
 '''
 
+# stdlib
+import unittest
+
 # apptools test
 from apptools.tests import AppToolsTest
 
@@ -64,7 +67,7 @@ class InMemoryAdapterTests(AppToolsTest):
         m = InMemoryModel(key=model.Key(InMemoryModel.kind(), "NamedEntity"), string="suphomies", integer=[4, 5, 6, 7])
         m_k = m.put()
 
-        self.assertTrue((m_k.urlsafe() in inmemory._metadata['lookup']))
+        self.assertTrue((m_k.urlsafe() in inmemory._metadata['__key__']))
 
         # simulate getting entity
         explicit_key = model.Key(InMemoryModel.kind(), "NamedEntity")
@@ -84,7 +87,7 @@ class InMemoryAdapterTests(AppToolsTest):
         m = InMemoryModel(string="hello", integer=[1, 2, 3])
         m_k = m.put()
 
-        self.assertTrue((m_k.urlsafe() in inmemory._metadata['lookup']))
+        self.assertTrue((m_k.urlsafe() in inmemory._metadata['__key__']))
 
         # make sure flags match
         self.assertEqual(m_k, m.key)
@@ -110,14 +113,14 @@ class InMemoryAdapterTests(AppToolsTest):
         m_k = m.put()
 
         # make sure it's known
-        self.assertTrue((m_k.urlsafe() in inmemory._metadata['lookup']))
+        self.assertTrue((m_k.urlsafe() in inmemory._metadata['__key__']))
 
         # delete it
         res = m_k.delete()
 
         # make sure it's unknown and gone
         self.assertTrue(res)
-        self.assertTrue((m_k.urlsafe() not in inmemory._metadata['lookup']))
+        self.assertTrue((m_k.urlsafe() not in inmemory._metadata['__key__']))
 
     def test_delete_invalid_entity(self):
 
@@ -127,14 +130,14 @@ class InMemoryAdapterTests(AppToolsTest):
         m_k = model.Key("SampleKind", "____InvalidKey____")
 
         # make sure it's unknown
-        self.assertTrue((m_k.urlsafe() not in inmemory._metadata['lookup']))
+        self.assertTrue((m_k.urlsafe() not in inmemory._metadata['__key__']))
 
         # delete it
         res = m_k.delete()
 
         # make sure it's unknown, and we couldn't delete it
         self.assertTrue((not res))
-        self.assertTrue((m_k.urlsafe() not in inmemory._metadata['lookup']))
+        self.assertTrue((m_k.urlsafe() not in inmemory._metadata['__key__']))
 
     def test_allocate_ids(self):
 
