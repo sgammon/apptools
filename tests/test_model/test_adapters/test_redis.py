@@ -2,12 +2,13 @@
 
 '''
 
-    apptools2: model key tests
+    apptools2: redis adapter tests
     -------------------------------------------------
     |                                               |
-    |   `apptools.tests.model.descriptor`           |
+    |   `apptools.tests.model.adapter.redis`        |
     |                                               |
-    |   test cases for the `model.Property` class.  |
+    |   this package contains test cases for the    |
+    |   `RedisAdapter` model adapter class.         |
     |                                               |
     -------------------------------------------------
     |   authors:                                    |
@@ -19,14 +20,21 @@
 
 '''
 
-# apptools tests
+# stdlib
+import unittest
+
+# apptools test
 from apptools.tests import AppToolsTest
 
+# apptools model API
+from apptools import model
+from apptools.model import adapter
 
-## PropertyTests
-# Tests that the Property class works properly.
-class PropertyTests(AppToolsTest):
 
-    ''' Tests `model.Property`. '''
+## RedisAdapterTests
+# Tests builtin core model adapters (JSON/dict/msgpack).
+class RedisAdapterTests(AppToolsTest):
+
+    ''' Tests `model.adapter.core`. '''
 
     pass

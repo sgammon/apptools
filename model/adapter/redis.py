@@ -38,7 +38,7 @@ from apptools.util import datastructures
 # resolve msgpack
 try:
     import msgpack
-except ImportError as e:
+except ImportError as e:  # pragma: no cover
     _MSGPACK = False  # indicate no msgpack support
 else:
     _MSGPACK = True  # indicate msgpack support
@@ -47,7 +47,7 @@ else:
 try:
     ## force absolute import to avoid infinite recursion
     redis = _redis_client = __import__('redis', locals(), globals(), [], 0)
-except ImportError as e:
+except ImportError as e:  # pragma: no cover
     _REDIS = False
 else:
     _REDIS = True
@@ -55,7 +55,7 @@ else:
 # resolve gevent
 try:
     import gevent
-except ImportError as e:
+except ImportError as e:  # pragma: no cover
     _GEVENT = False
 else:
     _GEVENT = True
@@ -289,13 +289,13 @@ class RedisAdapter(IndexedModelAdapter):
         if not _default_profile:
 
             ## Resolve Redis config
-            if not servers:
+            if not servers:  # pragma: no cover
                 return None  # no servers to connect to (on noez)
 
             for name, config in servers.items():
                 if name == 'default' or config.get('default', False) == True:
                     _default_profile = name
-                elif not _default_profile:
+                elif not _default_profile:  # pragma: no cover
                     _default_profile = name
                 _server_profiles[name] = config
 
@@ -497,19 +497,19 @@ class RedisAdapter(IndexedModelAdapter):
             return _encoder(joined)
         return joined
 
-    def write_indexes(cls, writes):
+    def write_indexes(cls, writes):  # pragma: no cover
 
         ''' Write a batch of index updates generated earlier via the method above. '''
 
         raise NotImplementedError()
 
-    def clean_indexes(cls, key):
+    def clean_indexes(cls, key):  # pragma: no cover
 
         ''' Clean indexes and index entries matching a key. '''
 
         raise NotImplementedError()
 
-    def execute_query(cls, spec):
+    def execute_query(cls, spec):  # pragma: no cover
 
         ''' Execute a query across one (or multiple) indexed properties. '''
 

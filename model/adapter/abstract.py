@@ -35,7 +35,7 @@ from apptools.util import datastructures
 # appconfig
 try:
     import config
-except ImportError as e:
+except ImportError as e:  # pragma: no cover
     _APPCONFIG = False
 else:
     _APPCONFIG = True
@@ -64,7 +64,7 @@ class ModelAdapter(object):
     _config_path = 'apptools.model'
 
     @decorators.classproperty
-    def config(cls):
+    def config(cls):  # pragma: no cover
 
         ''' Cached config shortcut. '''
 
@@ -89,7 +89,7 @@ class ModelAdapter(object):
         return json
 
     @decorators.classproperty
-    def encoder(cls):
+    def encoder(cls):  # pragma: no cover
 
         ''' Encode a stringified blob for storage. '''
 
@@ -97,7 +97,7 @@ class ModelAdapter(object):
         return _encoder
 
     @decorators.classproperty
-    def compressor(cls):
+    def compressor(cls):  # pragma: no cover
 
         ''' Load and return the appropriate compression codec. '''
 
@@ -107,6 +107,9 @@ class ModelAdapter(object):
     def _get(self, key):
 
         ''' Internal method for retrieving an entity by Key. '''
+
+        if self.config.get('debug', False):  # pragma: no cover
+            self.logging.info("Retrieving entity with Key: \"%s\"." % key)
 
         # immediately fail with no overriden `get`
         if not hasattr(self.__class__, 'get') and self.__class__ != ModelAdapter:  # pragma: no cover
@@ -142,19 +145,25 @@ class ModelAdapter(object):
 
         ''' Internal method for persisting an Entity. '''
 
+        if self.config.get('debug', False):  # pragma: no cover
+            self.logging.info("Saving entity: \"%s\"." % entity)
+
         # resolve model class
         _model = self.registry.get(entity.kind())
         if not _model: raise ValueError('Could not resolve model class "%s".' % model.kind())
 
-        # validate entity, will raise validation exceptions
-        for name, value in entity.to_dict(_all=True).items(): _model.__dict__[name].valid(entity)
+        with entity:  # enter explicit mode
 
-        # resolve key if we have a zero-y key or key class
-        if not entity.key or entity.key is None:
-            entity._set_key(_model.__keyclass__(entity.kind(), self.allocate_ids(_model.__keyclass__, entity.kind())))  # build an ID-based key
+            # validate entity, will raise validation exceptions
+            for name, value in entity.to_dict(_all=True).items():
+                _model.__dict__[name].valid(entity)
 
-        # flatten key/entity
-        joined, flattened = entity.key.flatten(True)
+            # resolve key if we have a zero-y key or key class
+            if not entity.key or entity.key is None:
+                entity._set_key(_model.__keyclass__(entity.kind(), self.allocate_ids(_model.__keyclass__, entity.kind())))  # build an ID-based key
+
+            # flatten key/entity
+            joined, flattened = entity.key.flatten(True)
 
         # delegate
         return self.put((self.encode_key(joined, flattened) or entity.key.urlsafe(joined), flattened), entity._set_persisted(True), _model)
@@ -163,6 +172,9 @@ class ModelAdapter(object):
 
         ''' Internal method for deleting an entity by Key. '''
 
+        if self.config.get('debug', False):  # pragma: no cover
+            self.logging.info("Deleting Key: \"%s\"." % key)
+
         joined, flattened = key.flatten(True)
         return self.delete((self.encode_key(joined, flattened) or key.urlsafe(joined), flattened))
 
@@ -170,6 +182,9 @@ class ModelAdapter(object):
     def _register(cls, model):
 
         ''' Internal method for registering a Model class with this adapter's registry. '''
+
+        if cls.config.get('debug', False):
+            cls.logging.info("Registered Model class: \"%s\"." % model)
 
         cls.registry[model.kind()] = model
         return model
@@ -394,8 +409,14 @@ class IndexedModelAdapter(ModelAdapter):
                 continue
 
         else:
+            if cls.config.get('debug', False):  # pragma: no cover
+                cls.logging.info("Generated indexes for clean: \"%s\" under key \"%s\"." % (_meta_indexes, encoded_key))
+
             # we're cleaning indexes
             return encoded_key, _meta_indexes
+
+        if cls.config.get('debug', False):  # pragma: no cover
+            cls.logging.info("Generated indexes for write: META(\"%s\"), VALUE(\"%s\") under key \"%s\"." % (_meta_indexes, _property_indexes, encoded_key))
 
         # we're writing indexes
         return encoded_key, _meta_indexes, _property_indexes

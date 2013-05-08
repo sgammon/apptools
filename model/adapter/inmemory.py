@@ -144,7 +144,7 @@ class InMemoryAdapter(IndexedModelAdapter):
         global _datastore
 
         # extract key
-        if not isinstance(key, tuple):
+        if not isinstance(key, tuple):  # pragma: no cover
             encoded, flattened = key.flatten(True)
         else:
             encoded, flattened = key
@@ -210,7 +210,7 @@ class InMemoryAdapter(IndexedModelAdapter):
         for write in meta + [value for serializer, value in properties]:
 
             # filter out strings, convert to 1-tuples
-            if isinstance(write, basestring):
+            if isinstance(write, basestring):  # pragma: no cover
                 write = (write,)
 
             if len(write) > 3:  # hashed/mapped index
@@ -218,8 +218,8 @@ class InMemoryAdapter(IndexedModelAdapter):
                 # extract write, inflate
                 index, path, value = write[0], write[1:-1], write[-1]
 
-                # init index hash
-                if index not in _metadata:
+                # init index hash (mostly covers custom indexes)
+                if index not in _metadata:  # pragma: no cover
                     _metadata[index] = {(path, value): set()}
 
                 elif (path, value) not in _metadata[index]:
@@ -229,7 +229,7 @@ class InMemoryAdapter(IndexedModelAdapter):
                 _metadata[index][(path, value)].add(encoded)
 
                 # add reverse index
-                if encoded not in _metadata[cls._reverse_prefix]:
+                if encoded not in _metadata[cls._reverse_prefix]:  # pragma: no cover
                     _metadata[cls._reverse_prefix][encoded] = set()
                 _metadata[cls._reverse_prefix][encoded].add((index, path, value))
 
@@ -263,7 +263,7 @@ class InMemoryAdapter(IndexedModelAdapter):
                 index, value = write
 
                 # init index hash
-                if index not in _metadata:
+                if index not in _metadata:  # pragma: no cover
                     _metadata[index] = {value: set()}
 
                 # init value set
@@ -293,19 +293,19 @@ class InMemoryAdapter(IndexedModelAdapter):
                     continue
 
                 # provision index
-                if index not in _metadata:
+                if index not in _metadata:  # pragma: no cover
                     _metadata[index] = {}
 
                 # add value to index
                 _metadata[index][encoded] = set()  # provision with a one-index entry
 
                 # add reverse index
-                if encoded not in _metadata[cls._reverse_prefix]:
+                if encoded not in _metadata[cls._reverse_prefix]:  # pragma: no cover
                     _metadata[cls._reverse_prefix][encoded] = set()
                 _metadata[cls._reverse_prefix][encoded].add((index,))
                 continue
 
-            else:  # invalid mapping
+            else:  # pragma: no cover
                 raise ValueError("Index mapping tuples must have at least 2 entries, for a simple set index, or more for a hashed index.")
 
     @classmethod
@@ -331,7 +331,7 @@ class InMemoryAdapter(IndexedModelAdapter):
                     i = (i,)
 
                 # check cleanlist
-                if i in _cleaned:
+                if i in _cleaned:  # pragma: no cover
                     continue  # we've already cleaned this directive
                 else:
                     _cleaned.add(i)
@@ -351,7 +351,8 @@ class InMemoryAdapter(IndexedModelAdapter):
 
                         continue
 
-                    if isinstance(path, basestring):
+                    # (mostly covers custom indexes)
+                    if isinstance(path, basestring):  # pragma: no cover
                         if index in _metadata and path in _metadata[index]:
                             _metadata[index][path].remove(encoded)
 
@@ -379,7 +380,6 @@ class InMemoryAdapter(IndexedModelAdapter):
                         continue  # skip keys, that's done by `delete()`
                     if encoded in _metadata[i[0]]:
                         del _metadata[i[0]][encoded]
-                    continue
 
         if encoded in _metadata[cls._reverse_prefix]:
             # last step: remove reverse index for key
@@ -388,8 +388,8 @@ class InMemoryAdapter(IndexedModelAdapter):
         return _cleaned
 
     @classmethod
-    def execute_query(cls, spec):
+    def execute_query(cls, spec):  # pragma: no cover
 
         ''' Execute a query across one (or multiple) indexed properties. '''
 
-        return
+        raise NotImplementedError()

@@ -48,7 +48,7 @@ class MetaFactoryTests(AppToolsTest):
         # constructing metafactory should raise an ABC exception
         self.assertTrue(inspect.isabstract(MetaFactory))
         with self.assertRaises(NotImplementedError):
-            a = MetaFactory()
+            MetaFactory()
 
     def test_abstract_enforcement(self):
 
@@ -62,7 +62,7 @@ class MetaFactoryTests(AppToolsTest):
             pass
 
         with self.assertRaises(TypeError):
-            c = InsolentClass(InsolentClass.__name__, (MetaFactory, type), dict([(k, v) for k, v in InsolentClass.__dict__.items()]))
+            InsolentClass(InsolentClass.__name__, (MetaFactory, type), dict([(k, v) for k, v in InsolentClass.__dict__.items()]))
 
     def test_resolve_adapters(self):
 

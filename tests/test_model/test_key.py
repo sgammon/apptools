@@ -20,7 +20,11 @@
 
 '''
 
+# stdlib
+import unittest
+
 # apptools keys
+from apptools import model
 from apptools.model import Key
 from apptools.model import AbstractKey
 
@@ -80,41 +84,40 @@ class KeyTests(AppToolsTest):
         self.assertTrue(type(k) == Key)
         self.assertTrue(issubclass(Key, object))
 
-    def test_key_format(self):
-
-        ''' Make sure there's a proper format spec on `model.Key`. '''
-
-        pass  # @TODO: test __schema__
-
-    def test_key_set_attribute(self):
-
-        ''' Try setting an unknown and known attribute. '''
-
-        pass  # @TODO: test __setattr__
-
-    def test_key_adapter(self):
-
-        ''' Make sure the adapter is attached correctly to `model.Key`. '''
-
-        pass  # @TODO: test __adapter__
-
     def test_key_stringify(self):
 
-        ''' Test the string representation of a Key object. '''
+        ''' Test the string representation of a `Key` object. '''
 
-        pass  # @TODO: test __repr__()
+        # build and stringify key
+        k = Key("SampleKind", "sample_id")
+        x = str(k)
 
-    def test_key_auto_id(self):
+        # make sure the kind is somewhere
+        self.assertTrue(("kind" in x))
+        self.assertTrue(("SampleKind" in x))
 
-        ''' Test an integer-based ID field. '''
+        # make sure the ID is somewhere
+        self.assertTrue(("id" in x))
+        self.assertTrue(("sample_id" in x))
 
-        pass  # @TODO: test auto ID's
+        # make sure the key class is somewhere
+        self.assertTrue(('Key' in x))
 
-    def test_namespace(self):
+    def test_key_class_stringify(self):
 
-        ''' Test a namespaced Key. '''
+        ''' Test the string representation of a `Key` class. '''
 
-        pass  # @TODO: test namespacing
+        # build and stringify key
+        x = str(Key)
+
+        # make sure the kind is somewhere
+        self.assertTrue(("kind" in x))
+
+        # make sure the ID is somewhere
+        self.assertTrue(("id" in x))
+
+        # make sure the key class is somewhere
+        self.assertTrue(('Key' in x))
 
     def test_abstract_key(self):
 
@@ -157,12 +160,6 @@ class KeyTests(AppToolsTest):
         self.assertEqual(Key(raw=joined), k)
         self.assertEqual(Key.from_raw(joined), k)
 
-    def test_json_key_format(self):
-
-        ''' Try constructing a key from JSON. '''
-
-        pass  # @TODO: JSON functionality
-
     def test_urlsafe_key_format(self):
 
         ''' Try constructing a key from its URL-encoded form. '''
@@ -195,3 +192,121 @@ class KeyTests(AppToolsTest):
         # key with no ID should evaluate to falsy
         self.assertTrue(nk)
         self.assertTrue(not k)
+
+    def test_key_len(self):
+
+        ''' Test the length of a `Key`, which should only be 0 in the case of an incomplete key. '''
+
+        k, nk = Key("Sample"), Key("Sample", "sample")
+
+        # a key with no ID should evaluate to 0 via len()
+        self.assertEqual(len(k), 0)
+        self.assertEqual(len(nk), 1)
+
+    def test_key_with_model_class_kind(self):
+
+        ''' Test making a `Key` via using a model class as the kind. '''
+
+        ## KindedModel
+        # Used to test using classes for kinds in `model.Key`.
+        class KindedModel(model.Model):
+
+            ''' Sample for testing key creation from model classes. '''
+
+            string = basestring
+
+        # make keys
+        k1 = model.Key("KindedModel", "test_id")
+        k2 = model.Key(KindedModel, "test_id")
+        ko = model.Key(KindedModel)
+
+        # test keys
+        self.assertEqual(k1.kind, "KindedModel")
+        self.assertEqual(k1.id, "test_id")
+        self.assertEqual(k2.kind, k1.kind)
+        self.assertEqual(k2.id, k2.id)
+
+    def test_key_ancestry(self):
+
+        ''' Make a key with ancestry and test it a bunch. '''
+
+        # manufacture keys
+        pk = model.Key("ParentKind", "parent_id")
+        ck = model.Key("ChildKind", "child_id", parent=pk)
+        gk = model.Key("GrandchildKind", "grandchild_id", parent=ck)
+        ggk = model.Key("GreatGrandchildKind", "great_grandchild_id", parent=gk)
+
+        # for each key, make sure parent is set
+        self.assertEqual(pk.parent, None)
+        self.assertEqual(ck.parent, pk)
+        self.assertEqual(gk.parent, ck)
+        self.assertEqual(ggk.parent, gk)
+
+        # for each key, make sure ancestry works
+        pk_ancestry = [i for i in pk.ancestry]
+        ck_ancestry = [i for i in ck.ancestry]
+        gk_ancestry = [i for i in gk.ancestry]
+        ggk_ancestry = [i for i in ggk.ancestry]
+
+        # test ancestry paths
+        self.assertEqual(len(pk_ancestry), 1)
+        self.assertEqual(len(ck_ancestry), 2)
+        self.assertEqual(len(gk_ancestry), 3)
+        self.assertEqual(len(ggk_ancestry), 4)
+
+        # len of a key should always be 1 unless it has ancestry, then it's the length of the ancestry chain
+        self.assertEqual(len(pk), 1)
+        self.assertEqual(len(ck), 2)
+        self.assertEqual(len(gk), 3)
+        self.assertEqual(len(ggk), 4)
+
+        # ... however all keys should test nonzero-ness (all keys should be nonzero)
+        for k in (pk, ck, gk, ggk):
+            self.assertTrue(k)
+
+    def test_key_with_overflowing_schema(self):
+
+        ''' Test construction of a `Key` with too many schema items. '''
+
+        # try and make a key with a ton of arguments
+        with self.assertRaises(TypeError):
+            k = model.Key("SampleKind", "id", "coolstring", "whatdowedo", "whenwehave", "thismanyarguments")
+
+    def test_key_construct_multiple_formats(self):
+
+        ''' Test constuction of a `Key` with multiple formats, which is not supported. '''
+
+        # sample key
+        ok = model.Key("Sample", "sample_id")
+
+        # try and make a key with multiple formats
+        with self.assertRaises(TypeError):
+            model.Key(raw=ok.flatten(False)[1], urlsafe=ok.urlsafe())
+
+    @unittest.skip("Test is not yet implemented.")
+    def test_key_auto_id(self):
+
+        ''' Test an integer-based ID field. '''
+
+        pass  # @TODO: test auto ID's
+
+    @unittest.skip("Test is not yet implemented.")
+    def test_key_format(self):
+
+        ''' Make sure there's a proper format spec on `model.Key`. '''
+
+        pass  # @TODO: test __schema__
+
+    @unittest.skip("Test is not yet implemented.")
+    def test_key_set_attribute(self):
+
+        ''' Try setting an unknown and known attribute. '''
+
+        pass  # @TODO: test __setattr__
+
+    @unittest.skip("Test is not yet implemented.")
+    def test_key_adapter(self):
+
+        ''' Make sure the adapter is attached correctly to `model.Key`. '''
+
+        pass  # @TODO: test __adapter__

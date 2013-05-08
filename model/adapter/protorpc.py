@@ -37,7 +37,7 @@ try:
     # force absolute import to prevent infinite recursion
 	protorpc = __import__('protorpc', tuple(), tuple(), [], -1)
 
-except ImportError as e:
+except ImportError as e:  # pragma: no cover
 	# flag as unavailable
 	_PROTORPC, _root_message_class = False, object
 

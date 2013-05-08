@@ -24,6 +24,18 @@
 import abc
 import json
 import inspect
+import unittest
+
+# appconfig
+try:
+    import config; _APPCONFIG = True
+except ImportError as e:  # pragma: no cover
+    _APPCONFIG = False
+else:
+    # set debug mode for all model-related stuff
+    config.config['apptools.model']['debug'] = True
+    for k in filter(lambda x: x.startswith('apptools.model'), config.config.iterkeys()):
+        config.config[k]['debug'] = True
 
 # apptools model API
 from apptools import model
@@ -56,8 +68,8 @@ class Person(model.Model):
 
     ''' A human being. '''
 
-    firstname = basestring
-    lastname = basestring
+    firstname = basestring, {'indexed': True}
+    lastname = basestring, {'indexed': True}
     active = bool, {'default': True}
     cars = Car, {'repeated': True}
 
@@ -93,6 +105,35 @@ class ModelTests(AppToolsTest):
 
         # test unsets
         self.assertEqual(person.lastname, None)
+
+        # test __repr__
+        cls = str(Person)
+        obj = str(person)
+
+        # test class representations
+        self.assertTrue(("Person" in cls))
+        self.assertTrue(("lastname" in cls))
+        self.assertTrue(("firstname" in cls))
+
+        # test object representations
+        self.assertTrue(("Person" in obj))
+        self.assertTrue(("lastname" in obj))
+        self.assertTrue(("firstname" in obj))
+        self.assertTrue(("John" in obj))
+
+    def test_invalid_model_adapter(self):
+
+        ''' Try an invalid model adapter, which should raise `RuntimeError`. '''
+
+        with self.assertRaises(RuntimeError):
+
+            ## InvalidAdapterModel
+            # Tests an invalid, but explicitly listed, model adapter.
+            class InvalidAdapterModel(model.Model):
+
+                __adapter__ = 'DumbInvalidModelAdapter'
+
+                prop1 = basestring
 
     def test_model_inheritance(self):
 
@@ -182,7 +223,7 @@ class ModelTests(AppToolsTest):
 
         # try directly-instantiation
         with self.assertRaises(TypeError):
-            m = model.AbstractModel()
+            (model.AbstractModel())
 
     def test_concrete_model(self):
 
@@ -191,9 +232,21 @@ class ModelTests(AppToolsTest):
         ## test simple construction
         self.assertIsInstance(Person(), Person)
 
-        ## test direct subclass inheritance
-        class SampleModel(model.Model): parent = basestring
-        class SampleSubModel(SampleModel): child = basestring
+        ## SampleModel
+        # Test parent model class.
+        class SampleModel(model.Model):
+
+            ''' Test parent model class. '''
+
+            parent = basestring
+
+        ## SampleSubModel
+        # Test child model class.
+        class SampleSubModel(SampleModel):
+
+            ''' Test child model class. '''
+
+            child = basestring
 
         ## test properties
         self.assertTrue(hasattr(SampleModel, 'parent'))
@@ -454,14 +507,245 @@ class ModelTests(AppToolsTest):
         p.firstname = 'John'
         self.assertTrue(p)  # non-empty model is not falsy
 
-    def test_parent(self):
+    def test_get_invalid_property(self):
 
-        ''' Test ancestor functionality with a parented Model. '''
+        ''' Try getting an invalid model property. '''
 
-        pass  # @TODO: test parented models
+        # sample person
+        p = Person()
 
-    def test_raw(self):
+        # should be sealed off by `__slots__`
+        with self.assertRaises(AttributeError):
+            (p.blabble)
 
-        ''' Try serializing a Model into and out of its raw form. '''
+        # should be sealed off by metaclass-level `__slots__`
+        with self.assertRaises(AttributeError):
+            (Person.blabble)
 
-        pass  # @TODO: raw entity format
+        # should be sealed off by good coding practices (lolz)
+        with self.assertRaises(AttributeError):
+            p._get_value('blabble')
+
+    def test_get_value_all_properties(self):
+
+        ''' Try getting *all* properties via `_get_value`. '''
+
+        # sample person
+        p = Person(firstname='John', lastname='Doe')
+        properties = p._get_value(None)
+
+        # should be a list of tuples
+        self.assertEqual(len(properties), 4)
+        self.assertIsInstance(properties, list)
+        self.assertIsInstance(properties[0], tuple)
+
+        # should retrieve even unset properties (but they should be set to `None`, not the _EMPTY sentinel of course)
+        for k, v in properties:
+            self.assertEqual(v, getattr(p, k))
+
+    def test_model_getitem_setitem(self):
+
+        ''' Test a model's compliance with Python's Item API. '''
+
+        # sample person
+        p = Person(firstname='John')
+
+        # test __getitem__
+        self.assertEqual(p.firstname, 'John')
+        self.assertEqual(p['firstname'], 'John')
+
+        # test __setitem__
+        p['lastname'] = 'Gammon'
+        self.assertEqual(p.lastname, 'Gammon')
+
+        # try getting a nonexistent property, which should raise `KeyError` instead of `AttributeError`
+        with self.assertRaises(KeyError):
+            (p['invalidproperty'])
+
+        # make sure `AttributeError` still works properly
+        with self.assertRaises(AttributeError):
+            (p.invalidproperty)
+
+    def test_model_setvalue(self):
+
+        ''' Test the protected method `_set_value`, which is used by Model API internals. '''
+
+        # sample person
+        p = Person(firstname='John')
+
+        # try writing a new key
+        x = p._set_value('key', model.Key(Person, "john"))
+        self.assertEqual(x, p)
+
+        # try writing to invalid property
+        with self.assertRaises(AttributeError):
+            p._set_value('invalidproperty', 'value')
+
+        # quick test via descriptor API, which should also raise `AttributeError`
+        with self.assertRaises(AttributeError):
+            Person.__dict__['firstname'].__set__(None, 'invalid')
+
+    def test_model_setkey(self):
+
+        ''' Test the protected method `_set_key`, which is used by Model API internals. '''
+
+        # sample person
+        p = Person(firstname='John')
+
+        # try writing an invalid key
+        with self.assertRaises(TypeError):
+            p._set_key(5.5)
+
+        # try writing via kwargs
+        k = model.Key(Person, "john")
+
+        # try constructing via urlsafe
+        p._set_key(urlsafe=k.urlsafe())
+
+        # try constructing via raw
+        p._set_key(raw=k.flatten(False)[1])
+
+        # try already-constructed via kwargs
+        p._set_key(constructed=k)
+
+        # try providing both a value and formats, which should fail
+        with self.assertRaises(TypeError):
+            p._set_key(k, urlsafe=k.urlsafe())
+
+        # try providing multiple formats, which should fail
+        with self.assertRaises(TypeError):
+            p._set_key(urlsafe=k.urlsafe(), raw=k.flatten(False)[1])
+
+        # try passing nothing, which should fail
+        with self.assertRaises(TypeError):
+            p._set_key(None)
+
+    def test_early_mutate(self):
+
+        ''' Try setting attributes and items on a model before it's ready (i.e. before instantiation). '''
+
+        ## EarlyMutateModel
+        # Tests mutation of properties before instantiation, which should fail.
+        class EarlyMutateModel(model.Model):
+
+            ''' Tests mutation of properties before instantiation. '''
+
+            string = basestring
+
+        # try writing to existing property
+        with self.assertRaises(AttributeError):
+            EarlyMutateModel.string = "testing123"
+
+        # try writing a new property
+        with self.assertRaises(AttributeError):
+            EarlyMutateModel.newprop = "newvalue"
+
+        # try writing to an internal property, which should work
+        EarlyMutateModel.__impl__ = {}
+
+    def test_validation_of_required_properties(self):
+
+        ''' Try testing validation of required property. '''
+
+        ## RequiredPropertyModel
+        # Try validating properties marked as required.
+        class RequiredPropertyModel(model.Model):
+
+            ''' Tests required properties. '''
+
+            nonrequired = basestring
+            required = basestring, {'required': True}
+
+        # sample model
+        p = RequiredPropertyModel(nonrequired='sup')
+
+        # try putting, should raise `ValueError`
+        with self.assertRaises(ValueError):
+            p.put()
+
+        # should not raise errors
+        p.required = 'sup'
+        p.put()
+
+    def test_validation_of_property_basetype(self):
+
+        ''' Try testing validation of property basetypes. '''
+
+        ## BasetypedPropertyModel
+        # Try validating properties by basetype.
+        class BasetypedPropertyModel(model.Model):
+
+            ''' Tests property basetypes. '''
+
+            string = basestring
+            number = int
+            floating = float
+            boolean = bool
+            always_empty = basestring
+
+        # sample model
+        b = BasetypedPropertyModel()
+
+        # test strings
+        b.string = 5
+        with self.assertRaises(ValueError):
+            b.put()
+        b.string = 'sample'
+
+        # test integers
+        b.number = '5'
+        with self.assertRaises(ValueError):
+            b.put()
+        b.number = 5
+
+        # test floats
+        b.floating = 5
+        with self.assertRaises(ValueError):
+            b.put()
+        b.floating = 5.5
+
+        # test booleans
+        b.boolean = 5.5
+        with self.assertRaises(ValueError):
+            b.put()
+        b.boolean = True
+
+        # should not except
+        b.put()
+
+    def test_validation_of_repeated_properties(self):
+
+        ''' Try testing validation of repeated properties. '''
+
+        ## RepeatedPropertyModel
+        # Try validating properties marked as repeated.
+        class RepeatedPropertyModel(model.Model):
+
+            ''' Tests repeated properties. '''
+
+            nonrepeated = basestring
+            repeated = int, {'repeated': True}
+
+        # sample model
+        r = RepeatedPropertyModel(nonrepeated=['blabble', '1', '2', '3'])
+
+        # try repeated value in nonrepeated property
+        with self.assertRaises(ValueError):
+            r.put()
+
+        # set to valid value
+        r.nonrepeated = 'validvalue'
+
+        # try nonrepeated value in repeated property
+        r.repeated = 5
+        with self.assertRaises(ValueError):
+            r.put()
+
+        # try invalid basetype in proper repeated field
+        r.repeated = ['one', 'two', 'three']
+        with self.assertRaises(ValueError):
+            r.put()
+
+        # set to valid value and put, should not except
+        r.repeated = [1, 2, 3]
+        r.put()

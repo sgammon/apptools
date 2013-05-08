@@ -22,22 +22,21 @@
 '''
 
 # Base Imports
+import sys
 import webapp2
 import unittest
 
 # App Engine API Imports
 try:
-    from google.appengine.ext import db
+    from google.appengine.ext import testbed
 
 except ImportError as e:
     _APPENGINE = False
 
 else:  # pragma: no cover
     _APPENGINE = True
-    from google.appengine.ext import testbed
-    from google.appengine.api import memcache
 
-    ## Constants
+    ## GAE Constants
     _APPENGINE_SERVICE_BINDINGS = {
         'mail': 'mail',
         'user': 'user',
@@ -54,6 +53,12 @@ else:  # pragma: no cover
         'datastore': 'datastore_v3'
     }
     _APPENGINE_SERVICES = frozenset(_APPENGINE_SERVICE_BINDINGS.keys())
+
+
+# Builtin Test Paths
+_TEST_PATHS = [
+    'apptools.tests.test_model'  # Model API testsuite
+]
 
 
 ## AppToolsTestCase - Parent class for AppTools and Application-level tests.
@@ -85,13 +90,17 @@ class AppToolsTestCase(unittest.TestCase):
             ## Construct stubs
             for service in self.services:
                 if service in _APPENGINE_SERVICES:
-                    stub_init = '_'.join(['init', _APPENGINE_SERVICE_BINDINGS.get(service), 'stub'])
+                    stub_init = '_'.join([
+                        'init',
+                        _APPENGINE_SERVICE_BINDINGS.get(service),
+                        'stub'
+                    ])
                     if hasattr(self.testbed, stub_init):
                         getattr(self.testbed, stub_init)()
                     else:
-                        raise RuntimeError('Could not init API by the name of "%s".' % service)
+                        raise RuntimeError('Could not init API "%s".' % service)
                 else:
-                    raise RuntimeError('Could not resolve API by the name of "%s".' % service)
+                    raise RuntimeError('Could not resolve API "%s".' % service)
 
         self.request = webapp2.Request.blank(self.path)
 
@@ -103,12 +112,14 @@ class AppToolsTestCase(unittest.TestCase):
             self.testbed.deactivate()
 
 
-## AppTest - Test case that originates from a concrete App, making use of AppTools for testing.
-class AppTest(AppToolsTestCase): pass
+## AppTest - Test case that originates from a concrete App.
+class AppTest(AppToolsTestCase):
+    pass
 
 
 ## AppToolsTest - Test case for a test that is part of AppTools.
-class AppToolsTest(AppToolsTestCase): pass
+class AppToolsTest(AppToolsTestCase):
+    pass
 
 
 ## SampleTest - Example test case that uses the App Engine testbed.
@@ -122,25 +133,61 @@ class SampleTest(AppToolsTest):
         return
 
 
-## AppToolsTests - Gather AppTools testsuites.
-def _load_apptools_testsuite():
+## `load_test_module` - Load a single testsuite module.
+def load_test_module(path):
+
+    ''' __main__ testing entrypoint for `apptools.model`. '''
+
+    suite = unittest.TestSuite()
+    suite.addTest(unittest.TestLoader().loadTestsFromName(path))
+    return suite
+
+
+## `load_testsuite` - Gather AppTools testsuites.
+def load_testsuite(paths=None):
 
     ''' __main__ entrypoint '''
 
-    loader = unittest.TestLoader()
     AppToolsTests = unittest.TestSuite()
     AppToolsTests.addTest(SampleTest('test_multiply'))
-    AppToolsTests.addTest(loader.loadTestsFromNames([
-        'apptools.tests.test_model',
-        'apptools.tests.test_model.test_key',
-        'apptools.tests.test_model.test_meta',
-        'apptools.tests.test_model.test_model',
-        'apptools.tests.test_model.test_descriptor',
-        'apptools.tests.test_model.test_adapters',
-        'apptools.tests.test_model.test_adapters.test_inmemory'
-    ]))
+
+    if paths is None:
+        paths = _TEST_PATHS[:]
+
+    for path in paths:
+        AppToolsTests.addTest(load_test_module(path))
 
     return AppToolsTests
 
-if __name__ == '__main__':
-    _load_apptools_testsuite()
+
+## `run_testsuite` - Run a suite of tests loaded via `_load_testsuite`.
+def run_testsuite(suite=None):
+
+    ''' Optionally allow switching between XML or text output, if supported. '''
+
+    if suite is None:
+        suite = load_testsuite()
+    if len(sys.argv) > 1:
+        args = sys.argv[1:]  # slice off invocation
+
+        if len(args) == 2:  # <format>, <output location>
+            format, output = tuple(args)
+
+            if format.lower().strip() == 'xml':
+                try:
+                    import xmlrunner
+                except ImportError:
+                    print "ERROR! XML testrunner (py module `xmlrunner`) could not be imported. Please run in text-only mode."
+                    exit(1)
+                xmlrunner.XMLTestRunner(output=output).run(suite)
+
+            elif format.lower().strip() == 'text':
+                return unittest.TestRunner(verbosity=5, output=output).run(suite)
+        else:
+            return unittest.TestRunner(verbosity=5, output=output).run(suite)  # text mode with
+
+    return unittest.TestRunner(verbosity=5).run(suite)
+
+
+if __name__ == '__main__':  # pragma: no cover
+    run_testsuite(load_testsuite())

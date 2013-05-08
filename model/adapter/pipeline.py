@@ -33,7 +33,7 @@ except ImportError as e:
     # flag as unavailable
     _PIPELINE, _pipeline_root_class = False, object
 
-else:
+else:  # pragma: no cover
     # extended imports
     _pcommon = getattr(__import__('pipeline', tuple(), tuple(), ['common'], -1), 'common')
     _pipeline = getattr(__import__('pipeline', tuple(), tuple(), ['pipeline'], -1), 'pipeline')

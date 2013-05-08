@@ -60,7 +60,7 @@ class InMemoryAdapterTests(AppToolsTest):
         self.assertEqual(entity, None)
 
     def test_named_entity_get_put(self):
-        
+
         ''' Test putting and getting an entity with a named key. '''
 
         # put entity
@@ -69,15 +69,32 @@ class InMemoryAdapterTests(AppToolsTest):
 
         self.assertTrue((m_k.urlsafe() in inmemory._metadata['__key__']))
 
-        # simulate getting entity
+        entities = []
+
+        # simulate getting entity at key level
         explicit_key = model.Key(InMemoryModel.kind(), "NamedEntity")
         entity = explicit_key.get()
+        entities.append(entity)
 
-        # make sure things match
-        self.assertEqual(entity.string, "suphomies")
-        self.assertEqual(len(entity.integer), 4)
-        self.assertEqual(entity.key.id, "NamedEntity")
-        self.assertEqual(entity.key.kind, InMemoryModel.kind())
+        # simulate getting entity at model level
+        explicit_entity = InMemoryModel.get(name="NamedEntity")
+        entities.append(explicit_entity)
+
+        # test urlsafe-d key model-level get()
+        urlsafed_entity = InMemoryModel.get(key=explicit_key.urlsafe())
+        entities.append(urlsafed_entity)
+
+        # test raw-d key model-level get()
+        flattened = explicit_key.flatten(False)
+        rawd_entity = InMemoryModel.get(key=flattened[1:])
+        entities.append(rawd_entity)
+
+        for entity in entities:
+            # make sure things match on key level
+            self.assertEqual(entity.string, "suphomies")
+            self.assertEqual(len(entity.integer), 4)
+            self.assertEqual(entity.key.id, "NamedEntity")
+            self.assertEqual(entity.key.kind, InMemoryModel.kind())
 
     def test_id_entity_get_put(self):
 
@@ -104,9 +121,9 @@ class InMemoryAdapterTests(AppToolsTest):
         self.assertEqual(len(entity.integer), 3)
         self.assertEqual(entity.key.kind, InMemoryModel.kind())
 
-    def test_delete_existing_entity(self):
+    def test_delete_existing_entity_via_key(self):
 
-        ''' Test deleting an existing entity. '''
+        ''' Test deleting an existing entity via `Key.delete()`. '''
 
         # put entity
         m = InMemoryModel(string="hello", integer=[1, 2, 3])
@@ -117,6 +134,24 @@ class InMemoryAdapterTests(AppToolsTest):
 
         # delete it
         res = m_k.delete()
+
+        # make sure it's unknown and gone
+        self.assertTrue(res)
+        self.assertTrue((m_k.urlsafe() not in inmemory._metadata['__key__']))
+
+    def test_delete_existing_entity_via_model(self):
+
+        ''' Test deleting an existing entity via `Model.delete()`. '''
+
+        # put entity
+        m = InMemoryModel(string="hello", integer=[1, 2, 3])
+        m_k = m.put()
+
+        # make sure it's known
+        self.assertTrue((m_k.urlsafe() in inmemory._metadata['__key__']))
+
+        # delete it
+        res = m.delete()
 
         # make sure it's unknown and gone
         self.assertTrue(res)

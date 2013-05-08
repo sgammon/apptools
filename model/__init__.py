@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
-'''
+# meta
+__doc__ = '''
 
     apptools2: model API
     -------------------------------------------------
@@ -16,33 +17,29 @@
     -------------------------------------------------
     |   changelog:                                  |
     |       -- apr 1, 2013: initial draft           |
+    |       -- may 7, 2013: refactor->v2, cleanup   |
     -------------------------------------------------
 
 '''
 
+__version__ = 'v2'
+
 # stdlib
 import abc
-import base64
-import weakref
 import operator
-import collections
 
 # app config
 try:
-    import config
+    import config; _APPCONFIG = True
 except ImportError as e:  # pragma: no cover
     _APPCONFIG = False
-else:
-    _APPCONFIG = True
 
 # apptools util
-from apptools import util
 from apptools.util import json
 
 # apptools model adapters
-from . import adapter
-from .adapter import abstract
-from .adapter import concrete
+from .adapter import abstract, concrete
+from .adapter import KeyMixin, ModelMixin
 
 # apptools datastructures
 from apptools.util.datastructures import _EMPTY
@@ -63,6 +60,7 @@ else:  # pragma: no cover
 # Globals / Sentinels
 _MULTITENANCY = False  # toggle multitenant key namespaces
 _DEFAULT_KEY_SCHEMA = tuple(['id', 'kind', 'parent'])  # default schema for key classes
+_MULTITENANT_KEY_SCHEMA = tuple(['id', 'kind', 'parent', 'namespace', 'app'])  # key schema for multitenancy-enabled apps
 
 
 ## == Metaclasses == ##
@@ -83,49 +81,49 @@ class MetaFactory(type):
 
             ''' Factory for metaclasses classes. '''
 
+            # if we're factory-ing an embedded metaclass, alias its name to its `__owner__` (for __repr__ clarity)
             if name == '__metaclass__' and hasattr(cls, '__owner__'):
                 name = cls.__name__ = cls.__owner__
-            return super(cls, cls).__new__(cls, name, bases, properties)
+            return super(cls, cls).__new__(cls, name, bases, properties)  # pass up the chain properly to ensure metaclass enforcement
 
     ## = Internal Methods = ##
     def __new__(cls, name=None, bases=tuple(), properties={}):
 
         ''' Factory for model metaclasses. '''
 
-        # fail on regular class construction
-        if not name: raise NotImplementedError('Cannot directly instantiate abstract class `MetaFactory`.')
+        # fail on regular class construction - embedded metaclasses cannot be instantiated
+        if not name:
+            raise NotImplementedError('Cannot directly instantiate abstract class `MetaFactory`.')
 
         # pass up the inheritance chain to `type`, which properly enforces metaclasses
         impl = cls.initialize(name, bases, properties)
-        if isinstance(impl, tuple):
+        if isinstance(impl, tuple):  # if we're passed a tuple, we're being asked to super-instantiate
             return super(MetaFactory, cls).__new__(cls, *impl)
         return impl
 
     ## = Exported Methods = ##
     @classmethod
-    def resolve(cls, name, bases, properties, default=True):
+    def resolve(cls, name, bases, properties, default=True):  # @TODO: clean up `resolve`
 
         ''' Resolve a suitable adapter set for a given class. '''
 
-        ## @TODO: Implement actual driver/adapter resolution
-        if '__adapter__' in properties:
-            for available in adapter.concrete:
-                if available is properties['__adapter__'] or available.__name__ == properties.get('__adapter__'):
-                    return available.acquire(name, bases, properties)
-            raise RuntimeError("Requested model adapter \"%s\" could not be found or is not supported in this environment." % properties['__adapter__'])
+        if '__adapter__' not in properties:
+            available_adapters = [option for option in concrete if option.is_supported()]  # grab each supported adapter
 
-        available_adapters = []
-        for option in adapter.concrete:
-            if option.is_supported():
-                available_adapters.append(option)
+            # fail with no adapters...
+            if not available_adapters:  # pragma: no cover
+                raise RuntimeError('No valid model adapters found.')
 
-        # we only have one adapter, the choice is easy
-        if len(available_adapters) > 0:
+            # if we only have one adapter, the choice is easy...
             if not default:
                 return available_adapters[0].acquire(name, bases, properties), tuple()
+
             return available_adapters[0].acquire(name, bases, properties)
-        else:  # pragma: no cover
-            raise RuntimeError('No valid model adapters found.')
+
+        # an explicit adapter was requested via an `__adapter__` class property
+        for available in filter(lambda x: x is properties['__adapter__'] or x.__name__ == properties.get('__adapter__'), concrete):
+            return available.acquire(name, bases, properties)
+        raise RuntimeError("Requested model adapter \"%s\" could not be found or is not supported in this environment." % properties['__adapter__'])
 
     ## = Abstract Methods = ##
     @abc.abstractmethod
@@ -133,7 +131,7 @@ class MetaFactory(type):
 
         ''' Initialize a subclass. Must be overridden by child metaclasses. '''
 
-        raise NotImplementedError()  
+        raise NotImplementedError('Classmethod `MetaFactory.initialize` must be overridden by subclasses and cannot be invoked directly.')
 
 
 ## == Abstract Classes == ##
@@ -160,92 +158,93 @@ class AbstractKey(_key_parent()):
 
             ''' Initialize a Key class. '''
 
-            key_class = {'__adapter__': cls.resolve(name, bases, properties)}
+            if name == 'AbstractKey':
+                return name, bases, dict([(k, v) for k, v in [('__adapter__', cls.resolve(name, bases, properties))] + properties.items()])  # @TODO: convert to a dict comprehension someday
 
-            if name != 'AbstractKey':
+            key_class = [  # build initial key class structure
+                ('__slots__', set()),  # seal object attributes, keys don't need any new space
+                ('__bases__', bases),  # define bases for class
+                ('__name__', name),  # set class name internals
+                ('__owner__', None),  # reference to current owner entity, if any
+                ('__adapter__', cls.resolve(name, bases, properties)),  # resolve adapter for key
+                ('__persisted__', False) ]  # default to not knowing whether this key is persisted
 
-                # build initial key class structure
-                key_class = {
-                    '__slots__': set(),  # seal object attributes, keys don't need any new space
-                    '__bases__': bases,  # define bases for class
-                    '__name__': name,  # set class name internals
-                    '__owner__': None,  # reference to current owner entity, if any
-                    '__adapter__': cls.resolve(name, bases, properties),  # resolve adapter for key
-                    '__persisted__': False  # default to not knowing whether this key is persisted
-                }
-
-                # add key format items, initted to None
-                special_properties = dict([('__%s__' % k, None) for k in properties.get('__schema__', cls.__schema__)])
-                key_class.update(special_properties)
-
-                # doing this after adding the resolved adapter allows override via `__adapter__`
-                key_class.update(properties)  # merge-in properties
-
-                # return an argset for `type`
-                return name, bases, key_class
-
-            return name, bases, properties
+            # add key format items, initted to None (doing this after adding the resolved adapter allows override via `__adapter__`) then return an argset for `type`
+            return name, bases, dict([(k, v) for k, v in ([('__%s__' % x, None) for x in properties.get('__schema__', cls.__schema__)] + key_class + properties.items())])  # @TODO: convert to a dict comprehension someday
 
         def mro(cls):
-        
-            ''' Generate a fully-mixed method resolution order for `AbstractModel` subclasses. '''
-        
-            chain = [object, adapter.KeyMixin.compound]
-            if cls.__name__ != 'AbstractKey':
-                chain.append(AbstractKey)
-                if cls.__name__ != 'Key':
-                    chain.append(Key)
-                    if len(cls.__bases__) > 1:
-                        for base in [i for i in cls.__bases__ if i not in chain]:
-                            chain.append(base)
-            chain = tuple([cls] + [i for i in reversed(chain)])
-            return chain
 
-        def __repr__(cls):
+            ''' Generate a fully-mixed method resolution order for `AbstractKey` subclasses. '''
 
-            ''' Generate a string representation of a Key class. '''
+            if cls.__name__ != 'AbstractKey':  # must be a string, when `AbstractKey` comes through it is not yet defined
+                if cls.__name__ != 'Key':  # must be a string, same reason as above
+                    return tuple([cls] + [i for i in cls.__bases__ if i not in (Key, AbstractKey)] + [Key, AbstractKey, KeyMixin.compound, object])
+                return (cls, AbstractKey, KeyMixin.compound, object)  # inheritance for `Key`
+            return (cls, KeyMixin.compound, object)  # inheritance for `AbstractKey`
 
-            return '<Key \"%s.%s\">' % (cls.__module__, cls.__name__)
+        # util: generate string representation of a `Key` class, like "Key(<schema1>, <schema n...>)".
+        __repr__ = lambda cls:  '%s(%s)' % (cls.__name__, ', '.join((i for i in reversed(cls.__schema__))))
 
     def __new__(cls, *args, **kwargs):
 
         ''' Intercepts construction requests for directly Abstract model classes. '''
 
-        if cls.__name__ == 'AbstractKey':
+        if cls.__name__ == 'AbstractKey':  # prevent direct instantiation of `AbstractKey`
             raise TypeError('Cannot directly instantiate abstract class `AbstractKey`.')
-        else:  # pragma: no cover
-            return super(_key_parent(), cls).__new__(*args, **kwargs)
+        return super(_key_parent(), cls).__new__(*args, **kwargs)  # pragma: no cover
 
     def __eq__(self, other):
 
         ''' Test whether two keys are functionally identical. '''
 
-        # if schemas or classes don't match, immediate no. otherwise check all set values.
-        if not other: return other
-        if len(self.__schema__) != len(other.__schema__) or not isinstance(other, self.__class__): return False
-        return all([i for i in map(lambda x: hasattr(other, x) and (getattr(other, x) == getattr(self, x)), self.__schema__)])
-
-    def __nonzero__(self):
-
-        ''' Test whether a key is nonzero, indicating it does/does not have an ID. '''
-
-        return isinstance(self.__id__, (basestring, str, int, unicode))
-
-    def __len__(self):
-
-        ''' Proxy to `__nonzero__`. '''
-
-        if self.__parent__ is not None:
-            return sum([1 for i in self.ancestry])
-        return int(self.__nonzero__())
+        if not other: return other  # make sure the other entity isn't falsy
+        if len(self.__schema__) != len(other.__schema__) or not isinstance(other, self.__class__): return False  # if schemas don't match it's falsy
+        return all([i for i in map(lambda x: hasattr(other, x) and (getattr(other, x) == getattr(self, x)), self.__schema__)])  # if values don't match it's falsy
 
     def __repr__(self):
 
         ''' Generate a string representation of this Key. '''
 
-        return "<%s of kind %s at ID %s>" % (self.__class__.__name__, self.kind, id(self) if not self.id else str(self.id))
+        return "%s(%s)" % (self.__class__.__name__, ', '.join((('%s=%s' % (k, getattr(self, k)) for k in reversed(self.__schema__)))))
 
+    # util: alias `__repr__` to string magic methods
     __str__ = __unicode__ = __repr__
+
+    # util: support for `__nonzero__` and aliased `__len__` (returns dirtyness and written-to properties, respectively)
+    __nonzero__ = lambda self: isinstance(self.__id__, (basestring, str, int, unicode))
+    __len__ = lambda self: (int(self.__nonzero__()) if self.__parent__ is None else sum((1 for i in self.ancestry)))
+
+    ## = Property Setters = ##
+    def _set_internal(self, name, value):
+
+        ''' Set an internal property on a `Key`. '''
+
+        # fail if we're already persisted, unless we're setting a reference to the current owner
+        if self.__persisted__ and name != 'owner':
+            raise AttributeError("Cannot set property \"%s\" of an already-persisted key." % name)
+        setattr(self, '__%s__' % name, value)
+        return self
+
+    ## = Property Getters = ##
+    def _get_ancestry(self):
+
+        ''' Retrieve this Key's ancestry path. '''
+
+        if self.__parent__:  # if we have a parent, yield upward
+            for i in self.__parent__.ancestry:
+                yield i
+
+        yield self  # yield self to signify the end of the chain, and stop iteration
+        raise StopIteration()
+
+    ## = Property Bindings  = ##
+    id = property(lambda self: self.__id__, lambda self, id: self._set_internal('id', id))
+    app = property(lambda self: self.__app__, lambda self, app: self._set_internal('app', app))
+    kind = property(lambda self: self.__kind__, lambda self, kind: self._set_internal('kind', kind))
+    owner = property(lambda self: self.__owner__, None)  # restrict writing to `owner`
+    parent = property(lambda self: self.__parent__, lambda self, parent: self._set_internal('parent', parent))
+    ancestry = property(_get_ancestry, None)  # no writing to `ancestry` (derived)
+    namespace = property(lambda self: self.__namespace__ if _MULTITENANCY else None, lambda self, ns: self._set_internal('namespace', ns) if _MULTITENANCY else None)
 
 
 ## AbstractModel
@@ -271,82 +270,63 @@ class AbstractModel(_model_parent()):
 
             ''' Initialize a Model class. '''
 
-            if name not in frozenset(['AbstractModel', 'Model']):
+            if name not in frozenset(['AbstractModel', 'Model']):  # core model classes come through here before being defined - must use string name :(
 
-                # parse property spec (`name = <basetype>` or `name = <basetype>, <options>`)
-                property_map = {}
+                property_map = {}  # parse property spec (`name = <basetype>` or `name = <basetype>, <options>`)
 
-                # model properties that start with '_' are ignored
-                for prop, spec in filter(lambda x: not x[0].startswith('_'), properties.items()):
-                    if isinstance(spec, tuple):
-                        basetype, options = spec
-                    else:
-                        basetype, options = spec, {}
+                for prop, spec in filter(lambda x: not x[0].startswith('_'), properties.iteritems()): # model properties that start with '_' are ignored
 
                     # build a descriptor object and data slot
+                    basetype, options = (spec, {}) if not isinstance(spec, tuple) else spec
                     property_map[prop] = Property(prop, basetype, **options)
 
-                if len(bases) > 1 or bases[0] != Model:
+                if len(bases) > 1 or bases[0] != Model:  # merge and clone all basemodel properties, update dictionary with property map
 
-                    # clone-in parent properties
-                    base_props = {}
-                    for base in bases:
-                        base_props.update(dict([(i, base.__dict__[i].clone()) for i in base.__lookup__]))
+                    property_map = dict([(key, value) for key, value in reduce(lambda left, right: left + right,
+                                        [[(base_prop, base.__dict__[base_prop].clone()) for base_prop in base.__lookup__] for base in bases] + [property_map.items()])])
 
-                    # update property map with inherited with base props
-                    base_props.update(property_map)
-                    property_map = base_props  # make sure concrete properties override base properties
+                prop_lookup = frozenset(property_map.keys())  # freeze property lookup
+                model_adapter = cls.resolve(name, bases, properties)  # resolve default adapter for model
 
-                # freeze property lookup
-                prop_lookup = frozenset(property_map.keys())
-
-                # resolve default adapter for model
-                model_adapter = cls.resolve(name, bases, properties)
-
-                # build class layout
-                modelclass = {
-
-                    # initialize core model class attributes.
+                modelclass = {  # build class layout, initialize core model class attributes.
                     '__impl__': {},  # holds cached implementation classes generated from this model
                     '__name__': name,  # map-in internal class name (should be == to Model kind)
                     '__kind__': name,  # kindname defaults to model class name (keep track of it here so we have it if __name__ changes)
                     '__bases__': bases,  # stores a model class's bases, so proper MRO can work
                     '__lookup__': prop_lookup,  # frozenset of allocated attributes, for quick lookup
                     '__adapter__': model_adapter,  # resolves default adapter class for this key/model
-                    '__slots__': tuple()  # seal-off object attributes (but allow weakrefs and explicit flag)
+                    '__slots__': tuple() }  # seal-off object attributes (but allow weakrefs and explicit flag)
 
-                }
-
-                # update at class-level with descriptor map
-                modelclass.update(property_map)
-
-                # inject our own property map, pass-through to `type`
-                impl = super(MetaFactory, cls).__new__(cls, name, bases, modelclass)
+                modelclass.update(property_map)  # update at class-level with descriptor map
+                impl = super(MetaFactory, cls).__new__(cls, name, bases, modelclass)  # inject our own property map, pass-through to `type`
                 return impl.__adapter__._register(impl)
 
-            # pass-through to `type`
-            return name, bases, properties
+            return name, bases, properties  # pass-through to `type`
 
         def mro(cls):
-        
+
             ''' Generate a fully-mixed method resolution order for `AbstractModel` subclasses. '''
-        
-            chain = [object, adapter.ModelMixin.compound]
-            if cls.__name__ != 'AbstractModel':
-                chain.append(AbstractModel)
-                if cls.__name__ != 'Model':
-                    chain.append(Model)
-                    if len(cls.__bases__) == 1 and cls.__bases__[0] is not Model:
-                        for base in [i for i in cls.__bases__ if i not in chain]:
-                            chain.append(base)
-            chain = tuple([cls] + [i for i in reversed(chain)])
-            return chain
 
-        def __repr__(cls):
+            if cls.__name__ != 'AbstractModel':  # must be a string, when `AbstractModel` comes through it is not yet defined
+                if cls.__name__ != 'Model':  # must be a string, same reason as above
+                    return tuple([cls] + [i for i in cls.__bases__ if i not in (Model, AbstractModel)] + [Model, AbstractModel, ModelMixin.compound, object])
+                return (cls, AbstractModel, ModelMixin.compound, object)  # inheritance for `Key`
+            return (cls, ModelMixin.compound, object)  # inheritance for `AbstractKey`
 
-            ''' Generate a string representation of a Model class. '''
+        # util: generate string representation of `Model` class, like "Model(<prop1>, <prop n...>)".
+        __repr__ = lambda cls: '%s(%s)' % (cls.__name__, ', '.join((i for i in cls.__lookup__)))
 
-            return '<Model \"%s.%s\">' % (cls.__module__, cls.__name__)
+        def __setattr__(cls, name, value, exception=AttributeError):
+
+            ''' Disallow property mutation before instantiation. '''
+
+            if name in cls.__lookup__:  # cannot mutate data properties before instantiation
+                raise exception("Cannot mutate property \"%s\" of model \"%s\" before instantiation." % (name, cls))
+            if name.startswith('__'):
+                return super(AbstractModel.__metaclass__, cls).__setattr__(name, value)
+
+            # cannot create new properties before (or really after, except if you use an `Expando`) instantiation
+            raise exception("Cannot create model property at name \"%s\" of model \"%s\" before instantiation." % (name, cls))
 
 
     ## AbstractModel.PropertyValue
@@ -362,29 +342,18 @@ class AbstractModel(_model_parent()):
 
             ''' Create a new `PropertyValue` instance. '''
 
-            # pass up-the-chain to `tuple`
-            return tuple.__new__(_cls, (data, dirty))
+            return tuple.__new__(_cls, (data, dirty))  # pass up-the-chain to `tuple`
 
-        def __repr__(self):
+        # util: generate a string representatin of this `_PropertyValue`
+        __repr__ = lambda self: "Value(%s)%s" % (('"%s"' % self[0]) if isinstance(self[0], basestring) else self[0].__repr__(), '*' if self[1] else '')
 
-            ''' Return a nicely-formatted representation string. '''
+        # util: reduce arguments for pickle
+        __getnewargs__ = lambda self: tuple(self)
 
-            return "Value(%s)%s" % (('"%s"' % self[0]) if isinstance(self[0], basestring) else self[0].__repr__(), '*' if self[1] else '')
+        # util: lock down classdict
+        __dict__ = property(lambda self: dict(zip(self.__fields__, self)))
 
-        def _as_dict(self):
-
-            ''' Return a new OrderedDict which maps field names to their values. '''
-
-            return collections.OrderedDict(zip(self.__fields__, self))
-
-        __dict__ = property(_as_dict)
-
-        def __getnewargs__(self):  # pragma: no cover
-
-            ''' Return self as a plain tuple. Used by copy/deepcopy/pickle. '''
-
-            return tuple(self)
-
+        # util: map data and dirty properties
         data = property(operator.itemgetter(0), doc='Alias for `PropertyValue.data` at index 0.')
         dirty = property(operator.itemgetter(1), doc='Alias for `PropertyValue.dirty` at index 1.')
 
@@ -393,46 +362,55 @@ class AbstractModel(_model_parent()):
 
         ''' Intercepts construction requests for directly Abstract model classes. '''
 
-        if cls.__name__ == 'AbstractModel':
+        if cls.__name__ == 'AbstractModel':  # prevent direct instantiation
             raise TypeError('Cannot directly instantiate abstract class `AbstractModel`.')
-        else:
-            return super(AbstractModel, cls).__new__(cls, *args, **kwargs)
+        return super(AbstractModel, cls).__new__(cls, *args, **kwargs)
 
-    def __repr__(self):
-
-        ''' Generate a string representation of this Entity. '''
-
-        return "<%s %s with key \"%s\">" % (self.__kind__, str(self.__data__), str(self.key))
-
+    # util: generate a string representation of this entity, alias to string conversion methods too
+    __repr__ = lambda self: "%s(%s, %s)" % (self.__kind__, self.__key__, ', '.join(['='.join([k, str(self.__data__.get(k, None))]) for k in self.__lookup__]))
     __str__ = __unicode__ = __repr__
 
-    def __setattr__(self, name, value):
+    def __setattr__(self, name, value, exception=AttributeError):
 
         ''' Attribute write override. '''
 
+        # internal properties, data properties and `key` can be written to after construction
         if name.startswith('__') or name in self.__lookup__ or name == 'key':
-            super(AbstractModel, self).__setattr__(name, value)
-        else:
-            raise AttributeError("Cannot set nonexistent attribute \"%s\" of model class \"%s\"." % (name, self.kind))
+            return super(AbstractModel, self).__setattr__(name, value)  # delegate upwards for write
+        raise exception("Cannot set nonexistent data property \"%s\" of model class \"%s\"." % (name, self.kind()))
+
+    def __getitem__(self, name):
+
+        ''' Item getter support. '''
+
+        if name not in self.__lookup__:  # only data properties are exposed via `__getitem__`
+            raise KeyError("Cannot get nonexistent data property \"%s\" of model class \"%s\"." % (name, self.kind()))
+        return getattr(self, name)  # proxy to attribute API
+
+    # util: support for python's item API
+    __setitem__ = lambda self, item, value: self.__setattr__(item, value, KeyError)
 
     def __context__(self, _type=None, value=None, traceback=None):
 
         ''' Context enter/exit - apply explicit mode. '''
 
-        if traceback:
-            return False
-        self.__explicit__ = (not self.__explicit__)
+        if traceback:  # pragma: no cover
+            return False  # in the case of an exception in-context, bubble it up
+        self.__explicit__ = (not self.__explicit__)  # toggle explicit status
         return self
 
+    # util: alias context entry/exit to `__context__` toggle method
     __enter__ = __exit__ = __context__
 
-    def __len__(self):
-
-        ''' Return the number of written properties. '''
-
-        return len(self.__data__)
-
+    # util: proxy `len` to length of written data (also alias `__nonzero__`)
+    __len__ = lambda self: len(self.__data__)
     __nonzero__ = __len__
+
+    # util: `dirty` property flag, proxies to internal `_PropertyValue`(s) for dirtyness
+    __dirty__ = property(lambda self: any((dirty for value, dirty in self.__data__.itervalues())))
+
+    # util: `persisted` property flag, indicates whether internal key has been persisted in storage
+    __persisted__ = property(lambda self: self.key.__persisted__)
 
     def __iter__(self):
 
@@ -440,28 +418,14 @@ class AbstractModel(_model_parent()):
 
         for name in self.__lookup__:
             value = self._get_value(name, default=Property._sentinel)
+
+            # skip unset properties without a default, except in `explicit` mode
             if (value == Property._sentinel and (not self.__explicit__)):
                 if self.__class__.__dict__[name]._default != Property._sentinel:
                     yield name, self.__class__.__dict__[name]._default  # return a property's default in `implicit` mode, if any
-                continue  # skip unset properties without a default, except in `explicit` mode
+                continue  # pragma: no cover
             yield name, value
         raise StopIteration()
-
-    @property
-    def __dirty__(self):
-
-        ''' Indicate whether this model has been modified outside of persistence mechanisms. '''
-
-        for prop_value in self.__data__.itervalues():
-            if prop_value[1]: return True
-        return False
-
-    @property
-    def __persisted__(self):
-
-        ''' Indicate whether this model is consistently persisted. '''
-
-        return self.key.__persisted__
 
     def _set_persisted(self, flag=False):
 
@@ -477,98 +441,81 @@ class AbstractModel(_model_parent()):
 
         ''' Retrieve the value of a named property on this Entity. '''
 
-        # calling with no args gives all values in (name, value) form
-        if not name:
-            values = []
-            for i in self.__lookup__:
-                values.append((i, self._get_value(i, default)))
-            return values
-
-        if name in self.__lookup__:
-            value = self.__data__.get(name, Property._sentinel)
-
-            if value:
-                return value.data
-            else:
-                # return system _EMPTY sentinel in explicit mode, if property is unset
-                if self.__explicit__ and value is Property._sentinel:
-                    return Property._sentinel
-
-                # otherwise return handed default, which is usually None
-                else:
-                    return default
-        raise AttributeError("Model \"%s\" has no property \"%s\"." % (self.kind, name))
+        if name:  # calling with no args gives all values in (name, value) form
+            if name in self.__lookup__:
+                value = self.__data__.get(name, Property._sentinel)
+                if not value:
+                    if self.__explicit__ and value is Property._sentinel:
+                        return Property._sentinel  # return system _EMPTY sentinel in explicit mode, if property is unset
+                    return default  # return default value passed in
+                return value.data  # return property value
+            raise AttributeError("Model \"%s\" has no property \"%s\"." % (self.kind(), name))
+        return [(i, getattr(self, i)) for i in self.__lookup__]
 
     def _set_value(self, name, value=_EMPTY, _dirty=True):
 
         ''' Set (or reset) the value of a named property on this Entity. '''
 
-        # empty strings or dicts or iterables return self
-        if not name:
-            return self
+        if not name: return self  # empty strings or dicts or iterables return self
 
-        # allow a dict or list of (name, value) pairs, just delegate to self and recurse
-        if isinstance(name, dict):
-            name = name.items()
-        if isinstance(name, (list, tuple)) and isinstance(name[0], tuple):
+        if isinstance(name, (list, dict)):
+            if isinstance(name, dict):
+                name = name.items()  # convert dict to list of tuples
             return [self._set_value(k, i, _dirty=_dirty) for k, i in name if k not in ('key', '_persisted')]  # filter out flags from caller
 
-        # allow a tuple of (name, value), for use in map/filter/etc
-        if isinstance(name, tuple):
-            name, value = name
+        if isinstance(name, tuple):  # pragma: no cover
+            name, value = name  # allow a tuple of (name, value), for use in map/filter/etc
 
-        # if it's a key, set through _set_key
-        if name == 'key':
-            self._set_key(value)
+        if name == 'key':  # if it's a key, set through _set_key
+            return self._set_key(value).owner  # returns `self` :)
 
-        # check property lookup
-        if name in self.__lookup__:
-            # if it's a valid property, create a namedtuple value placeholder
-            self.__data__[name] = self.__class__._PropertyValue(value, _dirty)
+        if name in self.__lookup__:  # check property lookup
+            self.__data__[name] = self.__class__._PropertyValue(value, _dirty)  # if it's a valid property, create a namedtuple value placeholder
             return self
         raise AttributeError("Model \"%s\" has no property \"%s\"." % (self.kind(), name))
-
-    def _get_key(self):
-
-        ''' Retrieve this Model's Key, if any. '''
-
-        return self.__key__
 
     def _set_key(self, value=None, **kwargs):
 
         ''' Set this Entity's key manually. '''
 
-        # unknown value
+        # cannot provide both a value and formats
+        if value and kwargs:
+            raise TypeError('Cannot merge multiple key values/formats in `%s._set_key`. (got: value(%s), formats(%s)).' % (self.kind(), value, kwargs))
+
+        # for a literal key value
         if value is not None:
-            if isinstance(value, basestring):
-                self.__key__ = Key.from_urlsafe(value)
-            elif isinstance(value, tuple):
-                self.__key__ = Key.from_raw(value)
-            elif isinstance(value, Key):
-                self.__key__ = value
-            else:
-                raise ValueError("Invalid key value (got: \"%s\")." % (value, kwargs))
-            return self.__key__._set_owner(self)
+            if not isinstance(value, (self.__class__.__keyclass__, tuple, basestring)):  # filter out invalid key types
+                raise TypeError('Cannot set model key to invalid type \"%s\" (for value \"%s\"). Expected `basestring`, `tuple` or `%s`.' % (type(value), value, self.__class__.__keyclass__.__name__))
 
-        # URLsafe
-        if 'urlsafe' in kwargs:
-            self.__key__ = Key.from_urlsafe(kwargs['urlsafe'])
+            self.__key__ = {  # set local key from result of dict->get(<formatter>)->__call__(<value>)
 
-        # constructed key
-        elif 'constructed' in kwargs:
-            self.__key__ = kwargs['constructed']
+                self.__class__.__keyclass__: lambda x: x,  # return keys directly
+                tuple: self.__class__.__keyclass__.from_raw,  # pass tuples through `from_raw`
+                basestring: self.__class__.__keyclass__.from_urlsafe  # pass strings through `from_urlsafe`
 
-        # raw key
-        elif 'raw' in kwargs:
-            self.__key__ = Key.from_raw(raw)
+            }.get(type(value), lambda x: x)(value)._set_internal('owner', self)  # resolve by value type and execute
 
-        else:
-            raise ValueError("Could not operate on undefined key (value: \"%s\", kwargs: \"%s\")." % (value, kwargs))
+            return self.__key__  # return key
 
-        # set key owner and return
-        return self.__key__._set_owner(self)
+        if kwargs:  # filter out multiple formats
+            formatter, value = kwargs.items()[0]
+            if len(kwargs) > 1:  # disallow multiple format kwargs
+                raise TypeError("Cannot provide multiple formats to `_set_key` (got: \"%s\")." % ', '.join(kwargs.keys()))
 
-    key = property(_get_key, _set_key)
+            self.__key__ = {  # resolve key converter, if any, set owner, and `__key__`, and return
+
+                'raw': self.__class__.__keyclass__.from_raw,  # for raw, pass through `from_raw`
+                'urlsafe': self.__class__.__keyclass__.from_urlsafe,  # for strings, pass through `from_urlsafe`
+                'constructed': lambda x: x  # by default it's a constructed key
+
+            }.get(formatter, lambda x: x)(value)._set_internal('owner', self)
+            return self.__key__
+
+        # except in the case of a null value and no formatter args (completely empty `_set_key`)
+        raise TypeError("Could not operate on undefined key (value: \"%s\", kwargs: \"%s\")." % (value, kwargs))  # fail if we don't have a key at all
+
+    ## = Property Bindings  = ##
+    key = property(lambda self: self.__key__, _set_key)  # bind model key
 
 
 ## == Concrete Classes == ##
@@ -579,224 +526,47 @@ class Key(AbstractKey):
 
     ''' Concrete Key class. '''
 
-    __separator__ = u':'
-    __schema__ = _DEFAULT_KEY_SCHEMA if not _MULTITENANCY else tuple(['id', 'kind', 'parent', 'namespace', 'app'])
+    __separator__ = u':'  # separator for joined/encoded keys
+    __schema__ = _DEFAULT_KEY_SCHEMA if not _MULTITENANCY else _MULTITENANT_KEY_SCHEMA
 
     ## = Internal Methods = ##
     def __new__(cls, *parts, **formats):
 
         ''' Constructs keys from various formats. '''
 
-        # delegate full-key decoding to classmethods
-        if formats.get('raw'):
-            return cls.from_raw(formats.get('raw'))  # raw, deserialized keys
-        elif formats.get('urlsafe'):
-            return cls.from_urlsafe(formats.get('urlsafe'))  # URL-encoded keys
-        elif formats.get('json'):
-            return cls.from_json(formats.get('json'))  # JSON-formatted keys
+        formatter, value = formats.items()[0] if formats else ('__constructed__', None)   # extract first provided format
 
-        # delegate ordinal/positional decoding to parent class
-        return super(AbstractKey, cls).__new__(cls, *parts, **formats)
+        if len(formats) > 1:  # disallow multiple key formats
+            raise TypeError("Cannot pass multiple formats into `Key` constructor. Received: \"\"." % ', '.join(formats))
 
-    ## = Internal Methods = ##
+        return {  # delegate full-key decoding to classmethods
+            'raw': cls.from_raw,
+            'urlsafe': cls.from_urlsafe
+        }.get(formatter, lambda x: super(AbstractKey, cls).__new__(cls, *parts, **formats))(value)
+
     def __init__(self, *parts, **kwargs):
 
         ''' Initialize this Key. '''
 
-        if len(parts) == 1:  # special case: it's a kinded, empty key
+        if len(parts) > 1:  # normal case: it's a full/partially-spec'd key
+
+            if len(parts) <= len(self.__schema__):  # it's a fully- or partially-spec'ed key
+                mapped = zip([i for i in reversed(self.__schema__)][(len(self.__schema__) - len(parts)):], map(lambda x: x.kind() if hasattr(x, 'kind') else x, parts))
+
+            else:
+                # for some reason the schema falls short of our parts
+                raise TypeError("Key type \"%s\" takes a maximum of %s positional arguments to populate the format \"%s\"." % (self.__class__.__name__, len(self.__schema__), str(self.__schema__)))
+
+            for name, value in map(lambda x: (x[0], x[1].kind()) if isinstance(x[1], Model) else x, mapped):
+                setattr(self, name, value)  # set appropriate attribute via setter
+
+        elif len(parts) == 1:  # special case: it's a kinded, empty key
+            if hasattr(parts[0], 'kind'):
+                parts = (parts[0].kind(),)  # quick ducktyping: is it a model? (don't yell at me, `issubclass` only supports classes)
             self.__kind__ = parts[0]
-            return
 
-        elif len(parts) == len(self.__schema__):  # it's a fully-spec'ed key
-            for name, value in zip(reversed(self.__schema__), parts): setattr(self, name, value)
-
-        elif len(parts) < len(self.__schema__):  # it's a partially-spec'ed key
-            # lop off top-level spec items for the negative diff amount of parts specified
-            for name, value in zip([i for i in reversed(self.__schema__)][(len(self.__schema__) - len(parts)):], parts):
-                setattr(self, name, value)
-
-        else:
-            # for some reason the schema falls short of our parts
-            raise TypeError("Key type \"%s\" takes a maximum of %s positional arguments to populate the format \"%s\"." % (self.__class__.__name__, len(self.__schema__), str(self.__schema__)))
-
-        self._set_parent(kwargs.get('parent'))  # kwarg-passed parent
-        self.__persisted__ = kwargs.get('_persisted', False)  # if we *know* this is an existing key, this should be `true`
-
-    ## = Property Setters = ##
-    def _set_id(self, id):
-
-        ''' Set the ID of this Key. '''
-
-        if self.__persisted__:  # disallow changing ID after persistence is achieved
-            raise AttributeError('Cannot set the ID of an already-persisted key.')
-        self.__id__ = id
-        return self
-
-    def _set_app(self, app):
-
-        ''' Set the appname of this Key. '''
-
-        if self.__persisted__:  # disallow changing the app after persistence is achieved
-            raise AttributeError('Cannot set the app of an already-persisted key.')
-        self.__app__ = app
-        return self
-
-    def _set_kind(self, kind):
-
-        ''' Set the kind of this Key. '''
-
-        if self.__persisted__:  # disallow changing kind after persistence is achieved
-            raise AttributeError('Cannot set the kind of an already-persisted key.')
-        self.__kind__ = kind
-        return self
-
-    def _set_parent(self, parent):
-
-        ''' Set the parent of this Key. '''
-
-        if self.__persisted__:  # disallow changing parent after persistence is achieved
-            raise AttributeError('Cannot change the key parent of an already-persisted key.')
-        if parent:
-            self.__parent__ = parent
-        return self
-
-    def _set_namespace(self, namespace):
-
-        ''' Set the namespace of this Key, if supported. '''
-
-        if not _MULTITENANCY:  # multitenancy must be allowed to enable namespaces
-            raise RuntimeError('Multitenant key namespaces are not supported in this environment.')
-        if self.__persisted__:  # disallow changing namespace after persistence is achieved
-            raise AttributeError('Cannot change the key namespace of an already-persisted key.')
-        self.__namespace__ = namespace
-        return self
-
-    def _set_owner(self, owner):
-
-        ''' Set the current owner. '''
-
-        self.__owner__ = owner
-        return self
-
-    ## = Property Getters = ##
-    def _get_id(self):
-
-        ''' Retrieve this Key's ID. '''
-
-        return self.__id__
-
-    def _get_kind(self):
-
-        ''' Retrieve this Key's kind. '''
-
-        return self.__kind__
-
-    def _get_app(self):
-
-        ''' Retrieve this Key's app. '''
-
-        return self.__app__
-
-    def _get_parent(self):
-
-        ''' Retrieve this Key's parent. '''
-
-        return self.__parent__
-
-    def _get_namespace(self):
-
-        ''' Retrieve this Key's namespace. '''
-
-        if _MULTITENANCY:
-            return self.__namespace__
-        return
-
-    def _get_owner(self):
-
-        ''' Retrieve this Key's owner, if any. '''
-
-        return self.__owner__
-
-    def _get_ancestry(self):
-
-        ''' Retrieve this Key's ancestry path. '''
-
-        # if we have a parent, yield to that
-        if self.__parent__:
-            ancestry = (i for i in self.__parent__.ancestry)
-            for i in ancestry: yield i
-
-        # yield self to signify the end of the chain, and stop iteration
-        yield self
-        raise StopIteration()
-
-    ## = Property Bindings  = ##
-    id = property(_get_id, _set_id)
-    app = property(_get_app, _set_app)
-    kind = property(_get_kind, _set_kind)
-    owner = property(_get_owner, None)  # restrict writing to `owner`
-    parent = property(_get_parent, _set_parent)
-    ancestry = property(_get_ancestry, None)  # no writing to `ancestry` (derived)
-    namespace = property(_get_namespace, _set_namespace)
-
-    ## = Object Methods = ##
-    def get(self):
-
-        ''' Retrieve a previously-constructed key from available persistence mechanisms. '''
-
-        return self.__adapter__._get(self)
-
-    def delete(self):
-
-        ''' Delete a previously-constructed key from available persistence mechanisms. '''
-
-        if self.__owner__:
-            # if possible, delegate to owner model
-            return self.__owner__.__adapter__._delete(self)
-        return self.__class__.__adapter__._delete(self)
-
-    def flatten(self, join=False):
-
-        ''' Flatten this Key into a basic structure suitable for transport or storage. '''
-
-        flattened = tuple((i if not isinstance(i, self.__class__) else i.flatten(join)) for i in map(lambda x: getattr(self, x), reversed(self.__schema__)))
-        if join:
-            return self.__class__.__separator__.join([u'' if i is None else unicode(i) for i in map(lambda x: x[0] if isinstance(x, tuple) else x, flattened)]), flattened
-        return flattened
-
-    def urlsafe(self, joined=None):
-
-        ''' Generate an encoded version of this Key, suitable for use in URLs. '''
-
-        if not joined: joined, flat = self.flatten(True)
-        return base64.b64encode(joined)
-
-    ## = Class Methods = ##
-    @classmethod
-    def from_raw(cls, encoded, **kwargs):
-
-        ''' Inflate a Key from a raw, internal representation. '''
-
-        # if it's still a string, split by separator (probably coming from a DB driver, `urlsafe` does this for us, for instance)
-        if isinstance(encoded, basestring): encoded = encoded.split(cls.__separator__)
-        encoded = collections.deque(encoded)
-
-        key, keys = [], []
-        if not (len(encoded) > len(cls.__schema__)):
-            return cls(*encoded, **kwargs)
-        else:  # we're dealing with ancestry here
-            last_key = encoded.popleft()
-            while len(encoded) > 2:
-                # recursively decode, removing chunks as we go. extract argset by argset.
-                last_key = cls(*(encoded.popleft() for i in xrange(0, len(cls.__schema__) - 1)), parent=last_key, _persisted=kwargs.get('_persisted', False))
-            return cls(*encoded, parent=last_key, _persisted=kwargs.get('_persisted', False))
-
-    @classmethod
-    def from_urlsafe(cls, encoded, _persisted=False):
-
-        ''' Inflate a Key from a URL-encoded representation. '''
-
-        return cls.from_raw(base64.b64decode(encoded), _persisted=_persisted)
+        # if we *know* this is an existing key, `_persisted` should be `true`. also set kwarg-passed parent.
+        self._set_internal('parent', kwargs.get('parent'))._set_internal('persisted', kwargs.get('_persisted', False))
 
 
 ## Property
@@ -805,29 +575,17 @@ class Property(object):
 
     ''' Concrete Property class. '''
 
+    __metaclass__ = abc.ABCMeta  # enforce definition of `validate` for subclasses
     __slots__ = ('name', '_options', '_indexed', '_required', '_repeated', '_basetype', '_default')
-
-    # Read-only values
-    _sentinel = _EMPTY  # default sentinel for basetypes/values
+    _sentinel = _EMPTY  # default sentinel for basetypes/values (read only, since it isn't specified in `__slots__`)
 
     ## = Internal Methods = ##
-    def __init__(self, name, basetype,
-                                default=_sentinel,
-                                required=False,
-                                repeated=False,
-                                indexed=True,
-                                **options):
+    def __init__(self, name, basetype, default=_sentinel, required=False, repeated=False, indexed=True, **options):
 
         ''' Initialize this Property. '''
 
-        # copy in property name + basetype
-        self.name = name  # owner property name
-        self._default = default  # base datatype for the current property
-        self._indexed = indexed  # index this property, to make it queryable?
-        self._options = options  # extra, implementation-specific options
-        self._basetype = basetype  # base type for encapsulated property value
-        self._required = required  # except if this property is unset on put
-        self._repeated = repeated  # signifies an array of self._basetype(s)
+        # copy locals specified above onto object properties of the same name, specified in `self.__slots__`
+        map(lambda args: setattr(self, *args), zip(self.__slots__, (name, options, indexed, required, repeated, basetype, default)))
 
     ## = Descriptor Methods = ##
     def __get__(self, instance, owner):
@@ -846,82 +604,50 @@ class Property(object):
                 return None  # soak up sentinels via the descriptor API
             return value
 
-        elif self._default: return self._default  # if we have a default and we're at the class level, who cares just give it up i guess
+        elif self._default:  # if we have a default and we're at the class level, who cares just give it up i guess
+            return self._default
         return None # otherwise, class-level access is always None
 
     def __set__(self, instance, value):
 
         ''' Descriptor attribute write. '''
 
-        if instance is not None:
-            return instance._set_value(self.name, value)
-        else:
-            raise AttributeError("Cannot write to model property \"%s\" before instantiation." % self.name)
+        if instance is not None:  # only allow data writes after instantiation
+            return instance._set_value(self.name, value)  # delegate to `AbstractModel._set_value`
+        raise AttributeError("Cannot mutate model property \"%s\" before instantiation." % self.name)
 
-    def __delete__(self, instance):
+    __delete__ = lambda self, instance: instance.__set__(instance, None)  # delegate to `__set__` with a `None`-value, which clears it
 
-        ''' Delete the value of this Descriptor. '''
-
-        return instance._set_value(self.name)
-
-    def valid(self, instance, throw=True):
+    def valid(self, instance):
 
         ''' Validate the value of this property, if any. '''
 
-        # check for subclass-defined validator
-        if hasattr(self, 'validate') and self.__class__ != Property:
-            return self.validate(instance)
-        else:
-            value = instance._get_value(self.name)
+        if self.__class__ != Property and hasattr(self, 'validate'):  # pragma: no cover
+            return self.validate(instance)  # check for subclass-defined validator to delegate validation to
 
-            # check required-ness
-            if (value in (None, Property._sentinel)) and self._required:
-                if not throw:  # optionally fail quietly
-                    return False
+        value = instance._get_value(self.name)  # retrieve value
+
+        if (value in (None, Property._sentinel)):
+            if self._required:  # check required-ness
                 raise ValueError("Property \"%s\" of Model class \"%s\" is marked as `required`, but was left unset." % (self.name, instance.kind()))
-            else:
-                # not required
-                if value is None:
-                    return True  # empty value, non-required, all good :)
+            return True  # empty value, non-required, all good :)
 
-            # check multi-ness
-            if isinstance(value, (list, tuple, set, frozenset, dict)):
-                if not self._repeated:
-                    if not throw:  # optionally fail silently
-                        return False
-                    raise ValueError("Property \"%s\" of Model class \"%s\" is not marked as repeated, and cannot accept iterable values." % (self.name, instance.kind()))
-            else:
-                if self._repeated:
-                    if not throw:  # optionally fail silently
-                        return False
-                    raise ValueError("Property \"%s\" of Model class \"%s\" is marked as iterable, and cannot accept non-iterable values." % (self.name, instance.kind()))
-                value = [value]
+        if isinstance(value, (list, tuple, set, frozenset, dict)):  # check multi-ness
+            if not self._repeated:
+                raise ValueError("Property \"%s\" of Model class \"%s\" is not marked as repeated, and cannot accept iterable values." % (self.name, instance.kind()))
+        else:
+            if self._repeated:
+                raise ValueError("Property \"%s\" of Model class \"%s\" is marked as iterable, and cannot accept non-iterable values." % (self.name, instance.kind()))
+            value = (value,)  # make value iterable
 
-            for v in value:
+        for v in value:  # check basetype
+            if v is not Property._sentinel and (self._basetype not in (Property._sentinel, None) and isinstance(v, self._basetype)):
+                continue  # valid instance of basetype
+            raise ValueError("Property \"%s\" of Model class \"%s\" cannot accept value of type \"%s\" (was expecting type \"%s\")." % (self.name, instance.kind(), type(v).__name__, self._basetype.__name__))
+        return True  # validation passed! :)
 
-                # check basetype
-                if v is not Property._sentinel and (self._basetype not in (Property._sentinel, None) and isinstance(v, self._basetype)):
-                    continue  # valid instance of basetype
-                else:
-                    if not throw:  # optionally fail quietly
-                        return False
-                    raise ValueError("Property \"%s\" of Model class \"%s\" cannot accept value of type \"%s\" (was expecting type \"%s\")." % (self.name, instance.kind(), type(v).__name__, self._basetype.__name__))
-
-            # validation passed! :)
-            return True
-
-    def clone(self):
-
-        ''' Clone this `Property` object. '''
-
-        return self.__class__(self.name, self._basetype, self._default, self._required, self._repeated, self._indexed, **self._options)
-
-    def validate(self, instance):
-
-        ''' Child-overridable validate function. '''
-
-        # must be overridden by child classes
-        raise NotImplemented()
+    # util method to clone `Property` objects
+    clone = lambda self: self.__class__(self.name, self._basetype, self._default, self._required, self._repeated, self._indexed, **self._options)
 
 
 ## Model
@@ -937,70 +663,28 @@ class Model(AbstractModel):
 
         ''' Initialize this Model. '''
 
-        # grab key / persisted flag, if any
-        self.__key__, self.__explicit__ = None, False
-        key, persisted = properties.get('key'), properties.get('_persisted', False)
+        # grab key / persisted flag, if any, and set explicit flag to `False`
+        key, persisted, self.__explicit__ = properties.get('key', False), properties.get('_persisted', False), False
 
-        # if we're handed a key at construction time, it's manually set...
-        if not key:
-            self.key = self.__keyclass__(self.kind(), _persisted=False)  # build empty, kinded key
-        else:
-            self.key = key
-        
+        # if we're handed a key, it's manually set... otherwise, build empty, kinded key
+        self.key = key or self.__keyclass__(self.kind(), _persisted=False)
+
         # initialize internals and map any kwargs into data
-        self._initialize(persisted)._set_value(properties, _dirty=(not persisted))
-
-    def _initialize(self, _persisted):
-
-        ''' Initialize core properties. '''
-
-        # initialize core properties
-        self.__data__, self.__explicit__, self.__initialized__ = {}, False, True
-        return self
+        self.__data__, self.__initialized__ = {}, True
+        self._set_value(properties, _dirty=(not persisted))
 
     ## = Class Methods = ##
-    @classmethod
-    def kind(cls):
+    kind = classmethod(lambda cls: cls.__name__)
 
-        ''' Retrieve this Model's kind name. '''
 
-        return cls.__name__
+# Module Globals
+__abstract__ = [abstract, MetaFactory, AbstractKey, AbstractModel]
+__concrete__ = [concrete, Property, KeyMixin, ModelMixin, Key, Model]
+__all__ = __abstract__ + __concrete__
 
-    @classmethod
-    def get(cls, key=None, name=None):
 
-        ''' Retrieve a persisted version of this model via the current datastore adapter. '''
+if __name__ == '__main__':
 
-        if key:
-            if isinstance(key, basestring):
-                # assume URL-encoded key, this is user-facing
-                key = Key.from_urlsafe(key)
-            elif isinstance(key, (list, tuple)):
-                # an ordered partslist is fine too
-                key = Key(*key)
-            return cls.__adapter__._get(key)
-        if name:
-            # if we're passed a name, construct a key with the local kind
-            return cls.__adapter__._get(Key(cls.kind(), name))
-        raise ValueError('Must pass either a Key or key name into `%s.get`.' % cls.kind())
-
-    @classmethod
-    def query(cls, **kwargs):
-
-        ''' Start building a new `model.Query` object, if the underlying adapter implements `IndexedModelAdapter`. '''
-
-        if issubclass(cls.__adapter__, abstract.IndexedModelAdapter):  # we implement indexer operations
-            raise NotImplementedError()  # @TODO: query functionality needs to be built-out
-
-        else:
-            raise AttributeError("Adapter \"%s\" (currently selected for model \"%s\") does not support indexing, and therefore can't support `model.Query` objects." % (cls.__adapter__.__class__.__name__, cls.kind()))
-
-    ## = Public Methods = ##
-    def put(self, adapter=None):
-
-        ''' Persist this entity via the current datastore adapter. '''
-
-        # Allow adapter override
-        if not adapter:
-            adapter = self.__class__.__adapter__
-        return adapter._put(self)
+    # if run directly, run testsuite.
+    from apptools import tests
+    tests.run_testsuite(tests.load_test_module('apptools.tests.test_model'))
