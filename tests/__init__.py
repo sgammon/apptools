@@ -57,7 +57,11 @@ else:  # pragma: no cover
 
 # Builtin Test Paths
 _TEST_PATHS = [
-    'apptools.tests.test_model'  # Model API testsuite
+    'apptools.tests.test_model',  # Model API testsuite
+    'apptools.tests.test_model.test_adapters',  # Model Adapter API testsuite
+    'apptools.tests.test_model.test_adapters.test_core',  # Core Adapter testsuite
+    'apptools.tests.test_model.test_adapters.test_abstract',  # Abstract Adapter testsuite
+    'apptools.tests.test_model.test_adapters.test_inmemory'  # In-Memory Adapter testsuite
 ]
 
 
