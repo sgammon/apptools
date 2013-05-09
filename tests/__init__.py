@@ -133,8 +133,8 @@ class SampleTest(AppToolsTest):
         return
 
 
-## `load_test_module` - Load a single testsuite module.
-def load_test_module(path):
+## `load_module` - Load a single testsuite module.
+def load_module(path):
 
     ''' __main__ testing entrypoint for `apptools.model`. '''
 
@@ -144,7 +144,7 @@ def load_test_module(path):
 
 
 ## `load_testsuite` - Gather AppTools testsuites.
-def load_testsuite(paths=None):
+def load(paths=None):
 
     ''' __main__ entrypoint '''
 
@@ -155,13 +155,13 @@ def load_testsuite(paths=None):
         paths = _TEST_PATHS[:]
 
     for path in paths:
-        AppToolsTests.addTest(load_test_module(path))
+        AppToolsTests.addTest(load_module(path))
 
     return AppToolsTests
 
 
 ## `run_testsuite` - Run a suite of tests loaded via `_load_testsuite`.
-def run_testsuite(suite=None):
+def run(suite=None):
 
     ''' Optionally allow switching between XML or text output, if supported. '''
 
@@ -190,4 +190,4 @@ def run_testsuite(suite=None):
 
 
 if __name__ == '__main__':  # pragma: no cover
-    run_testsuite(load_testsuite())
+    run(load())

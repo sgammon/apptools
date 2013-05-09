@@ -683,8 +683,8 @@ __concrete__ = [concrete, Property, KeyMixin, ModelMixin, Key, Model]
 __all__ = __abstract__ + __concrete__
 
 
-if __name__ == '__main__':
+if __name__ == '__main__':  # pragma: no cover
 
     # if run directly, run testsuite.
     from apptools import tests
-    tests.run_testsuite(tests.load_test_module('apptools.tests.test_model'))
+    tests.run(tests.load('apptools.tests.test_model'))
