@@ -16,9 +16,13 @@
     -------------------------------------------------
     |   changelog:                                  |
     |       -- apr 1, 2013: initial draft           |
+    |       -- may 9, 2013: support for `datetime`  |
     -------------------------------------------------
 
 '''
+
+# stdlib
+import datetime
 
 # adapter API
 from .abstract import KeyMixin
@@ -57,6 +61,9 @@ else:
         bool: pmessages.BooleanField,
         float: pmessages.FloatField,
         basestring: pmessages.StringField,
+        datetime.time: pmessages.StringField,
+        datetime.date: pmessages.StringField,
+        datetime.datetime: pmessages.StringField,
         BidirectionalEnum: pmessages.EnumField
     }
 
@@ -87,13 +94,13 @@ else:
         from apptools import services
 
         # provision field increment and message map
-        _field_i, _model_message = 1, {}
+        _field_i, _model_message = 1, {'__module__': _model.__module__}
 
         # grab lookup and property dict
         lookup, property_map = _model.__lookup__, {}
 
         # add key submessage
-        _model_message['key'] = pmessages.MessageField(DataKey, _field_i)
+        _model_message['key'] = pmessages.MessageField(Key, _field_i)
 
         # build fields from model properties
         for name in lookup:
@@ -176,14 +183,24 @@ else:
                     _field_i = _field_i + 1
                     _model_message[name] = services.VariantField(_field_i)
                     continue
-                
+
                 # recurse - it's a model class
                 _field_i = _field_i + 1
                 _pargs.append(prop._basetype.to_message_model())
                 _pargs.append(_field_i)
 
                 # factory
-                _model_message[name] = pmessages.MessageField(*_pargs, **_pkwargs)
+                _model_message[name] = pmessages.MessageField(*_pargs)
+                continue
+
+            # check for keys (implemented with `basestring` for now)
+            if prop._basetype == model.Key:
+
+                # build field and advance
+                _field_i = _field_i + 1
+                _pargs.append(Key)
+                _pargs.append(_field_i)
+                _model_message[name] = pmessages.MessageField(*_pargs)
                 continue
 
             # check builtin basetypes
@@ -197,7 +214,7 @@ else:
 
             # check for builtin hook for message implementation
             elif hasattr(prop._basetype, '__message__'):
-                
+
                 # delegate field and advance
                 _field_i = _field_i + 1
                 _pargs.append(_field_i)
@@ -205,7 +222,7 @@ else:
                 continue
 
             else:
-                raise ValueError("Could not resolve proper serialization for property \"%s\"  (found basetype \"%s\")." % (name, prop._basetype))
+                raise ValueError("Could not resolve proper serialization for property \"%s\" of model \"%s\" (found basetype \"%s\")." % (name, _model.kind(), prop._basetype))
 
         # construct message class on-the-fly
         return type(_model.kind(), (pmessages.Message,), _model_message)
@@ -246,7 +263,24 @@ else:
             ''' Convert a `Model` instance to a ProtoRPC `Message` class. '''
 
             if self.key: return self.__class__.to_message_model()(key=self.key.to_message(), **self.to_dict(*args, **kwargs))
-            return self.__class__.to_message_model()(**self.to_dict(*args, **kwargs))
+
+            values = {}
+            for bundle in self.to_dict(*args, **kwargs):
+                prop, value = bundle
+
+                # covert datetime types => isoformat
+                if isinstance(value, (datetime.time, datetime.date, datetime.datetime)):
+                    values[prop] = value.isoformat()
+                    continue
+
+                # convert keys => urlsafe
+                if isinstance(value, model.Key):
+                    values[prop] = Key(id=value.id, kind=value.kind, encoded=value.urlsafe())
+                    continue
+
+                values[prop] = value  # otherwise, just set it
+
+            return self.__class__.to_message_model()(**values)
 
         @classmethod
         def to_message_model(cls):

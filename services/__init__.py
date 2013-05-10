@@ -48,6 +48,9 @@ from webapp2_extras import protorpc as proto
 # AppTools APIs
 from apptools.api import BaseObject
 
+# Handler Core
+from apptools.core import BaseHandler
+
 # Util Imports
 from apptools.util import json
 from apptools.util import platform
@@ -60,12 +63,11 @@ from apptools.util import datastructures
 # Globals
 _global_debug = config.debug
 logging = debug.AppToolsLogger('apptools.services', 'ServiceLayer')._setcondition(_global_debug)
-
-# Service layer middleware object cache
 _middleware_cache = {}
 _installed_mappers = []
 
-# OAuth Constants
+# Constants
+DEFAULT_REGISTRY_PATH = '/_api/registry'
 _DEFAULT_OAUTH_SCOPES = ("https://www.googleapis.com/auth/userinfo.email", "https://www.googleapis.com/auth/userinfo.profile")
 _DEFAULT_OAUTH_AUDIENCES = (endpoints.API_EXPLORER_CLIENT_ID,) if endpoints else None
 
@@ -296,7 +298,7 @@ if appfactory and isinstance(appfactory, type(os)):
     from appfactory import integration
 
     ## Root Abstract Platform - AppFactory
-    class AbstractPlatformServiceHandler(BaseObject, service_handlers.ServiceHandler, integration.AppFactoryMixin):
+    class AbstractPlatformServiceHandler(BaseHandler, service_handlers.ServiceHandler, integration.AppFactoryMixin):
 
         ''' Injects AppFactory configuration, shortcut, and state properties. '''
 
@@ -305,7 +307,7 @@ if appfactory and isinstance(appfactory, type(os)):
 else:
 
     ## Vanilla Root Abstract Platform
-    class AbstractPlatformServiceHandler(BaseObject, service_handlers.ServiceHandler):
+    class AbstractPlatformServiceHandler(BaseHandler, service_handlers.ServiceHandler):
 
         ''' Used as a base platform service handler when no platform integration is enabled. '''
 
@@ -535,7 +537,9 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
 
         self.service.request = self.request
         self.service.response = self.response
-        self.service.state['request'] = request_state
+
+        if hasattr(self.service, 'state'):
+            self.service.state['request'] = request_state
 
         # Check for initialize hook
         if hasattr(self.service, 'initialize'):
@@ -543,7 +547,7 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
 
         if not content_type:
             self.setstatus('failure')
-            self.__send_simple_error(400, 'Invalid RPC request: missing content-type')
+            self._ServiceHandler__send_simple_error(400, 'Invalid RPC request: missing content-type')
             return
 
         # Search for mapper to mediate request.
@@ -567,14 +571,14 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
                     method_info = method.remote
                 except AttributeError, err:
                     self.setstatus('failure')
-                    self.__send_error(400, remote.RpcState.METHOD_NOT_FOUND_ERROR, 'Unrecognized RPC method: %s' % remote_method, mapper)
+                    self._ServiceHandler__send_simple_error(400, remote.RpcState.METHOD_NOT_FOUND_ERROR, 'Unrecognized RPC method: %s' % remote_method, mapper)
                     return
 
                 request = mapper.build_request(self, method_info.request_type)
 
             except (RequestError, pmessages.DecodeError), err:
                 self.setstatus('failure')
-                self.__send_error(400, remote.RpcState.REQUEST_ERROR, 'Error parsing RPC request (%s)' % err, mapper)
+                self._ServiceHandler__send_simple_error(400, remote.RpcState.REQUEST_ERROR, 'Error parsing RPC request (%s)' % err, mapper)
                 return
 
             if hasattr(self.service, 'before_request_hook'):
@@ -584,7 +588,7 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
                 response = method(request)
             except self.ApplicationError, err:
                 self.setstatus('failure')
-                self.__send_error(400, remote.RpcState.APPLICATION_ERROR, err.message, mapper, err.error_name)
+                self._ServiceHandler__send_simple_error(400, remote.RpcState.APPLICATION_ERROR, err.message, mapper, err.error_name)
                 return
 
             mapper.build_response(self, response)
@@ -593,7 +597,8 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
             for k, v in baseHeaders.items():
                 if k.lower() == 'access-control-allow-origin':
                     if v == None:
-                        self.response.headers[k] = self.request.headers['origin']
+                        if 'origin' in self.request.headers:
+                            self.response.headers[k] = self.request.headers['origin']
                     else:
                         self.response.headers[k] = v
                 else:
@@ -646,6 +651,115 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
             if status in (405, 415) or not request.content_type:
                 # Again, now a protected method.
                 self._ServiceHandler__show_info(service_path, remote_method)
+
+
+## RemoteServiceFormsHandler
+# Handle requests to the forms registry.
+class RemoteServiceFormsHandler(RemoteServiceHandler):
+
+    """
+
+    Handler for display HTML/javascript forms of ProtoRPC method calls.
+
+        When accessed with no query parameters, will show a web page that displays
+        all services and methods on the associated registry path.  Links on this
+        page fill in the service_path and method_name query parameters back to this
+        same handler.
+
+        When provided with service_path and method_name parameters will display a
+        dynamic form representing the request message for that method.  When sent,
+        the form sends a JSON request to the ProtoRPC method and displays the
+        response in the HTML page.
+
+        Attribute:
+            registry_path: Read-only registry path known by this handler.
+
+    """
+
+    config = config.config
+
+    def __init__(self, request=None, response=None, registry_path=DEFAULT_REGISTRY_PATH):
+
+        """
+
+        Constructor.
+
+            When configuring a FormsHandler to use with a webapp application do not
+            pass the request handler class in directly.  Instead use new_factory to
+            ensure that the FormsHandler is created with the correct registry path
+            for each request.
+
+            Args:
+              registry_path: Absolute path on server where the ProtoRPC RegsitryService is located.
+
+        """
+
+        assert registry_path
+        self.registry_path = registry_path
+        if request or response:
+            self.request, self.response = request, response
+            super(RemoteServiceHandler, self).__init__(request, response)
+
+    def get(self):
+
+        """
+
+        Send forms and method page to user.
+
+            By default, displays a web page listing all services and methods registered
+            on the server.  Methods have links to display the actual method form.
+
+            If both parameters are set, will display form for method.
+
+        Query Parameters:
+              service_path: Path to service to display method of.  Optional.
+              method_name: Name of method to display form for.  Optional.
+
+        """
+
+        params = {'forms_path': self.request.path.rstrip('/'),
+                  'hostname': self.request.host,
+                  'registry_path': self.registry_path,
+        }
+        service_path = self.request.get('path', None)
+        method_name = self.request.get('method', None)
+
+        if service_path and method_name:
+            form_template = 'builtin/services/methods.html'
+            params['service_path'] = service_path
+            params['method_name'] = method_name
+        else:
+            form_template = 'builtin/services/forms.html'
+
+        return self.render(form_template, **params)
+
+    @classmethod
+    def new_factory(cls, registry_path=DEFAULT_REGISTRY_PATH):
+
+        """
+
+        Construct a factory for use with WSGIApplication.
+
+            This method is called automatically with the correct registry path when
+            services are configured via service_handlers.service_mapping.
+
+        Args:
+            registry_path: Absolute path on server where the ProtoRPC RegsitryService is located.
+
+        Returns:
+            Factory function that creates a properly configured FormsHandler instance.
+
+        """
+
+        def forms_factory():
+            return cls(registry_path)
+        return forms_factory
+
+    def dispatch(self):
+
+        ''' Dispatch a request through this handler. '''
+
+        return self.get()
 
 
 ## RemoteServiceHandlerFactory
@@ -788,7 +902,10 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
         # Manufacture service + handler
         service = self.service_factory()
-        service._initializeRemoteService()
+
+        # If it's a `RemoteService` (and therefore has an `initializeRemoteService`), dispatch it
+        if hasattr(service, '_initializeRemoteService'):
+            service._initializeRemoteService()
 
         # Consider service middleware
         middleware = self._servicesConfig.get('middleware', False)
@@ -1093,6 +1210,9 @@ def rpcmethod(input, output=None, authenticated=False, audiences=_DEFAULT_OAUTH_
     if output is None:
         output = input
 
+    if issubclass(output, model.Model):
+        output = output.to_message_model()
+
     if not endpoints:
         def endpoint_wrap(fn, *args, **kwargs):
 
@@ -1104,6 +1224,14 @@ def rpcmethod(input, output=None, authenticated=False, audiences=_DEFAULT_OAUTH_
 
                 return fn
 
+            # attach doc and fn name and return
+            wrap.__name__ = fn.__name__
+            wrap.__interface__ = tuple(args)
+            wrap.__options__ = kwargs
+
+            if fn.__doc__ is not None:
+                wrap.__doc__ = fn.__doc__.strip()
+
             return wrap
     else:
         endpoint_wrap = endpoints.method
@@ -1112,8 +1240,6 @@ def rpcmethod(input, output=None, authenticated=False, audiences=_DEFAULT_OAUTH_
 
         ''' Closure that makes a closured RPC method. '''
 
-        #@endpoint_wrap(input, output, audiences=audiences, scopes=scopes, **kwargs)
-        #@remote.method(input, output)
         def wrapped(self, request):
 
             ''' Wrap remote method and throw an exception if no user is present. '''
@@ -1126,7 +1252,7 @@ def rpcmethod(input, output=None, authenticated=False, audiences=_DEFAULT_OAUTH_
                 result = fn(self, request, user)
             else:
                 result = fn(self, request)
-            if isinstance(result, model.ThinModel):
+            if isinstance(result, model.Model):
                 return result.to_message()
             else:
                 return result

@@ -47,7 +47,7 @@ class UploadSession(model.Model):
     assets = basestring, {'impl': 'KeyProperty'}
     backend = basestring, {'choices': ['blobstore', 'cloud']}
     status = basestring, {'choices': ['pending', 'success', 'fail']}
-    
+
 
 ## PushSession
 # This model keeps track of async sessions established by the service layer.

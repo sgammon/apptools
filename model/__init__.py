@@ -167,6 +167,7 @@ class AbstractKey(_key_parent()):
                 ('__name__', name),  # set class name internals
                 ('__owner__', None),  # reference to current owner entity, if any
                 ('__adapter__', cls.resolve(name, bases, properties)),  # resolve adapter for key
+                ('__module__', properties.get('__module__', 'apptools.model')),  # add class package
                 ('__persisted__', False) ]  # default to not knowing whether this key is persisted
 
             # add key format items, initted to None (doing this after adding the resolved adapter allows override via `__adapter__`) then return an argset for `type`
@@ -295,6 +296,7 @@ class AbstractModel(_model_parent()):
                     '__bases__': bases,  # stores a model class's bases, so proper MRO can work
                     '__lookup__': prop_lookup,  # frozenset of allocated attributes, for quick lookup
                     '__adapter__': model_adapter,  # resolves default adapter class for this key/model
+                    '__module__': properties.get('__module__'),  # add model's module location for future import
                     '__slots__': tuple() }  # seal-off object attributes (but allow weakrefs and explicit flag)
 
                 modelclass.update(property_map)  # update at class-level with descriptor map
@@ -630,7 +632,8 @@ class Property(object):
         if (value in (None, Property._sentinel)):
             if self._required:  # check required-ness
                 raise ValueError("Property \"%s\" of Model class \"%s\" is marked as `required`, but was left unset." % (self.name, instance.kind()))
-            return True  # empty value, non-required, all good :)
+            if value is Property._sentinel:
+                return True  # empty value, non-required, all good :)
 
         if isinstance(value, (list, tuple, set, frozenset, dict)):  # check multi-ness
             if not self._repeated:
@@ -641,7 +644,7 @@ class Property(object):
             value = (value,)  # make value iterable
 
         for v in value:  # check basetype
-            if v is not Property._sentinel and (self._basetype not in (Property._sentinel, None) and isinstance(v, self._basetype)):
+            if (v is not Property._sentinel and (self._basetype not in (Property._sentinel, None) and isinstance(v, (self._basetype, type(None))))) or (self._basetype is None):
                 continue  # valid instance of basetype
             raise ValueError("Property \"%s\" of Model class \"%s\" cannot accept value of type \"%s\" (was expecting type \"%s\")." % (self.name, instance.kind(), type(v).__name__, self._basetype.__name__))
         return True  # validation passed! :)

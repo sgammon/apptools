@@ -22,6 +22,7 @@ from protorpc.webapp import service_handlers
 
 # AppTools Imports
 from apptools.util import _loadModule
+from apptools import services as servicelayer
 from apptools.services import RemoteServiceHandlerFactory
 
 
@@ -65,7 +66,7 @@ def resolveServices(svcs=config.config.get('apptools.project.services'), load=Fa
     return services
 
 
-def generateServiceMappings(svc_cfg, registry_path=forms.DEFAULT_REGISTRY_PATH, handler=RemoteServiceHandlerFactory):
+def generateServiceMappings(svc_cfg, registry_path=servicelayer.DEFAULT_REGISTRY_PATH, handler=RemoteServiceHandlerFactory):
 
     ''' Utility function that reads the services config and generates URL mappings to service classes. '''
 
@@ -80,8 +81,7 @@ def generateServiceMappings(svc_cfg, registry_path=forms.DEFAULT_REGISTRY_PATH, 
     if registry_path is not None:
         registry_service = registry.RegistryService.new_factory(registry_map)
         services = list(services) + [(registry_path, registry_service)]
-        forms_handler = forms.FormsHandler(registry_path=registry_path)
-        mapping.append((registry_path + r'/form(?:/)?', forms_handler))
+        mapping.append((registry_path + r'/form(?:/)?', servicelayer.RemoteServiceFormsHandler))
         mapping.append((registry_path + r'/form/(.+)', forms.ResourceHandler))
 
     paths = set()

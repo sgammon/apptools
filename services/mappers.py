@@ -152,6 +152,8 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
 
     }
 
+    CONTENT_TYPE = 'application/json'
+
     def __init__(self):
         super(JSONRPCMapper, self).__init__()
 
@@ -176,6 +178,24 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
 
         encoded = _MessageJSONEncoder().encode(struct)
         return encoded
+
+    @classmethod
+    def encode_message(cls, message):
+
+        ''' Encode a message. '''
+
+        return _MessageJSONEncoder().encode(message)
+
+    @classmethod
+    def decode_message(cls, response_type, content):
+
+        ''' Decode a JSON-encoded blob into a Message. '''
+
+        mapper = cls()
+
+        interpreted = protojson._load_json_module().loads(content)
+        full_response = mapper._decode_message(response_type, interpreted.get('response', {}).get('content', {}))
+        return full_response
 
     def build_response(self, handler, response, response_envelope=None, extra_response_content={}):
 
@@ -270,9 +290,9 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
         ## Done!
         return response_envelope
 
-    def decode_request(self, message_type, dictionary):
+    def _decode_message(self, message_type, dictionary):
 
-        ''' Decode a request. '''
+        ''' Decode a Message. '''
 
         def decode_dictionary(message_type, dictionary):
 
@@ -312,7 +332,6 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
                         valid_value.append(item)
 
                     if field.repeated:
-                        getattr(message, field.name)
                         setattr(message, field.name, valid_value)
                     else:
                         setattr(message, field.name, valid_value[-1])
@@ -371,28 +390,16 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
             else:
                 request_object = protojson._load_json_module().loads(handler.request.body)
 
-            try:
-                request_id = request_object['id']
-                request_agent = request_object['agent']
-                request_body = request_object['request']
-                request_opts = request_object['opts']
-            except AttributeError:
-                raise service_handlers.RequestError('Request is missing a valid ID, agent, request opts or request body.')
-
-            self._request['id'] = request_id
-            self._request['agent'] = request_agent
-            self._request['opts'] = request_opts
-
-            handler._request_envelope['id'] = self._request['id']
-            handler._request_envelope['opts'] = self._request['opts']
-            handler._request_envelope['agent'] = self._request['agent']
-
-            handler._response_envelope['id'] = self._request['id']
+            request_body = request_object.get('request', request_object)
+            handler._request_envelope['id'] = request_object.get('id', 1)
+            handler._request_envelope['opts'] = request_object.get('opts', {})
+            handler._request_envelope['agent'] = request_object.get('agent', {})
 
             if self.ServicesConfig.get('debug', False) is True:
-                self.logging.info('Decoding request...')
+                self.logging.info('Decoding message...')
 
-            return self.decode_request(request_type, request_body['params'])
+            params = request_body.get('params', request_body)
+            return self._decode_message(request_type, params)
 
         except (messages.ValidationError, messages.DecodeError), err:
             raise service_handlers.RequestError('Unable to parse request content: %s' % err)
