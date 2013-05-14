@@ -40,6 +40,7 @@ else:
 # apptools model API
 from apptools import model
 from apptools.model import adapter
+from apptools.model import exceptions
 
 # apptools tests
 from apptools.tests import AppToolsTest
@@ -222,7 +223,7 @@ class ModelTests(AppToolsTest):
         self.assertTrue((not isinstance(model.Model, abc.ABCMeta)))
 
         # try directly-instantiation
-        with self.assertRaises(TypeError):
+        with self.assertRaises(exceptions.AbstractConstructionFailure):
             (model.AbstractModel())
 
     def test_concrete_model(self):

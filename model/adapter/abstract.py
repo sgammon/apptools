@@ -521,7 +521,7 @@ class Mixin(object):
         if isinstance(cls.__compound__, basestring):
 
             # if we've never generated a `CompoundModel` or if it's been changed, regenerate...
-            cls.__compound__ = globals()[cls.__compound__] = cls.internals._compound[cls] = type(*(
+            cls.__compound__ = globals()[cls.__compound__.__name__] = cls.internals._compound[cls] = type(*(
                 cls.__compound__,
                 (cls, object),
                 dict([

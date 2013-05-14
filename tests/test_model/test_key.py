@@ -26,6 +26,7 @@ import unittest
 # apptools keys
 from apptools import model
 from apptools.model import Key
+from apptools.model import exceptions
 from apptools.model import AbstractKey
 
 # apptools tests
@@ -124,7 +125,7 @@ class KeyTests(AppToolsTest):
         ''' Make sure `model.AbstractKey` works abstractly. '''
 
         # should not be able to instantiate `AbstractKey`
-        with self.assertRaises(TypeError):
+        with self.assertRaises(exceptions.AbstractConstructionFailure):
             k = AbstractKey()
 
         self.assertIsInstance(Key(), AbstractKey)
