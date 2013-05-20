@@ -1,26 +1,15 @@
 # -*- coding: utf-8 -*-
 
-# meta
-__doc__ = '''
+"""
+Welcome to the :py:mod:`apptools` Model API! Using this package, you can model data,
+interact with datastore layers through Model Adapters (see: :py:mod:`adapters`),
+and generate messages for use with Service classes.
 
-    apptools2: model API
-    -------------------------------------------------
-    |                                               |
-    |   `apptools.model`                            |
-    |                                               |
-    |   a general-purpose, minimalist toolkit for   |
-    |   extensible pythonic data modelling.         |
-    |                                               |
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    |       -- may 7, 2013: refactor->v2, cleanup   |
-    -------------------------------------------------
-
-'''
+:author: Sam Gammon (sam.gammon@ampush.com)
+:copyright: (c) 2013 Ampush.
+:license: This is private source code - all rights are reserved. For details about
+          embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 __version__ = 'v2'
 
@@ -63,17 +52,46 @@ _MULTITENANT_KEY_SCHEMA = tuple(['id', 'kind', 'parent', 'namespace', 'app'])
 # Abstract metaclass parent that provides common construction methods.
 class MetaFactory(type):
 
-    ''' Abstract parent for model metaclasses. '''
+    ''' Abstract parent for Model API primitive metaclasses,
+        such as :py:class:`AbstractKey.__metaclass__` and
+        :py:class:`AbstractModel.__metaclass__`.
+
+        Enforces the metaclass chain and proper :py:mod:`abc`
+        compliance.
+
+        .. note :: Metaclass implementors of this class **must**
+                   implement :py:meth:`cls.initialize()`, or
+                   :py:class:`Model` construction will yield a
+                   :py:exc:`NotImplementedError`.
+    '''
 
     class __metaclass__(abc.ABCMeta):
 
-        ''' Enforces ABC compliance and __class__.__name__ formatting. '''
+        ''' Embedded metaclass - enforces ABC compliance and
+            properly formats :py:attr:`cls.__name__`. '''
 
         __owner__ = 'MetaFactory'
 
         def __new__(cls, name=None, bases=tuple(), properties={}):
 
-            ''' Factory for metaclasses classes. '''
+            ''' Factory for metaclasses classes. Regular
+                metaclass factory function.
+
+                If the target class definition has the attribute
+                :py:attr:`cls.__owner__`, it will be taken as the
+                target class' internal ``__name__``. ``basestring``
+                and classes are accepted (in which case the bound
+                class' name is taken instead).
+
+                :param name: String name for the metaclass class to factory.
+                :param bases: Metaclass class inheritance path.
+                :param properties: Property dictionary, as defined inline.
+                :returns: Factoried :py:class:`MetaFactory.__metaclass__` descendent.
+
+                .. note:: This class is *two* levels up in the meta chain.
+                          Please note this is an *embedded* metaclass used for
+                          *metaclass classes*.
+            '''
 
             # alias embedded metaclasses to their `__owner__` (for __repr__)
             if name == '__metaclass__' and hasattr(cls, '__owner__'):
@@ -85,7 +103,17 @@ class MetaFactory(type):
     ## = Internal Methods = ##
     def __new__(cls, name=None, bases=tuple(), properties={}):
 
-        ''' Factory for model metaclasses. '''
+        ''' Factory for concrete metaclasses. Enforces
+            abstract-ness (prevents direct construction) and
+            dispatches :py:meth:`cls.initialize()`.
+
+            :param name: String name for the metaclass to factory.
+            :param bases: Inheritance path for the new concrete metaclass.
+            :param properties: Property dictionary, as defined inline.
+            :returns: Factoried :py:class:`MetaFactory` descendent.
+            :raises: :py:exc:`model.exceptions.AbstractConstructionFailure`
+                     upon concrete construction.
+        '''
 
         # fail on construction - embedded metaclasses cannot be instantiated
         if not name: raise exceptions.AbstractConstructionFailure(cls.__name__)
@@ -102,7 +130,18 @@ class MetaFactory(type):
     @classmethod  # @TODO: clean up `resolve`
     def resolve(cls, name, bases, properties, default=True):
 
-        ''' Resolve a suitable adapter set for a given class. '''
+        ''' Resolve a suitable model adapter for a given Model adapter.
+
+            :param name: Class name, as provided to :py:meth:`__new__`.
+            :param bases: Inheritance path for the target :py:class:`Model`.
+            :param properties: Class definition, as provided to :py:meth:`__new__`.
+            :keyword default: Whether to allow use of the default adapter. Defaults to ``True``.
+            :returns: A suitable :py:class:`model.adapter.ModelAdapter` subclass.
+            :raises: :py:exc:`model.exceptions.NoSupportedAdapters` in the case that no
+                     supported (or valid) adapters could be found.
+            :raises: :py:exc:`model.exceptions.InvalidExplicitAdapter` in the case of an
+                     unavilable, explicitly-requested adapter.
+        '''
 
         if '__adapter__' not in properties:
             # grab each supported adapter

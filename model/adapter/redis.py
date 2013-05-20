@@ -20,20 +20,13 @@
 
 '''
 
-# stdlib
-import time
-
-# 3rd party
-import webapp2
-
 # adapter API
+from . import abstract
 from .abstract import IndexedModelAdapter
 
 # apptools util
 from apptools.util import json
-from apptools.util import debug
 from apptools.util import decorators
-from apptools.util import datastructures
 
 # resolve msgpack
 try:
@@ -59,7 +52,7 @@ except ImportError as e:  # pragma: no cover
     _GEVENT = False
 else:
     _GEVENT = True
-    if _REDIS:
+    if _REDIS and hasattr(redis.connection, 'socket') and hasattr(gevent, 'socket'):
         ## with Redis AND gevent, patch the connection socket / pool
         redis.connection.socket = gevent.socket
 
@@ -100,9 +93,8 @@ class RedisAdapter(IndexedModelAdapter):
     _kind_prefix = '__kind__'
     _magic_separator = '::'
 
-
     ## EngineConfig
-    # Holds hard-coded configuration values for the `RedisAdapter` engine. Values can be overridden via the same name existing in config.
+    # Holds hard-coded configuration values for the `RedisAdapter` engine.
     class EngineConfig(object):
 
         ''' Configuration for the `RedisAdapter` engine. '''
@@ -110,7 +102,6 @@ class RedisAdapter(IndexedModelAdapter):
         encoding = True  # encoding for keys and special values
         compression = False  # compression for serialized data values
         mode = RedisMode.toplevel_blob  # internal mode of operation
-
 
     ## Operations
     # Holds bound names for available Redis operations.
@@ -196,13 +187,13 @@ class RedisAdapter(IndexedModelAdapter):
         SORTED_CARDINALITY = 'ZCARD'  # get the number of members in a sorted set (cardinality)
         SORTED_UNION_STORE = 'ZUNIONSTORE'  # compute the union of two sorted sets, storing the result at a new key
         SORTED_INCREMENT_BY = 'ZINCRBY'  # increment the score of a member in a sorted set by X
-        SORTED_INDEX_BY_SCORE = 'ZREVRANK'  # determine the index of a member in a sorted set, with scores ordered high=>low
+        SORTED_INDEX_BY_SCORE = 'ZREVRANK'  # determine the index of a member in a sorted set, scores ordered high=>low
         SORTED_RANGE_BY_SCORE = 'ZRANGEBYSCORE'  # return a range of members in a sorted set, by score
         SORTED_INTERSECT_STORE = 'ZINTERSTORE'  # intersect multiple sets, storing the result in a new key
-        SORTED_MEMBERS_BY_INDEX = 'ZREVRANGE'  # return a range of members in a sorted set, by index, scores ordered high=>low
+        SORTED_MEMBERS_BY_INDEX = 'ZREVRANGE'  # get a range of members in a sorted set. by index, scores high=>low
         SORTED_MEMBERS_BY_SCORE = 'ZREVRANGEBYSCORE'  # remove all members in a sorted set within the given scores
         SORTED_REMOVE_RANGE_BY_RANK = 'ZREMRANGEBYRANK'  # remove members in a sorted set within a given range of ranks
-        SORTED_REMOVE_RANGE_BY_SCORE = 'ZREMRANGEBYSCORE'  # remove members in a sorted set within a given range of scores
+        SORTED_REMOVE_RANGE_BY_SCORE = 'ZREMRANGEBYSCORE'  # remove members in a sorted set within a range of scores
 
         ## Pub/Sub Operations
         PUBLISH = 'PUBLISH'  # publish a message to a specific pub/sub channel
@@ -214,7 +205,7 @@ class RedisAdapter(IndexedModelAdapter):
         ## Transactional Operations
         EXEC = 'EXEC'  # execute buffered commands in a pipeline queue
         MULTI = 'MULTI'  # start a new pipeline, where commands can be buffered
-        WATCH = 'WATCH'  # watch a key, such that we can receive a notification in the event it is modified while watching
+        WATCH = 'WATCH'  # watch a key, such that we can receive a notification in the event it is modified
         UNWATCH = 'UNWATCH'  # unwatch all currently watched keys
         DISCARD = 'DISCARD'  # discard buffered commands in a pipeline completely
 
@@ -293,7 +284,7 @@ class RedisAdapter(IndexedModelAdapter):
                 return None  # no servers to connect to (on noez)
 
             for name, config in servers.items():
-                if name == 'default' or config.get('default', False) == True:
+                if name == 'default' or (config.get('default', False) is True):
                     _default_profile = name
                 elif not _default_profile:  # pragma: no cover
                     _default_profile = name
@@ -302,7 +293,8 @@ class RedisAdapter(IndexedModelAdapter):
         # Resolve specific adapter, if listed explicitly
         if '__redis__' in properties and isinstance(properties.get('__redis__'), basestring):
             if properties['__redis__'] not in servers:
-                raise ValueError("Model \"%s\" mapped to non-existent Redis profile \"%s\"." % (name, properties['__redis__']))
+                error = "Model \"%s\" mapped to non-existent Redis profile \"%s\"." % (name, properties['__redis__'])
+                raise ValueError(error)
             else:
                 _profiles_by_model['index'].add(name)
                 _profiles_by_model['map'][name] = servers.get(properties['__redis__'], _default_profile)
@@ -360,7 +352,7 @@ class RedisAdapter(IndexedModelAdapter):
 
         joined, flattened = key
         if cls.EngineConfig.mode == RedisMode.toplevel_blob:
-            
+
             # execute query
             result = cls.execute(cls.Operations.GET, flattened[1], joined)
 
@@ -494,7 +486,7 @@ class RedisAdapter(IndexedModelAdapter):
         ''' Encode a Key for storage in Redis. '''
 
         if cls.EngineConfig.encoding:
-            return _encoder(joined)
+            return abstract._encoder(joined)
         return joined
 
     def write_indexes(cls, writes):  # pragma: no cover
