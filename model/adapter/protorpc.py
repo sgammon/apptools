@@ -1,25 +1,19 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
+-------------------------------------
+apptools2: model adapter for protorpc
+-------------------------------------
 
-    apptools2: model adapter for protorpc
-    -------------------------------------------------
-    |                                               |
-    |   `apptools.model.adapter.protorpc`           |
-    |                                               |
-    |   allows apptools models to be inflated       |
-    |   from and expressed as protorpc messages.    |
-    |                                               |
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    |       -- may 9, 2013: support for `datetime`  |
-    -------------------------------------------------
+allows apptools models to be inflated
+from and expressed as protorpc messages.
 
-'''
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 # stdlib
 import datetime
@@ -29,7 +23,6 @@ from .abstract import KeyMixin
 from .abstract import ModelMixin
 
 # apptools util
-from apptools.util import debug
 from apptools.util import datastructures
 
 # apptools datastructures
@@ -39,11 +32,11 @@ from apptools.util.datastructures import BidirectionalEnum
 ## == protorpc support == ##
 try:
     # force absolute import to prevent infinite recursion
-	protorpc = __import__('protorpc', tuple(), tuple(), [], -1)
+    protorpc = __import__('protorpc', tuple(), tuple(), [], -1)
 
 except ImportError as e:  # pragma: no cover
-	# flag as unavailable
-	_PROTORPC, _root_message_class = False, object
+    # flag as unavailable
+    _PROTORPC, _root_message_class = False, object
 
 else:
     # extended imports (must be absolute)
@@ -60,6 +53,8 @@ else:
         int: pmessages.IntegerField,
         bool: pmessages.BooleanField,
         float: pmessages.FloatField,
+        str: pmessages.StringField,
+        unicode: pmessages.StringField,
         basestring: pmessages.StringField,
         datetime.time: pmessages.StringField,
         datetime.date: pmessages.StringField,
@@ -83,11 +78,17 @@ else:
     # build quick builtin lookup
     _builtin_fields = frozenset(_field_explicit_map.keys())
 
-
     # recursive message builder
     def build_message(_model):
 
-        ''' Recursive function to build a `Message` class dynamically from a lookup of properties and a property mapping. '''
+        ''' Recursively builds a new `Message` class dynamically from an apptools
+            :py:class:`model.Model`. Properties are converted to their :py:mod:`protorpc`
+            equivalents and factoried into a full :py:class:`messages.Message` class.
+
+            :param _model: Model class to convert to a :py:class:`protorpc.messages.Message`.
+            :raises TypeError: In the case of an unidentified or unknown property basetype.
+            :raises ValueError: In the case of a missing implementation field or serialization error.
+            :returns: Constructed (but not instantiated) :py:class:`protorpc.messages.Message` class. '''
 
         # must nest import to avoid circular dependencies
         from apptools import model
@@ -130,9 +131,12 @@ else:
 
                 # if it's a tuple, it's a name/args/kwargs pattern
                 if not isinstance(explicit, (basestring, tuple)):
-                    raise TypeError('Invalid type found for explicit message field implementation binding - property \"%s\" of model \"%s\" cannot bind to field of type \"%s\". A basestring field name or tuple of (name, *args, <**kwargs>) was expected.' % (name, _model.kind(), type(explicit)))
+                    context = (name, _model.kind(), type(explicit))
+                    raise TypeError('Invalid type found for explicit message field implementation binding - property'
+                                    '\"%s\" of model \"%s\" cannot bind to field of type \"%s\". A basestring field'
+                                    'name or tuple of (name, *args, <**kwargs>) was expected.' % context)
 
-                elif isinstance(explcit, tuple):
+                elif isinstance(explicit, tuple):
 
                     # two indicates name + args
                     if len(explicit) == 2:  # name, *args
@@ -157,7 +161,7 @@ else:
                     else:
                         # shortcut: replace it if there's no args
                         _field_i = _field_i + 1
-                        _pargs = (field_i,)
+                        _pargs = (_field_i,)
 
                     # factory field
                     _model_message[name] = _field_explicit_map[explicit](*_pargs, **_pkwargs)
@@ -165,7 +169,7 @@ else:
 
                 else:
                     # raise a `ValueError` in the case of an invalid explicit field name
-                    raise ValueError("No such message implementation field: \"%s\".")
+                    raise ValueError("No such message implementation field: \"%s\"." % name)
 
             # check variant by dict
             if prop._basetype == dict:
@@ -222,11 +226,12 @@ else:
                 continue
 
             else:
-                raise ValueError("Could not resolve proper serialization for property \"%s\" of model \"%s\" (found basetype \"%s\")." % (name, _model.kind(), prop._basetype))
+                context = (name, _model.kind(), prop._basetype)
+                raise ValueError("Could not resolve proper serialization for property \"%s\""
+                                 "of model \"%s\" (found basetype \"%s\")." % context)
 
         # construct message class on-the-fly
         return type(_model.kind(), (pmessages.Message,), _model_message)
-
 
     ## Key
     # Expresses a `model.Key` as a message.
@@ -238,7 +243,6 @@ else:
         kind = pmessages.StringField(2)
         encoded = pmessages.StringField(3)
 
-
     ## ProtoRPCKey
     # Mixin to core `Key` class that enables ProtoRPC message conversion.
     class ProtoRPCKey(KeyMixin):
@@ -247,10 +251,11 @@ else:
 
         def to_message(self):
 
-            ''' Convert a `Key` instance to a ProtoRPC `Message` instance. '''
+            ''' Convert a `Key` instance to a ProtoRPC `Message` instance.
+
+                :returns: Constructed :py:class:`protorpc.Key` message object. '''
 
             return Key(id=str(self.id), kind=self.kind, encoded=self.urlsafe())
-
 
     ## ProtoRPCModel
     # Mixin to core `Model` class that enables ProtoRPC message conversion.
@@ -260,9 +265,18 @@ else:
 
         def to_message(self, *args, **kwargs):
 
-            ''' Convert a `Model` instance to a ProtoRPC `Message` class. '''
+            ''' Convert a `Model` instance to a ProtoRPC `Message` class.
 
-            if self.key: return self.__class__.to_message_model()(key=self.key.to_message(), **self.to_dict(*args, **kwargs))
+                :param args: Positional arguments to pass to :py:meth:`Model.to_dict`.
+                :param kwargs: Keyword arguments to pass to :py:meth:`Model.to_dict`.
+                :returns: Constructed and initialized :py:class:`protorpc.Message` object. '''
+
+            # must import inline to avoid circular dependency
+            from apptools import model
+
+            if self.key:
+                return self.__class__.to_message_model()(key=self.key.to_message(),
+                                                         **self.to_dict(*args, **kwargs))
 
             values = {}
             for bundle in self.to_dict(*args, **kwargs):
@@ -285,7 +299,13 @@ else:
         @classmethod
         def to_message_model(cls):
 
-            ''' Convert a `Model` class to a ProtoRPC `Message` class. '''
+            ''' Convert a `Model` class to a ProtoRPC `Message` class. Delegates
+                to :py:func:`build_message`, see docs there for exceptions raised
+                (:py:exc:`TypeError` and :py:exc:`ValueError`).
+
+                :returns: Constructed (but not initialized) dynamically-build
+                          :py:class:`message.Message` class corresponding to
+                          the current model (``cls``). '''
 
             global _model_impl
 

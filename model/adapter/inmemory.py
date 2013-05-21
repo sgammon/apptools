@@ -1,24 +1,19 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
+------------------------------------------
+apptools2: model adapter for thread memory
+------------------------------------------
 
-    apptools2: model adapter for thread memory
-    -------------------------------------------------
-    |                                               |   
-    |   `apptools.model.adapter.inmemory`           |
-    |                                               |
-    |   allows apptools models to be stored in      |
-    |   main RAM, as a testing tool.                |
-    |                                               |   
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------   
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    -------------------------------------------------
+allows apptools models to be stored in
+main RAM, as a testing tool.
 
-'''
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 # stdlib
 import json

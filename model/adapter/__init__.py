@@ -1,24 +1,19 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
+-------------------------
+apptools2: model adapters
+-------------------------
 
-    apptools2: model adapters
-    -------------------------------------------------
-    |                                               |
-    |   `apptools.model.adapter`                    |
-    |                                               |
-    |   allows apptools models to be adapted to     |
-    |   just about any backend storage engine!      |
-    |                                               |
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    -------------------------------------------------
+allows apptools models to be adapted to
+just about any backend storage engine!
 
-'''
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 # module constants
 __version__ = (0, 5)  # module version-string

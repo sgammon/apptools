@@ -5,10 +5,11 @@ Welcome to the :py:mod:`apptools` Model API! Using this package, you can model d
 interact with datastore layers through Model Adapters (see: :py:mod:`adapters`),
 and generate messages for use with Service classes.
 
-:author: Sam Gammon (sam.gammon@ampush.com)
-:copyright: (c) 2013 Ampush.
-:license: This is private source code - all rights are reserved. For details about
-          embedded licenses and other legalese, see `LICENSE.md`.
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
 """
 
 __version__ = 'v2'

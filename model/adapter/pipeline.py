@@ -1,24 +1,19 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
+--------------------------------------
+apptools2: model adapter for pipelines
+--------------------------------------
 
-    apptools2: model adapter for pipelines
-    -------------------------------------------------
-    |                                               |
-    |   `apptools.model.adapter.pipelines`          |
-    |                                               |
-    |   allows apptools models to be seamlessly     |
-    |   passed back-and-forth between pipelines.    |
-    |                                               |
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    -------------------------------------------------
+allows apptools models to be seamlessly
+passed back-and-forth between pipelines.
 
-'''
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 # adapter API
 from .abstract import ModelAdapter

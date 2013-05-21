@@ -1,14 +1,16 @@
 # -*- coding: utf-8 -*-
 
-'''
-
+"""
 Models: Builtin
 
 Holds builtin models that are used by AppTools or AppTools extensions.
 
--sam (<sam@momentum.io>)
-
-'''
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 
 # Base Imports

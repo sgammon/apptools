@@ -1,24 +1,19 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
+------------------------------
+apptools2: core model adapters
+------------------------------
 
-    apptools2: core model adapters
-    -------------------------------------------------
-    |                                               |
-    |   `apptools.model.adapter.core`               |
-    |                                               |
-    |   specifies mixins and adapters that are part |
-    |   of the core model adapter distribution.     |
-    |                                               |
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    -------------------------------------------------
+specifies mixins and adapters that are part
+of the core model adapter distribution.
 
-'''
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 # stdlib
 import base64

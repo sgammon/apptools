@@ -1,5 +1,17 @@
 # -*- coding: utf-8 -*-
 
+"""
+Model API: Exceptions
+
+Holds core exceptions for the :py:mod:`apptools.model` API.
+
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
+
 
 class AbstractConstructionFailure(NotImplementedError):
     message = "Cannot directly instantiate abstract class `%s`."
