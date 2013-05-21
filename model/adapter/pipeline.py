@@ -32,10 +32,10 @@ else:  # pragma: no cover
     # extended imports
     _pcommon = getattr(__import__('pipeline', tuple(), tuple(), ['common'], -1), 'common')
     _pipeline = getattr(__import__('pipeline', tuple(), tuple(), ['pipeline'], -1), 'pipeline')
-    
+
     # flag as available
     _PIPELINE, _pipeline_root_class = True, _pipeline.Pipeline
-    
+
     ## PipelineModel
     # Adapt apptools models to appengine pipelines.
     class PipelineModel(ModelAdapter):
@@ -43,7 +43,6 @@ else:  # pragma: no cover
         ''' Adapt model classes to Pipelines. '''
 
         pass
-
 
     ## PipelineKey
     # Adapt apptools keys to appengine pipelines.

@@ -123,7 +123,8 @@ class InMemoryAdapter(IndexedModelAdapter):
             # update count
             _metadata['ops']['put'] = _metadata['ops'].get('put', 0) + 1
             _metadata['global']['entity_count'] = _metadata['global'].get('entity_count', 0) + 1
-            _metadata['kinds'][entity.key.kind]['entity_count'] = _metadata['kinds'][entity.key.kind].get('entity_count', 0) + 1
+            kinded_entity_count = _metadata['kinds'][entity.key.kind].get('entity_count', 0)
+            _metadata['kinds'][entity.key.kind]['entity_count'] = kinded_entity_count + 1
 
             # save to datastore
             _datastore[encoded] = entity.to_dict()
@@ -152,7 +153,7 @@ class InMemoryAdapter(IndexedModelAdapter):
             try:
                 del _datastore[encoded]  # delete from datastore
 
-            except KeyError, e:  # pragma: no cover
+            except KeyError:  # pragma: no cover
                 _metadata[cls._key_prefix].remove(encoded)
                 return False  # untrimmed key
 
@@ -198,7 +199,6 @@ class InMemoryAdapter(IndexedModelAdapter):
         global _metadata
 
         # extract indexes
-        _reverse_index_entries = []
         encoded, meta, properties = writes
 
         # write indexes one-by-one, generating reverse entries as we go
@@ -253,7 +253,7 @@ class InMemoryAdapter(IndexedModelAdapter):
                 continue
 
             elif len(write) == 2:  # simple set index
-                
+
                 # extract write, inflate
                 index, value = write
 
@@ -301,7 +301,8 @@ class InMemoryAdapter(IndexedModelAdapter):
                 continue
 
             else:  # pragma: no cover
-                raise ValueError("Index mapping tuples must have at least 2 entries, for a simple set index, or more for a hashed index.")
+                raise ValueError("Index mapping tuples must have at least 2 entries,"
+                                 "for a simple set index, or more for a hashed index.")
 
     @classmethod
     def clean_indexes(cls, writes):
