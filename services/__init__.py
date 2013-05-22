@@ -1207,59 +1207,63 @@ def rpcmethod(input, output=None, authenticated=False, audiences=_DEFAULT_OAUTH_
     if issubclass(input, model.Model):
         input = input.to_message_model()
 
+    if output is not None and issubclass(output, model.Model):
+        output = output.to_message_model()
+
     if output is None:
         output = input
 
-    if issubclass(output, model.Model):
-        output = output.to_message_model()
+    def endpoint_wrap(fn, *args, **kwargs):
 
-    if not endpoints:
-        def endpoint_wrap(fn, *args, **kwargs):
+        ''' Shim to wrap endpoint methods when the `endpoints` lib is unavailable. '''
 
-            ''' Shim to wrap endpoint methods when the `endpoints` lib is unavailable. '''
+        def wrap(self, request):
 
-            def wrap(*args, **kwargs):
+            ''' Return the wrapped method directly, soaking up any endpoints arguments. '''
 
-                ''' Return the wrapped method directly, soaking up any endpoints arguments. '''
-
-                return fn
-
-            # attach doc and fn name and return
-            wrap.__name__ = fn.__name__
-            wrap.__interface__ = tuple(args)
-            wrap.__options__ = kwargs
-
-            if fn.__doc__ is not None:
-                wrap.__doc__ = fn.__doc__.strip()
-
-            return wrap
-    else:
-        endpoint_wrap = endpoints.method
-
-    def make_rpc_method(fn):
-
-        ''' Closure that makes a closured RPC method. '''
-
-        def wrapped(self, request):
-
-            ''' Wrap remote method and throw an exception if no user is present. '''
-
-            # pull user
-            if authenticated:
-                user = self.api.users.get_current_user()
-                if not user:
-                    raise self.LoginRequired("Woops! Only logged in users can do that!")
-                result = fn(self, request, user)
-            else:
-                result = fn(self, request)
+            result = fn(self, request)
             if isinstance(result, model.Model):
-                return result.to_message()
-            else:
-                return result
+                return result.to_message_model()(**result.to_dict())
+            return result
 
-        wrapped.__name__ = fn.__name__
-        wrapped.__module__ = fn.__module__
-        wrapped.__doc__ = fn.__doc__
-        return endpoint_wrap(input, output, audiences=audiences, scopes=scopes, **kwargs)(remote.method(input, output)(wrapped))
+        # attach doc and fn name and return
+        wrap.__name__ = fn.__name__
+        wrap.__interface__ = tuple(args)
+        wrap.__options__ = kwargs
+        wrap.__doc__ = fn.__doc__
+        wrap.__remote__ = True
 
-    return make_rpc_method
+        if fn.__doc__ is not None:
+            wrap.__doc__ = fn.__doc__.strip()
+
+        return remote.method(input, output)(wrap)
+
+    return endpoint_wrap
+
+
+## api - Wrap a class and make it into a registered ``Service``.
+def api(*args, **kwargs):
+
+    ''' Inject API service into config. '''
+
+    if len(args) == 1 and len(kwargs) == 0:
+        klass = args[0]
+
+        # @TODO: Make this not-so-jank.
+
+        import config
+
+        config_blob = {
+            'enabled': True,
+            'service': '.'.join(klass.__module__.split('.') + [klass.__name__]),
+            'methods': klass._ServiceClass__remote_methods.keys(),
+            'config': {
+                'caching': 'none',
+                'security': 'none',
+                'recording': 'none'
+            }
+        }
+
+        # inject
+        config.config['apptools.project.services']['services'][klass.name] = config_blob
+        return klass
