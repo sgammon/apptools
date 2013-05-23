@@ -13,8 +13,13 @@ into a contiguous structure that resembles a framework. Also hosts BaseHandler.
 
 # Base Imports
 import os
-import config
 import webapp2
+
+# Appconfig
+try:
+    import config; _APPCONFIG = True
+except:
+    config, _APPCONFIG = None, False
 
 # AppFactory Integration
 try:
@@ -142,7 +147,7 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
 
                     except Exception, e:
                         self.logging.error('Encountered unhandled exception "%s" in platform pre_dispatch hook for installed platform "%s".' % (e, platform))
-                        if config.debug:
+                        if (not _APPCONFIG) or config.debug:
                             raise
                         else:
                             continue
@@ -169,7 +174,7 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
                             result = platform.post_dispatch(self, result)
                         except Exception, e:
                             self.logging.error('Encountered unhandled exception "%s" in platform post_dispatch hook for installed platform "%s".' % (e, platform))
-                            if config.debug:
+                            if (not _APPCONFIG) or config.debug:
                                 raise
                             else:
                                 continue
@@ -200,7 +205,7 @@ class BaseHandler(AbstractPlatformHandler, AssetsMixin, ServicesMixin, OutputMix
             'ie': False,  # are we serving to IE?
             'mobile': False,  # are we serving to mobile?
             'tablet': False,  # are we serving to a tablet?
-            'analytics': config.config.get('apptools.project.output', {}).get('analytics', {}),  # analytics settings
+            'analytics': {} if not _APPCONFIG else config.config.get('apptools.project.output', {}).get('analytics', {}),  # analytics settings
             'channel': {
                 'enabled': self.push.session,  # enable/disable appengine channel API
                 'token': self.push.token  # token for connecting channel

@@ -19,12 +19,24 @@ the template and store it in the cache.
 import os
 import time
 import base64
-import config
 import pprint
 import random
 import hashlib
 import webapp2
 import datetime
+
+try:
+    import config; _APPCONFIG = True
+except:
+    _APPCONFIG = False
+
+    # build fake config
+    class FakeConfig(object):
+        debug = True
+        config = {'debug': True}
+
+    config = FakeConfig()
+
 
 ## API Mixins
 from apptools.api import CoreAPI

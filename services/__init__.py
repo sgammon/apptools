@@ -16,14 +16,19 @@ this module is very configurable using the "config/services.py" file.
 import os
 import time
 import base64
-import config
 import hashlib
 import inspect
 import webapp2
 
+# Detect app config
+try:
+    import config; _APPCONFIG = True
+except:
+    _APPCONFIG = False
+
 try:
     import endpoints
-except ImportError as e:
+except ImportError:
     endpoints = False
 
 # AppFactory Integration
@@ -61,7 +66,7 @@ from apptools.util import debug
 from apptools.util import datastructures
 
 # Globals
-_global_debug = config.debug
+_global_debug = True if not _APPCONFIG else config.debug
 logging = debug.AppToolsLogger('apptools.services', 'ServiceLayer')._setcondition(_global_debug)
 _middleware_cache = {}
 _installed_mappers = []
@@ -258,7 +263,10 @@ class BaseService(remote.Service, datastructures.StateManager):
         self.config['global'] = self._globalServicesConfig
 
         if hasattr(self, 'moduleConfigPath'):
-            self.config['module'] = config.config.get(getattr(self, 'moduleConfigPath', '__null__'), {})
+            if _APPCONFIG:
+                self.config['module'] = config.config.get(getattr(self, 'moduleConfigPath', '__null__'), {})
+            else:
+                self.config['module'] = {'debug': True}
 
             # If we have a module + service config path, pull it from the module's branch
             if hasattr(self, 'configPath'):
@@ -279,7 +287,10 @@ class BaseService(remote.Service, datastructures.StateManager):
             # If we have a service config path but no module config path...
             if hasattr(self, 'configPath'):
                 # Try importing it as a top-level namespace
-                toplevel = config.config.get(self.configPath, None)
+                if _APPCONFIG:
+                    toplevel = config.config.get(self.configPath, None)
+                else:
+                    toplevel = {'debug': True}
                 if toplevel is None:
                     # If that doesn't work, copy it over from defaults...
                     self.config['service'] = self.config['global']['defaults']['service']
@@ -368,7 +379,7 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
         ''' Logging shortcut. '''
 
         if self._servicesConfig['logging'] is True:
-            if config.debug:
+            if (_APPCONFIG and getattr(config, 'debug')) or (not _APPCONFIG):
                 self.logging.info(str(message))
             else:
                 self.logging.debug(str(message))
@@ -454,7 +465,7 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
 
                 except Exception, e:
                     self.error('Middleware "' + str(name) + '" raised an unhandled exception of type "' + str(e) + '".')
-                    if config.debug:
+                    if (_APPCONFIG and getattr(config, 'debug')) or (not _APPCONFIG):
                         raise
                     continue
 
@@ -593,7 +604,10 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
 
             mapper.build_response(self, response)
 
-            baseHeaders = config.config.get('apptools.project.output', {}).get('headers', {})
+            if not _APPCONFIG:
+                baseHeaders = {}
+            else:
+                baseHeaders = config.config.get('apptools.project.output', {}).get('headers', {})
             for k, v in baseHeaders.items():
                 if k.lower() == 'access-control-allow-origin':
                     if v == None:
@@ -612,7 +626,7 @@ class RemoteServiceHandler(AbstractPlatformServiceHandler, datastructures.StateM
             self.logging.error('An unexpected error occured when handling RPC: %s' % err, exc_info=1)
             self.logging.exception('Unexpected service exception of type "%s": "%s".' % (type(err), str(err)))
             self.__send_error(500, remote.RpcState.SERVER_ERROR, 'Internal Server Error', mapper)
-            if config.debug:
+            if (not _APPCONFIG) or config.debug:
                 raise
             else:
                 return
@@ -676,7 +690,7 @@ class RemoteServiceFormsHandler(RemoteServiceHandler):
 
     """
 
-    config = config.config
+    config = {'debug': True} if not _APPCONFIG else config.config
 
     def __init__(self, request=None, response=None, registry_path=DEFAULT_REGISTRY_PATH):
 
@@ -782,7 +796,9 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
         ''' Config channel for output config. '''
 
-        return config.config.get('apptools.project.output')
+        if _APPCONFIG:
+            return config.config.get('apptools.project.output')
+        return {'debug': True}
 
     @webapp2.cached_property
     def installed_mappers(self):
@@ -843,7 +859,7 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
         ''' Logging shortcut. '''
 
         if self._servicesConfig['logging'] is True:
-            if config.debug:
+            if (not _APPCONFIG) or config.debug:
                 self.logging.info(str(message))
             else:
                 self.logging.debug(str(message))
@@ -915,7 +931,7 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
                 self.log('Considering ' + str(name) + ' middleware...')
                 if cfg['enabled'] is True:
                     try:
-                        if name not in _middleware_cache or config.debug:
+                        if name not in _middleware_cache or ((not _APPCONFIG) or config.debug):
                             middleware_class = webapp2.import_string(cfg['path'])
                         else:
                             middleware_class = _middleware_cache[name]
@@ -932,7 +948,7 @@ class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory):
 
                     except Exception, e:
                         self.error('Middleware "' + str(name) + '" raise an unhandled exception of type "' + str(e) + '".')
-                        if config.debug:
+                        if (not _APPCONFIG) or config.debug:
                             raise
                         else:
                             continue
@@ -1033,9 +1049,11 @@ class Debug(RemoteMethodDecorator):
     """ Set debug mode to true or false for a remote method. Adds extra debug flags to the response envelope and ups the logging level. """
 
     def execute(self):
-        config.debug = True
+        if _APPCONFIG:
+            config.debug = True
         result = self.execute_remote()
-        config.debug = False
+        if _APPCONFIG:
+            config.debug = False
         return result
 
 

@@ -13,12 +13,16 @@ to install dependencies into provided classes at runtime.
 
 import os
 
-import config as sysconfig
+try:
+    import config as sysconfig; _APPCONFIG = True
+except ImportError:
+    sysconfig, _APPCONFIG = {}, False
 
 from apptools.util import debug
 from apptools.util import _loadModule
 
 logging = debug.AppToolsLogger('core.util.platform')
+_BUILTIN_PLATFORMS = tuple()
 
 
 ## PlatformInjector
@@ -47,12 +51,16 @@ class PlatformInjector(object):
             adapters = {}
             platforms = []
             environ = os.environ
-            config = sysconfig.config.get('apptools.system.platform', {})
+            if _APPCONFIG:
+                config = sysconfig.config.get('apptools.system.platform', {})
+                platforms = config.get('installed_platforms', [])
+            else:
+                config = {'debug': True}
+                platforms = list(_BUILTIN_PLATFORMS[:])
 
             # Consider installed platforms
-            for platform in config.get('installed_platforms', []):
+            for platform in platforms:
                 try:
-
                     # Import adapter if we don't have it yet
                     if platform.get('path') not in adapters.keys():
                         platform_adapter = _loadModule(('.'.join(platform.get('path').split('.')[0:-1]), platform.get('path').split('.')[-1]))
@@ -62,17 +70,17 @@ class PlatformInjector(object):
 
                     # Check if the platform is compatible
                     if hasattr(platform_adapter, 'check_environment'):
-                        assert platform_adapter.check_environment(environ, sysconfig) == True
+                        assert platform_adapter.check_environment(environ, sysconfig) is True
 
                 # Couldn't find the platform...
                 except ImportError:
-                    if sysconfig.debug:
+                    if (not _APPCONFIG) or sysconfig.debug:
                         logging.error('Platform "%s" is mentioned in config but could not be found at the configured path ("%s").' % (platform.get('name', 'UnkownPlatform'), platform.get('path')))
                     continue
 
                 # Platform wasn't compatible...
                 except AssertionError:
-                    if sysconfig.debug:
+                    if (not _APPCONFIG) or sysconfig.debug:
                         logging.debug('Platform "%s" was tested and is not compatible with this environment. Continuing.' % str(platform.get('name', 'UnknownPlatform')))
                     continue
 
@@ -128,7 +136,7 @@ class PlatformInjector(object):
                             setattr(target, name, shortcut)
                         except Exception, e:
                             logging.warning('Platform config shortcut injection sequence for shortcut "' + name + '" on platform "' + str(platform) + '" encountered an unhandled exception: "' + str(e) + '".')
-                            if sysconfig.debug:
+                            if (not _APPCONFIG) or sysconfig.debug:
                                 raise
                             else:
                                 continue
@@ -153,7 +161,7 @@ class PlatformInjector(object):
                             setattr(target, name, shortcut)
                         except Exception, e:
                             logging.warning('Platform config shortcut injection sequence for shortcut "' + name + '" on platform "' + str(platform) + '" encountered an unhandled exception: "' + str(e) + '".')
-                            if sysconfig.debug:
+                            if (not _APPCONFIG) or sysconfig.debug:
                                 raise
                             else:
                                 continue

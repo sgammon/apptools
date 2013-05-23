@@ -36,7 +36,7 @@ try:
     ## force absolute import to avoid infinite recursion
     redis = _redis_client = __import__('redis', locals(), globals(), [], 0)
 except ImportError as e:  # pragma: no cover
-    _REDIS = False
+    _REDIS, _redis_client, redis = False, None, None
 else:
     _REDIS = True
 

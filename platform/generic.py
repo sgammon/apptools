@@ -12,8 +12,20 @@ Provides utils and shortcuts that should always be available in AppTools.
 '''
 
 # Base Imports
-import config
 import webapp2
+
+# Appconfig
+try:
+    import config; _APPCONFIG = True
+except ImportError:
+    _APPCONFIG = False
+
+    # build fake config
+    class FakeConfig(object):
+        debug = True
+        config = {'debug': True}
+
+    config = FakeConfig()
 
 # Util Imports
 from apptools.util import _loadModule

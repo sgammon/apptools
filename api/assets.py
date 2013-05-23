@@ -15,9 +15,24 @@ for cachebusting via key value pairs, and switching to minified assets.
 
 ## Base Imports
 import random
-import config as cfg
-from config import config
 from webapp2 import cached_property
+
+## Appconfig
+try:
+    import config as cfg
+    from config import config
+    _APPCONFIG = True
+except ImportError:
+    _APPCONFIG = False
+
+    # build fake config
+    class FakeConfig(object):
+
+        debug = True
+        config = {'debug': True}
+
+    cfg = FakeConfig()
+    config = cfg.config
 
 ## AppTools Imports
 from apptools.api import CoreAPI
@@ -40,13 +55,16 @@ _asset_url_cache = {}
 # Top level exception for all Asset API-related exceptions.
 class AssetException(CoreOutputAPIException): ''' Top-level exception for all Asset API-related exceptions. '''
 
+
 ## InvalidAssetType
 # Raised when an asset type is invalid.
 class InvalidAssetType(AssetException): ''' Raised when a given asset type is not recognized. '''
 
+
 ## InvalidAssetEntry
 # Raised when an asset entry is invalid.
 class InvalidAssetEntry(AssetException): ''' Raised when a given asset type is valid, but an asset could not be found at the given identifier. '''
+
 
 ## CoreAssetsAPI
 # Brokers access and provides generated URLs to registered and unregistered assets.

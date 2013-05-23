@@ -12,8 +12,20 @@ for each one that can be identified in the environment.
 '''
 
 import sys
-import config
 import webapp2
+
+# Appconfig
+try:
+    import config; _APPCONFIG = True
+except ImportError:
+    _APPCONFIG = False
+
+    # build fake config
+    class FakeConfig(object):
+        debug = True
+        config = {'debug': True}
+
+    config = FakeConfig()
 
 from apptools.util import debug
 from apptools.util import _loadModule
