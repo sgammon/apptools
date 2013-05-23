@@ -53,13 +53,13 @@ class PlatformInjector(object):
             environ = os.environ
             if _APPCONFIG:
                 config = sysconfig.config.get('apptools.system.platform', {})
-                platforms = config.get('installed_platforms', [])
+                _found = config.get('installed_platforms', [])
             else:
                 config = {'debug': True}
-                platforms = list(_BUILTIN_PLATFORMS[:])
+                _found = list(_BUILTIN_PLATFORMS[:])
 
             # Consider installed platforms
-            for platform in platforms:
+            for platform in _found:
                 try:
                     # Import adapter if we don't have it yet
                     if platform.get('path') not in adapters.keys():
