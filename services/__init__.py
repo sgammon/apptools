@@ -1241,7 +1241,7 @@ def rpcmethod(input, output=None, authenticated=False, audiences=_DEFAULT_OAUTH_
 
             result = fn(self, request)
             if isinstance(result, model.Model):
-                return result.to_message_model()(**result.to_dict())
+                return result.to_message()
             return result
 
         # attach doc and fn name and return
