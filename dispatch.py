@@ -39,7 +39,10 @@ from apptools.util import runtools
 
 from apptools.services import gateway as servicelayer_dispatch
 
-app_rules = reduce(lambda x, y: x + y, [ruleset() for ruleset in rule_builders])
+if rule_builders:
+    app_rules = reduce(lambda x, y: x + y, [ruleset() for ruleset in rule_builders])
+else:
+    app_rules = []
 sys_config = config.config.get('apptools.system', {})
 
 

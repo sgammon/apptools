@@ -274,13 +274,8 @@ else:
             # must import inline to avoid circular dependency
             from apptools import model
 
-            if self.key:
-                return self.__class__.to_message_model()(key=self.key.to_message(),
-                                                         **self.to_dict(*args, **kwargs))
-
             values = {}
-            for bundle in self.to_dict(*args, **kwargs):
-                prop, value = bundle
+            for prop, value in self.to_dict(*args, **kwargs).items():
 
                 # covert datetime types => isoformat
                 if isinstance(value, (datetime.time, datetime.date, datetime.datetime)):
@@ -292,8 +287,15 @@ else:
                     values[prop] = Key(id=value.id, kind=value.kind, encoded=value.urlsafe())
                     continue
 
+                # convert date/time/datetime => string
+                if isinstance(value, (datetime.date, datetime.time, datetime.datetime)):
+                    values[prop] = value.isoformat()
+                    continue
+
                 values[prop] = value  # otherwise, just set it
 
+            if self.key:
+                return self.__class__.to_message_model()(key=self.key.to_message(), **values)
             return self.__class__.to_message_model()(**values)
 
         @classmethod
