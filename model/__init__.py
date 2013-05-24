@@ -16,6 +16,7 @@ __version__ = 'v2'
 
 # stdlib
 import abc
+import inspect
 import operator
 
 # apptools model exceptions
@@ -336,23 +337,47 @@ class AbstractModel(_model_parent()):
 
         __owner__ = 'Model'
 
+        @staticmethod
+        def _get_prop_filter(inverse=False):
+
+            ''' Closure to build a small filter utility. '''
+
+            def _filter_prop(bundle):
+
+                ''' Decide whether a property is kept as a data value. '''
+
+                key, value = bundle  # extract, this is dispatched from ``{}.items``
+                if key.startswith('_'): return inverse
+                if isinstance(value, classmethod): return inverse
+                if inspect.isfunction(value) or inspect.ismethod(value): return inverse
+                return (not inverse)
+
+            return _filter_prop
+
         @classmethod
         def initialize(cls, name, bases, properties):
 
             ''' Initialize a Model class. '''
 
             property_map = {}
+            _nondata_map = {}
 
             # core classes eval before being defined - must use string name :(
             if name not in frozenset(['AbstractModel', 'Model']):
 
+                modelclass = {}
+
                 # parse spec (`name=<basetype>` or `name=<basetype>,<options>`)
                 # also, model properties that start with '_' are ignored
-                for prop, spec in filter(lambda x: not x[0].startswith('_'), properties.iteritems()):
+                for prop, spec in filter(cls._get_prop_filter(), properties.iteritems()):
 
                     # build a descriptor object and data slot
                     basetype, options = (spec, {}) if not isinstance(spec, tuple) else spec
                     property_map[prop] = Property(prop, basetype, **options)
+
+                # drop non-data-properties into our ``_nondata_map``
+                for prop, value in filter(cls._get_prop_filter(inverse=True), properties.iteritems()):
+                    _nondata_map[prop] = value
 
                 # merge and clone all basemodel properties, update dictionary with property map
                 if len(bases) > 1 or bases[0] != Model:
@@ -362,10 +387,10 @@ class AbstractModel(_model_parent()):
                                         [[(prop, b.__dict__[prop].clone()) for prop in b.__lookup__]
                                         for b in bases] + [property_map.items()])])
 
-                prop_lookup = frozenset(property_map.keys())  # freeze property lookup
+                prop_lookup = frozenset((k for k, v in property_map.iteritems()))  # freeze property lookup
                 model_adapter = cls.resolve(name, bases, properties)  # resolve default adapter for model
 
-                modelclass = {  # build class layout, initialize core model class attributes.
+                _model_internals = {  # build class layout, initialize core model class attributes.
                     '__impl__': {},  # holds cached implementation classes generated from this model
                     '__name__': name,  # map-in internal class name (should be == to Model kind)
                     '__kind__': name,  # kindname defaults to model class name
@@ -376,6 +401,9 @@ class AbstractModel(_model_parent()):
                     '__slots__': tuple()}  # seal-off object attributes (but allow weakrefs and explicit flag)
 
                 modelclass.update(property_map)  # update at class-level with descriptor map
+                modelclass.update(_nondata_map)  # update at class-level with non data properties
+                modelclass.update(_model_internals)  # lastly, apply model internals (should always override)
+
                 impl = super(MetaFactory, cls).__new__(cls, name, bases, modelclass)  # inject our own property map
                 return impl.__adapter__._register(impl)
 

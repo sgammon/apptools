@@ -178,7 +178,7 @@ else:
                 continue
 
             # check recursive submodels
-            if issubclass(prop._basetype, model.AbstractModel):
+            if isinstance(prop._basetype, type(type)) and issubclass(prop._basetype, model.AbstractModel):
 
                 # shorcut: `model.Model` for `VariantField`s
                 if prop._basetype is model.Model:
