@@ -24,20 +24,15 @@ except ImportError as e:
 rule_builders = []
 installed_apps = config.config.get('webapp2', {}).get('apps_installed', [])
 if len(installed_apps) == 0:
-	installed_apps.append(None)
+    installed_apps.append(None)
 for app in installed_apps:
-	try:
-		if app is not None:
-		    rule_builders.append(webapp2.import_string('.'.join([app, 'routing', 'get_rules'])))
-		else:
-			rule_builders.append(webapp2.import_string('.'.join(['routing', 'get_rules'])))
-	except ImportError, e:
-		continue
-
-## @TODO: Export this class to exceptions
-class NoURLRules(Exception): pass
-if len(rule_builders) == 0:
-	raise NoURLRules("Could not resolve a URL rule builder.")
+    try:
+        if app is not None:
+            rule_builders.append(webapp2.import_string('.'.join([app, 'routing', 'get_rules'])))
+        else:
+            rule_builders.append(webapp2.import_string('.'.join(['routing', 'get_rules'])))
+    except (ImportError, webapp2.ImportStringError):
+        continue
 
 from apptools import core
 from apptools.util import runtools
@@ -119,11 +114,24 @@ if endpoints:
     endpoint = endpoints.api_server([service for name, service in servicelayer_dispatch.resolveServices(load=True) if hasattr(service, 'api_info')], restricted=False)
 
 ## Get builtin apps
+_builtin_route_cache = None
+
+
 def get_builtin_apps():
 
     ''' Return a list of builtin WSGI applications. This should NOT include _noop_app, which is only present for utility/fallback. '''
 
-    return [route for route in reduce(lambda x, y: x + y, [_admin_app, _sitemap_app, _appcache_app, _services_app])]
+    global _builtin_route_cache
+
+    if not _builtin_route_cache:
+        _builtin_route_cache = [route for route in reduce(lambda x, y: x + y, [_admin_app, _sitemap_app, _appcache_app, _services_app])]
+    return _builtin_route_cache
+
+
+## @TODO: Export this class to exceptions
+class NoURLRules(Exception): pass
+if (len(rule_builders) + len(get_builtin_apps())) == 0:
+    raise NoURLRules("Could not resolve a URL rule builder.")
 
 
 ##### ===== Runtime Tools/Entrypoints ===== #####
