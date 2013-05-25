@@ -73,7 +73,7 @@ class RedisMode(object):
 
 ## RedisAdapter
 # Adapt apptools models to Redis.
-class RedisAdapter(IndexedModelAdapter):
+class RedisAdapter(ModelAdapter):
 
     ''' Adapt model classes to Redis. '''
 
