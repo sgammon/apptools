@@ -17,7 +17,7 @@ stored in and retrieved from redis.
 
 # adapter API
 from . import abstract
-from .abstract import IndexedModelAdapter
+from .abstract import ModelAdapter
 
 # apptools util
 from apptools.util import json
