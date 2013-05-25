@@ -29,6 +29,12 @@ logging = AppToolsLogger('apptools.services.mappers')
 date_time_types = (datetime.datetime, datetime.date, datetime.time)
 
 
+try:
+    from google import appengine; _APPENGINE = True
+except:
+    _APPENGINE = False
+
+
 ##### +=+=+=+=+ Feed Format Support +=+=+=+=+ #####
 
 ## Custom RSS mapper
@@ -254,7 +260,7 @@ class JSONRPCMapper(service_handlers.JSONRPCMapper):
         }
 
         ## Add debug info
-        if config.debug or self.ServicesConfig.get('debug', False):
+        if (config.debug or self.ServicesConfig.get('debug', False)) and _APPENGINE:
             response_envelope['platform']['debug'] = config.debug
             response_envelope['platform']['build'] = sysconfig.get('version', {}).get('build', 'RELEASE')
             response_envelope['platform']['release'] = sysconfig.get('version', {}).get('release', 'PRODUCITON')
