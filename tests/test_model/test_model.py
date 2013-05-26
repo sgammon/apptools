@@ -1,24 +1,21 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
+----------------------
+apptools2: model tests
+----------------------
 
-    apptools2: model tests
-    -------------------------------------------------
-    |                                               |
-    |   `apptools.tests.model.model`                |
-    |                                               |
-    |   test cases for the `model.Model` class,     |
-    |   which provides python data modelling.       |
-    |                                               |
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    -------------------------------------------------
+testsuite for model classes, such as :py:class:`model.AbstractModel`
+and :py:class:`model.Model`. tests functionality such as construction,
+definition, inheritance, serialization, explicit/implicit behavior,
+and compatibility.
 
-'''
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 # stdlib
 import abc

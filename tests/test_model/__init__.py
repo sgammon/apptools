@@ -1,24 +1,19 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
+----------------------
+apptools2: model tests
+----------------------
 
-    apptools2: model tests
-    -------------------------------------------------
-    |                                               |
-    |   `apptools.tests.model`                      |
-    |                                               |
-    |   this package contains test cases and utils  |
-    |   for testing the apptools model API.         |
-    |                                               |
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    -------------------------------------------------
+testsuite for exercising the functions in
+the apptools model API.
 
-'''
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 # stdlib
 import os
@@ -45,7 +40,7 @@ class ModelExportTests(AppToolsTest):
             from apptools.model import AbstractKey
             from apptools.model import AbstractModel
 
-        except ImportError as e:  # pragma: no cover
+        except ImportError:  # pragma: no cover
             return self.fail("Failed to import concrete classes exported by Model.")
 
         else:

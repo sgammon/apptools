@@ -1,25 +1,20 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
+--------------------
+apptools2: testsuite
+--------------------
 
-    apptools2: testsuite
-    -------------------------------------------------
-    |                                               |
-    |   `apptools.tests`                            |
-    |                                               |
-    |   a suite of unit and integration testing     |
-    |   tools and test cases for apptools and       |
-    |   encapsulating apps.                         |
-    |                                               |
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    -------------------------------------------------
+this package contains base classes for writing tests
+for apps built with apptools. it also contains apptools'
+own testsuite, and tools for running/gathering tests.
 
-'''
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 # Base Imports
 import sys

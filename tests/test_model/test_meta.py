@@ -1,27 +1,20 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
+---------------------------
+apptools2: model meta tests
+---------------------------
 
-    apptools2: meta model tests
-    -------------------------------------------------
-    |                                               |
-    |   `apptools.tests.model.meta`                 |
-    |                                               |
-    |   test cases for the `model.MetaFactory`,     |
-    |   which acts as an abstract metaclass that    |
-    |   provides common methods to other meta       |
-    |   actors in the model API.                    |
-    |                                               |
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    -------------------------------------------------
+makes sure that abstract classes work abstractly,
+and not concretely. also makes sure that concrete
+classes can be extended and construct properly.
 
-'''
-
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 # stdlib
 import inspect

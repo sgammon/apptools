@@ -1,24 +1,20 @@
 # -*- coding: utf-8 -*-
 
-'''
+"""
+--------------------------
+apptools2: model key tests
+--------------------------
 
-    apptools2: model key tests
-    -------------------------------------------------
-    |                                               |
-    |   `apptools.tests.model.key`                  |
-    |                                               |
-    |   test cases for model classes that           |
-    |   represent unique persistence keys.          |
-    |                                               |
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    -------------------------------------------------
+tests the classes :py:class:`model.AbstractKey`
+and :py:class:`model.Key`, and makes sure they
+operate as intended.
 
-'''
+:author: Sam Gammon (sam@momentum.io)
+:copyright: (c) 2013 momentum labs.
+:license: This is private source code - Ampush has been granted an
+          unlimited, exclusive license for embedded use. For details
+          about embedded licenses and other legalese, see `LICENSE.md`.
+"""
 
 # apptools keys
 from apptools import model
