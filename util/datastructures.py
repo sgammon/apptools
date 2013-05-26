@@ -413,7 +413,7 @@ class StateManager(object):
 
 ## ProxiedStructure
 # Metaclass for doubly-indexed mappings. Used in BidirectionalEnum.
-class ProxiedStructure(type):
+class ProxiedStructure(abc.ABCMeta):
 
     ''' Metaclass for property-gather-enabled classes. '''
 
@@ -455,15 +455,14 @@ class ProxiedStructure(type):
         map(lambda x: [mappings['_pmap'].update(dict(x)), mappings['_plookup'].append([x[0][0], x[1][0]])],
             (((attr, value), (value, attr)) for attr, value in mappings.items() if not attr.startswith('_')))
 
-        # Map methods
-        mappings.update({
-            '__getitem__': _getitem,
-            '__setitem__': _setitem,
-            '__contains__': _contains
-        })
+        if '__getitem__' not in mappings:
+            mappings['__getitem__'] = _getitem
+        if '__setitem__' not in mappings:
+            mappings['__setitem__'] = _setitem
+        if '__contains__' not in mappings:
+            mappings['__contains__'] = _contains
 
-        new_cls = type(name, chain, mappings)
-        return new_cls
+        return super(cls, cls).__new__(cls, name, chain, mappings)
 
 
 ## BidirectionalEnum

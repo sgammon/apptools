@@ -58,8 +58,7 @@ else:
         basestring: pmessages.StringField,
         datetime.time: pmessages.StringField,
         datetime.date: pmessages.StringField,
-        datetime.datetime: pmessages.StringField,
-        BidirectionalEnum: pmessages.EnumField
+        datetime.datetime: pmessages.StringField
     }
 
     # build quick basetype lookup
@@ -178,7 +177,7 @@ else:
                 continue
 
             # check recursive submodels
-            if isinstance(prop._basetype, type(type)) and issubclass(prop._basetype, model.AbstractModel):
+            elif isinstance(prop._basetype, type(type)) and issubclass(prop._basetype, model.AbstractModel):
 
                 # shorcut: `model.Model` for `VariantField`s
                 if prop._basetype is model.Model:
@@ -198,7 +197,7 @@ else:
                 continue
 
             # check for keys (implemented with `basestring` for now)
-            if prop._basetype == model.Key:
+            elif prop._basetype == model.Key:
 
                 # build field and advance
                 _field_i = _field_i + 1
@@ -207,8 +206,40 @@ else:
                 _model_message[name] = pmessages.MessageField(*_pargs)
                 continue
 
+            elif isinstance(prop._basetype, type) and issubclass(prop._basetype, datastructures.BidirectionalEnum):
+
+                #import pdb; pdb.set_trace()
+
+                # pop first data item off and check type
+                if isinstance(getattr(prop._basetype, prop._basetype.__forward__[0]), basestring):
+
+                    # for string values, simply use a string property...
+                    _field_i = _field_i + 1
+                    _pargs.append(_field_i)
+                    _model_message[name] = pmessages.StringField(*_pargs, **_pkwargs)
+
+                else:
+                    # it's an enum-compatible class, dynamically build one
+                    # ... build class internals
+                    enum_klass = {
+                        '__module__': prop._basetype.__module__
+                    }
+
+                    # otherwise, just add data properties
+                    enum_klass.update(prop._basetype.__serialize__())
+
+                    # construct enum class
+                    enum = type(prop._basetype.__name__, (pmessages.Enum,), enum_klass)
+
+                    # build field and advance
+                    _field_i = _field_i + 1
+                    _pargs.append(enum)
+                    _pargs.append(_field_i)
+                    _model_message[name] = pmessages.EnumField(*_pargs, **_pkwargs)
+                    continue
+
             # check builtin basetypes
-            if prop._basetype in _builtin_basetypes:
+            elif prop._basetype in _builtin_basetypes:
 
                 # build field and advance
                 _field_i = _field_i + 1

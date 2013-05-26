@@ -159,9 +159,15 @@ class MetaFactory(type):
 
         # an explicit adapter was requested via an `__adapter__` class property
         _spec = properties['__adapter__']
-        for _a in concrete:
-            if _a is _spec or _a.__name__ == _spec:
-                return _a.acquire(name, bases, properties)
+        if not isinstance(_spec, (list, tuple)):
+            _spec = [_spec]
+
+        for _spec_item in _spec:
+            for _a in concrete:
+                if _a is _spec_item or _a.__name__ == _spec_item:
+                    return _a.acquire(name, bases, properties)
+                # fallback to next adapter
+                continue
 
         raise exceptions.InvalidExplicitAdapter(properties['__adapter__'])
 
