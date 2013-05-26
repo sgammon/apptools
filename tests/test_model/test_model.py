@@ -750,3 +750,19 @@ class ModelTests(AppToolsTest):
         # set to valid value and put, should not except
         r.repeated = [1, 2, 3]
         r.put()
+
+    def test_class_level_default_value(self):
+
+        ''' Try grabbing the value of a property with a default set at the class level. '''
+
+        ## ClassDefaultSample
+        # Try grabbing the value of a defaulted property at the class level.
+        class ClassDefaultSample(model.Model):
+
+            ''' Tests properties with default values at the class level. '''
+
+            sample_default = basestring, {'default': 'Hello, default!'}
+
+        # try on the class level
+        self.assertIsInstance(ClassDefaultSample.sample_default, basestring)
+        self.assertEqual(ClassDefaultSample.sample_default, 'Hello, default!')

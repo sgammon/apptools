@@ -53,6 +53,10 @@ class InvalidAttributeWrite(AttributeError):
     message = "Cannot %s property \"%s\" of model \"%s\" before instantiation."
 
 
+class InvalidKeyAttributeWrite(AttributeError):
+    message = "Cannot %s property \"%s\" of key \"%s\" before instantiation."
+
+
 class InvalidAttribute(AttributeError):
     message = "Cannot %s nonexistent data property \"%s\" of model class \"%s\"."
 

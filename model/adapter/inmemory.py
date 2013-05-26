@@ -104,7 +104,7 @@ class InMemoryAdapter(IndexedModelAdapter):
     def put(cls, key, entity, model):
 
         ''' Persist an entity to storage in Python RAM. '''
-        
+
         global _metadata
         global _datastore
 
@@ -230,7 +230,10 @@ class InMemoryAdapter(IndexedModelAdapter):
 
                 continue
 
-            elif len(write) == 3:  # simple map index
+            elif len(write) == 3:  # pragma: no cover
+                # @TODO(sgammon): Do we need this?
+
+                # simple map index
 
                 # extract write, inflate
                 index, dimension, value = write

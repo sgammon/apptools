@@ -20,9 +20,6 @@
 
 '''
 
-# stdlib
-import unittest
-
 # apptools keys
 from apptools import model
 from apptools.model import Key
@@ -126,7 +123,7 @@ class KeyTests(AppToolsTest):
 
         # should not be able to instantiate `AbstractKey`
         with self.assertRaises(exceptions.AbstractConstructionFailure):
-            k = AbstractKey()
+            AbstractKey()
 
         self.assertIsInstance(Key(), AbstractKey)
 
@@ -225,6 +222,7 @@ class KeyTests(AppToolsTest):
         self.assertEqual(k1.kind, "KindedModel")
         self.assertEqual(k1.id, "test_id")
         self.assertEqual(k2.kind, k1.kind)
+        self.assertEqual(ko.kind, k1.kind)
         self.assertEqual(k2.id, k2.id)
 
     def test_key_ancestry(self):
@@ -271,7 +269,7 @@ class KeyTests(AppToolsTest):
 
         # try and make a key with a ton of arguments
         with self.assertRaises(TypeError):
-            k = model.Key("SampleKind", "id", "coolstring", "whatdowedo", "whenwehave", "thismanyarguments")
+            model.Key("SampleKind", "id", "coolstring", "whatdowedo", "whenwehave", "thismanyarguments")
 
     def test_key_construct_multiple_formats(self):
 
@@ -284,30 +282,155 @@ class KeyTests(AppToolsTest):
         with self.assertRaises(TypeError):
             model.Key(raw=ok.flatten(False)[1], urlsafe=ok.urlsafe())
 
-    @unittest.skip("Test is not yet implemented.")
     def test_key_auto_id(self):
 
         ''' Test an integer-based ID field. '''
 
-        pass  # @TODO: test auto ID's
+        class AutoincrementTest(model.Model):
 
-    @unittest.skip("Test is not yet implemented.")
-    def test_key_format(self):
+            ''' Test that keys autoincrement properly when not assigned
+                deterministic name values. '''
 
-        ''' Make sure there's a proper format spec on `model.Key`. '''
+            message = basestring, {'default': 'Hello, world!'}
 
-        pass  # @TODO: test __schema__
+        # put deterministic key
+        a = AutoincrementTest(key=model.Key(AutoincrementTest.kind(), 'testing-string-key'))
+        dk = a.put()
 
-    @unittest.skip("Test is not yet implemented.")
-    def test_key_set_attribute(self):
+        # put nondeterministic key #1
+        nk = AutoincrementTest().put()
 
-        ''' Try setting an unknown and known attribute. '''
+        # put nondeterministic key #2
+        nk2 = AutoincrementTest().put()
 
-        pass  # @TODO: test __setattr__
+        self.assertIsInstance(nk.id, int)  # nondeterministic should be an int
+        self.assertIsInstance(dk.id, basestring)  # deterministic should be a string
+        self.assertTrue((nk2.id > nk.id))  # should be greater
 
-    @unittest.skip("Test is not yet implemented.")
     def test_key_adapter(self):
 
         ''' Make sure the adapter is attached correctly to `model.Key`. '''
 
-        pass  # @TODO: test __adapter__
+        # build test obj
+        k = model.Key("TestKind", "test")
+
+        # make sure an adapter is attached at the class level
+        self.assertTrue(hasattr(model.Key, '__adapter__'))
+        self.assertIsInstance(model.Key.__adapter__, model.adapter.ModelAdapter)
+
+        # make sure the same is true at the object level
+        self.assertTrue(hasattr(k, '__adapter__'))
+        self.assertIsInstance(model.Key.__adapter__, model.adapter.ModelAdapter)
+
+    def test_key_equality(self):
+
+        ''' Make sure keys equal each other when they should. '''
+
+        conditions = []
+
+        # test with determininstic ID
+        k1 = model.Key("TestKind", "blabs")
+        k2 = model.Key("TestKind", "blabs")
+        conditions.append((k1 == k2))
+
+        # test kinded keys
+        k3 = model.Key("TestKind")
+        k4 = model.Key("TestKind")
+        conditions.append((k3 == k4))
+
+        # test ancestored keys
+        k5 = model.Key("TestSubkind", "blobs", parent=k1)
+        k6 = model.Key("TestSubkind", "blobs", parent=k2)
+        conditions.append((k5 == k6))
+
+        [self.assertTrue(condition) for condition in conditions]
+
+    def test_key_inequality(self):
+
+        ''' Make sure keys don't equal each other when they shouldn't. '''
+
+        conditions = []
+
+        # test with determininstic ID
+        k1 = model.Key("TestKind", "blabs")
+        k2 = model.Key("TestKind", "blobs")
+        conditions.append((k1 != k2))
+
+        # test kinded keys
+        k3 = model.Key("TestKind")
+        k4 = model.Key("TestOtherKind")
+        conditions.append((k3 != k4))
+
+        # test ancestored keys with different IDs
+        k5 = model.Key("TestSubkind", "blabs", parent=k1)
+        k6 = model.Key("TestSubkind", "blobs", parent=k1)
+        conditions.append((k5 != k6))
+
+        # test ancestored keys with different kinds
+        k7 = model.Key("TestSubkindOne", "blabs", parent=k1)
+        k8 = model.Key("TestSubkindTwo", "blabs", parent=k1)
+        conditions.append((k7 != k8))
+
+        # test ancestored keys with different parents
+        k9 = model.Key("TestSubkind", "blabs", parent=k1)
+        k10 = model.Key("TestSubkind", "blabs", parent=k2)
+        conditions.append((k9 != k10))
+
+        [self.assertTrue(condition) for condition in conditions]
+
+    def test_key_format(self):
+
+        ''' Make sure there's a proper format spec on `model.Key`. '''
+
+        # build object
+        k1 = model.Key("Test", "testkey")
+
+        # test class
+        self.assertTrue(hasattr(model.Key, '__schema__'))
+        self.assertIsInstance(model.Key.__schema__, tuple)
+        self.assertTrue((len(model.Key.__schema__) > 1))
+
+        # test object
+        self.assertTrue(hasattr(k1, '__schema__'))
+        self.assertIsInstance(model.Key.__schema__, tuple)
+        self.assertTrue((len(model.Key.__schema__) > 1))
+
+    def test_key_set_unknown_attribute(self):
+
+        ''' Try setting an unknown and known attribute. '''
+
+        k = model.Key("CoolKind", "coolid")
+        with self.assertRaises(AttributeError):
+            k.blabble = True  # try writing unknown attribute
+
+    def test_key_overwrite_known_attribute(self):
+
+        ''' Try overwriting a known (schema-d) attribute. '''
+
+        k = model.Key("CoolKind", "coolid")
+        with self.assertRaises(AttributeError):
+            k.kind = "MyKind"
+        with self.assertRaises(AttributeError):
+            k.id = 10
+
+    def test_key_set_attribute_persisted(self):
+
+        ''' Try setting a valid attribute _after_ a Key has been persisted. '''
+
+        class PersistedKeyTest(model.Model):
+
+            ''' Test model for making sure writing to a persisted key fails. '''
+
+            message = basestring, {'default': 'Hello, world!'}
+
+        with self.assertRaises(AttributeError):
+            k = PersistedKeyTest().put()
+            k.id = 5
+
+        with self.assertRaises(AttributeError):
+            k = PersistedKeyTest().put()
+            k._set_internal('kind', "Blabs")
+
+        with self.assertRaises(AttributeError):
+            k = PersistedKeyTest().put()
+            k._set_internal("id", 25)

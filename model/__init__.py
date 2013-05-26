@@ -167,17 +167,18 @@ class MetaFactory(type):
                 if _a is _spec_item or _a.__name__ == _spec_item:
                     return _a.acquire(name, bases, properties)
                 # fallback to next adapter
-                continue
+                continue  # pragma: no cover
 
         raise exceptions.InvalidExplicitAdapter(properties['__adapter__'])
 
     ## = Abstract Methods = ##
     @abc.abstractmethod
-    def initialize(cls, name, bases, properties):  # pragma: no cover
+    def initialize(cls, name, bases, properties):
 
         ''' Initialize a subclass. Must be overridden by child metaclasses. '''
 
-        raise NotImplementedError()  # `MetaFactory.initialize` is abstract
+        # `MetaFactory.initialize` is abstract
+        raise NotImplementedError()  # pragma: no cover
 
 
 ## == Abstract Classes == ##
@@ -262,13 +263,14 @@ class AbstractKey(_key_parent()):
 
         ''' Test whether two keys are functionally identical. '''
 
-        if other:
+        if (not self and not other) or (self and other):
             if self.__schema__ <= other.__schema__:  # subset check
                 if self.__schema__ >= other.__schema__:  # superset check
                     if isinstance(other, self.__class__):  # type check
                         # last resort: check each data property
                         return all((i for i in map(lambda x: getattr(other, x) == getattr(self, x), self.__schema__)))
-        return False  # didn't pass one of our tests
+        # didn't pass one of our tests
+        return False  # pragma: no cover
 
     def __repr__(self):
 
@@ -681,6 +683,17 @@ class Key(AbstractKey):
 
         # if we *know* this is an existing key, `_persisted` should be `true`. also set kwarg-passed parent.
         self._set_internal('parent', kwargs.get('parent'))._set_internal('persisted', kwargs.get('_persisted', False))
+
+    def __setattr__(cls, name, value):
+
+        ''' Block attribute overwrites. '''
+
+        if not name.startswith('__'):
+            if name not in cls.__schema__:
+                raise exceptions.InvalidKeyAttributeWrite('create', name, cls)
+            if getattr(cls, name) is not None:
+                raise exceptions.InvalidKeyAttributeWrite('overwrite', name, cls)
+        return super(AbstractKey, cls).__setattr__(name, value)
 
 
 ## Property

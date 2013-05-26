@@ -28,7 +28,7 @@ try:
     import msgpack
 except ImportError as e:  # pragma: no cover
     _MSGPACK = False  # indicate no msgpack support
-else:
+else:  # pragma: no cover
     _MSGPACK = True  # indicate msgpack support
 
 # resolve redis
