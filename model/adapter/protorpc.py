@@ -25,9 +25,6 @@ from .abstract import ModelMixin
 # apptools util
 from apptools.util import datastructures
 
-# apptools datastructures
-from apptools.util.datastructures import BidirectionalEnum
-
 
 ## == protorpc support == ##
 try:
@@ -90,6 +87,7 @@ else:
             :returns: Constructed (but not instantiated) :py:class:`protorpc.messages.Message` class. '''
 
         # must nest import to avoid circular dependencies
+        from apptools import rpc
         from apptools import model
         from apptools import services
 
@@ -100,7 +98,7 @@ else:
         lookup, property_map = _model.__lookup__, {}
 
         # add key submessage
-        _model_message['key'] = pmessages.MessageField(Key, _field_i)
+        _model_message['key'] = pmessages.MessageField(rpc.Key, _field_i)
 
         # build fields from model properties
         for name in lookup:
@@ -201,14 +199,12 @@ else:
 
                 # build field and advance
                 _field_i = _field_i + 1
-                _pargs.append(Key)
+                _pargs.append(rpc.Key)
                 _pargs.append(_field_i)
                 _model_message[name] = pmessages.MessageField(*_pargs)
                 continue
 
             elif isinstance(prop._basetype, type) and issubclass(prop._basetype, datastructures.BidirectionalEnum):
-
-                #import pdb; pdb.set_trace()
 
                 # pop first data item off and check type
                 if isinstance(getattr(prop._basetype, prop._basetype.__forward__[0]), basestring):
@@ -264,16 +260,6 @@ else:
         # construct message class on-the-fly
         return type(_model.kind(), (pmessages.Message,), _model_message)
 
-    ## Key
-    # Expresses a `model.Key` as a message.
-    class Key(pmessages.Message):
-
-        ''' Message that expresses a `model.Key`. '''
-
-        id = pmessages.StringField(1)
-        kind = pmessages.StringField(2)
-        encoded = pmessages.StringField(3)
-
     ## ProtoRPCKey
     # Mixin to core `Key` class that enables ProtoRPC message conversion.
     class ProtoRPCKey(KeyMixin):
@@ -286,7 +272,8 @@ else:
 
                 :returns: Constructed :py:class:`protorpc.Key` message object. '''
 
-            return Key(id=str(self.id), kind=self.kind, encoded=self.urlsafe())
+            from apptools import rpc
+            return rpc.Key(id=str(self.id), kind=self.kind, encoded=self.urlsafe())
 
     ## ProtoRPCModel
     # Mixin to core `Model` class that enables ProtoRPC message conversion.
@@ -303,6 +290,7 @@ else:
                 :returns: Constructed and initialized :py:class:`protorpc.Message` object. '''
 
             # must import inline to avoid circular dependency
+            from apptools import rpc
             from apptools import model
 
             values = {}
@@ -315,7 +303,7 @@ else:
 
                 # convert keys => urlsafe
                 if isinstance(value, model.Key):
-                    values[prop] = Key(id=value.id, kind=value.kind, encoded=value.urlsafe())
+                    values[prop] = rpc.Key(id=value.id, kind=value.kind, encoded=value.urlsafe())
                     continue
 
                 # convert date/time/datetime => string
