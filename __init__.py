@@ -20,8 +20,8 @@ import logging
 try:
     import bootstrap
     bootstrap.AppBootstrapper.prepareImports()
-except:  # pragma: no cover
-    pass  # No bootstrapper found.
+except:
+    pass  # pragma: no cover
 
 ## AppTools Util
 from apptools.util import appconfig
@@ -29,7 +29,7 @@ from apptools.util import appconfig
 try:
     import config
 
-except ImportError as e:
+except ImportError as e:  # pragma: no cover
     cfg = appconfig.ConfigProxy(appconfig._DEFAULT_CONFIG)
 
 else:
@@ -42,10 +42,8 @@ def gateway(environ, start_response):
 
     ''' Central gateway into AppTools' WSGI dispatch. '''
 
-    from apptools import dispatch
-
-    ## Pass off to dispatch
-    return dispatch.gateway(environ, start_response)
+    from apptools import dispatch  # pragma: no cover
+    return dispatch.gateway(environ, start_response)  # pragma: no cover
 
 
 ## Expose base classes
@@ -56,4 +54,4 @@ def gateway(environ, start_response):
 
 ## For direct/CGI...
 if __name__ == '__main__':
-    gateway(None, None)
+    gateway(None, None)  # pragma: no cover
