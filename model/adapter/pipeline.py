@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
---------------------------------------
-apptools2: model adapter for pipelines
---------------------------------------
-
 allows apptools models to be seamlessly
 passed back-and-forth between pipelines.
 

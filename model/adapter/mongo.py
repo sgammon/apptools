@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
-----------------------------------
-apptools2: model adapter for mongo
-----------------------------------
-
 allows apptools models to be stored and
 retrieved using mongoDB.
 

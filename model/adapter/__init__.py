@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
--------------------------
-apptools2: model adapters
--------------------------
-
 allows apptools models to be adapted to
 just about any backend storage engine!
 
@@ -62,4 +58,4 @@ from .core import JSONMixin
 builtin_mixins = (DictMixin, JSONMixin)
 
 
-__all__ = abstract_adapters + modules + concrete + builtin_mixins
+__adapters__ = abstract_adapters + modules + concrete + builtin_mixins

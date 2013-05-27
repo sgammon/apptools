@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
--------------------------------------
-apptools2: model adapter for protorpc
--------------------------------------
-
 allows apptools models to be inflated
 from and expressed as protorpc messages.
 

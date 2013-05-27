@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
-----------------------------------
-apptools2: abstract model adapters
-----------------------------------
-
 specifies interface classes that plug-in
 to models to allow agnostic storage.
 

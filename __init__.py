@@ -20,15 +20,11 @@ import logging
 try:
     import bootstrap
     bootstrap.AppBootstrapper.prepareImports()
-except:
-    # No bootstrapper found.
-    pass
+except:  # pragma: no cover
+    pass  # No bootstrapper found.
 
 ## AppTools Util
-from apptools.util import debug
 from apptools.util import appconfig
-
-wallclock = []
 
 try:
     import config
@@ -39,16 +35,6 @@ except ImportError as e:
 else:
     cfg = appconfig.ConfigProxy(config.config)
     config.config = cfg
-
-
-def clockpoint(name):
-
-    ''' Adds a clockpoint to the wallclock dict above, for easy walltime tracking. '''
-
-    global wallclock
-    timepoint = (name, time.time())
-    wallclock.append(timepoint)
-    return timepoint
 
 
 ## WSGI Gateway

@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
-------------------------
-apptools2: service layer
-------------------------
-
 the ``apptools service layer`` is a componentized subsystem
 built on top of *Google ProtoRPC* and integrated with the
 rest of the apptools platform.
@@ -176,10 +172,9 @@ else:
 
         encoded = pmessages.StringField(1)  # encoded (`urlsafe`) key
         kind = pmessages.StringField(2)  # kind name for key
-        id = pmessages.IntegerField(3)  # integer ID for key
-        name = pmessages.StringField(4)  # string name for key
-        namespace = pmessages.StringField(5)  # string namespace for key
-        parent = pmessages.MessageField('Key', 6)  # recursive key message for parent
+        id = pmessages.StringField(3)  # integer or string ID for key
+        namespace = pmessages.StringField(4)  # string namespace for key
+        parent = pmessages.MessageField('Key', 5)  # recursive key message for parent
 
 
     ## Echo - valid as a request as a response, simply defaults to 'Hello, world!'. Mainly for testing.

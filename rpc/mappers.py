@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
---------------------------
-apptools2: service mappers
---------------------------
-
 protoRPC mappers enable the apptools service layer to speak
 any language - they are responsible for serialization,
 deserialization, and codec management. this package contains

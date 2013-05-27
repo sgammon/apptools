@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
-----------------------------------
-apptools2: model adapter for redis
-----------------------------------
-
 allows apptools models to be efficiently
 stored in and retrieved from redis.
 
@@ -365,10 +361,9 @@ class RedisAdapter(ModelAdapter):
 
             :param operation: Operation name to execute (from :py:attr:`RedisAdapter.Operations`).
             :param kind: String :py:class:`model.Model` kind to acquire the channel for.
-            :param *args: Positional arguments to pass to the low-level operation selected.
-            :param **kwargs: Keyword arguments to pass to the low-level operation selected.
-
-            :returns: Result of the selected low-level operation, '''
+            :param args: Positional arguments to pass to the low-level operation selected.
+            :param kwargs: Keyword arguments to pass to the low-level operation selected.
+            :returns: Result of the selected low-level operation. '''
 
         if isinstance(operation, tuple):
             operation = '_'.join([operation])  # reduce (CLIENT, KILL) to 'client_kill' (for example)

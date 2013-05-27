@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
---------------------------------
-apptools2: model adapter for SQL
---------------------------------
-
 allows apptools models to be used across
 SQL tables, with enhanced mySQL support.
 

@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
----------------------------------
-apptools2: service layer dispatch
----------------------------------
-
 this small service layer subpackage contains utilities
 for dispatching and running RPC services.
 

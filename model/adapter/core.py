@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
-------------------------------
-apptools2: core model adapters
-------------------------------
-
 specifies mixins and adapters that are part
 of the core model adapter distribution.
 

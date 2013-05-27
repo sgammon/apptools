@@ -1,10 +1,6 @@
 # -*- coding: utf-8 -*-
 
 """
-------------------------------------------
-apptools2: model adapter for thread memory
-------------------------------------------
-
 allows apptools models to be stored in
 main RAM, as a testing tool.
 
