@@ -89,7 +89,6 @@ else:
         # must nest import to avoid circular dependencies
         from apptools import rpc
         from apptools import model
-        from apptools import services
 
         # provision field increment and message map
         _field_i, _model_message = 1, {'__module__': _model.__module__}
@@ -171,7 +170,7 @@ else:
             # check variant by dict
             if prop._basetype == dict:
                 _field_i = _field_i + 1
-                _model_message[name] = services.VariantField(_field_i)
+                _model_message[name] = rpc.VariantField(_field_i)
                 continue
 
             # check recursive submodels
@@ -182,7 +181,7 @@ else:
 
                     ## general, top-level `Model` means a variant field
                     _field_i = _field_i + 1
-                    _model_message[name] = services.VariantField(_field_i)
+                    _model_message[name] = rpc.VariantField(_field_i)
                     continue
 
                 # recurse - it's a model class
@@ -295,11 +294,6 @@ else:
 
             values = {}
             for prop, value in self.to_dict(*args, **kwargs).items():
-
-                # covert datetime types => isoformat
-                if isinstance(value, (datetime.time, datetime.date, datetime.datetime)):
-                    values[prop] = value.isoformat()
-                    continue
 
                 # convert keys => urlsafe
                 if isinstance(value, model.Key):

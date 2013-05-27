@@ -104,6 +104,7 @@ class JSONRPC(service_handlers.JSONRPCMapper, rpc.ConfiguredClass):
 
     http_methods = ('GET', 'POST', 'PUT', 'DELETE')
     content_types = ('application/json', 'application/x-json', 'application/json-rpc', 'apptools/json-rpc')
+    content_type = CONTENT_TYPE = content_types[0]  # alias for deprecated uppercase ``CONTENT_TYPE``
 
     class _MessageJSONEncoder(protojson.MessageJSONEncoder):
 

@@ -23,9 +23,6 @@ convenient, integrated way.
 # stdlib
 import os
 import time
-import base64
-import hashlib
-import inspect
 import logging
 import webapp2
 
@@ -70,8 +67,6 @@ except:
 
 #### ==== Dependencies ==== ####
 try:
-    import protorpc
-
     # remote / message packages
     from protorpc import remote
     from protorpc import registry
@@ -962,8 +957,8 @@ else:
         return endpoint_wrap
 
 
-    ## ``api`` - wrap a class and make it into a registered ``Service``.
-    def api(*args, **kwargs):
+    ## ``service`` - wrap a class and make it into a registered ``Service``.
+    def service(*args, **kwargs):
 
         ''' Inject API service into config. '''
 
@@ -995,3 +990,5 @@ else:
         global _installed_mappers
         _installed_mappers.append(klass)
         return klass
+
+Exceptions = datastructures.DictProxy

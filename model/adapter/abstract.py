@@ -636,7 +636,8 @@ class Mixin(object):
                         if base not in frozenset((KeyMixin, ModelMixin)):
                             ## mixins are only allowed to _directly_ extend `KeyMixin` or `ModelMixin`
                             raise RuntimeError("Cannot inject classes for inheritance in between"
-                                               "`KeyMixin` or `ModelMixin` and a concrete mixin class.")
+                                               " `KeyMixin` or `ModelMixin` and a concrete mixin class,"
+                                               " or after a concrete mixin class.")
 
                 # add to each registry that the mixin supports
                 for base in bases:
