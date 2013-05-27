@@ -37,7 +37,8 @@ for app in installed_apps:
 from apptools import core
 from apptools.util import runtools
 
-from apptools.services import gateway as servicelayer_dispatch
+# new RPC version 2.0
+from apptools.rpc import dispatch
 
 if rule_builders:
     app_rules = reduce(lambda x, y: x + y, [ruleset() for ruleset in rule_builders])
@@ -112,9 +113,10 @@ _noop_app = [webapp2.Route('/.*', NoOperationHandler, name='no-op-handler')]
 _admin_app = [webapp2.Route('/_app/manage.*', AppAdminHandler, name='admin-handler-root')]
 _sitemap_app = [webapp2.Route('/_app/sitemap.*', SitemapHandler, name='sitemap-handler')]
 _appcache_app = [webapp2.Route('/_app/manifest.*', CacheManifestHandler, name='cache-manifest-handler')]
-_services_app = servicelayer_dispatch.generateServiceMappings(config.config.get('apptools.project.services'))
+_services_app = dispatch.mappings
 if endpoints:
-    endpoint = endpoints.api_server([service for name, service in servicelayer_dispatch.resolveServices(load=True) if hasattr(service, 'api_info')], restricted=False)
+    endpoint = endpoints.api_server([service for name, service in dispatch._resolve_services(load=True)
+                                     if hasattr(service, 'api_info')], restricted=False)
 
 ## Get builtin apps
 _builtin_route_cache = None
@@ -243,11 +245,11 @@ def gateway(environ=None, start_response=None, direct=False, appclass=webapp2.WS
     if config.debug:
         runtools.enable_jinja2_debugging()
         if sys_config.get('hooks'):
-            if sys_config.get('appstats', False) == True:
+            if sys_config.get('appstats', False) is True:
                 app = runtools.enable_appstats(app)
-            if sys_config.get('apptrace', False) == True:
+            if sys_config.get('apptrace', False) is True:
                 app = runtools.enable_apptrace(app)
-            if sys_config.get('profiler', False) == True:
+            if sys_config.get('profiler', False) is True:
 
                 # profile_run shim action
                 def profile_run(app, environ=None, start_response=None):
