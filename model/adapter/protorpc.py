@@ -201,6 +201,13 @@ else:
 
             elif isinstance(prop._basetype, type) and issubclass(prop._basetype, datastructures.BidirectionalEnum):
 
+                # quick check: empty enums create stringfields
+                if not len(prop._basetype.__forward__):
+                    _field_i = _field_i + 1
+                    _pargs.append(_field_i)
+                    _model_message[name] = pmessages.StringField(*_pargs, **_pkwargs)
+                    continue
+
                 # pop first data item off and check type
                 if isinstance(getattr(prop._basetype, prop._basetype.__forward__[0]), basestring):
 
