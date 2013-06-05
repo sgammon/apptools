@@ -446,7 +446,11 @@ else:
             ''' Send an error RPC response. '''
 
             status = remote.RpcStatus(state=status_state, error_message=error_message, error_name=error_name)
-            mapper().build_response(self, status)
+
+            if isinstance(mapper, type(type)):
+                mapper().build_response(self, status)
+            else:
+                mapper.build_response(self, status)
 
             self.response.headers['Content-Type'] = mapper.default_content_type
             self.logging.error(error_message)
@@ -523,14 +527,14 @@ else:
                         method_info = method.remote
                     except AttributeError, err:
                         self.setstatus('failure')
-                        self._ServiceHandler__send_simple_error(400, remote.RpcState.METHOD_NOT_FOUND_ERROR, 'Unrecognized RPC method: %s' % remote_method, mapper)
+                        self.__send_error(400, remote.RpcState.METHOD_NOT_FOUND_ERROR, 'Unrecognized RPC method: %s' % remote_method, mapper)
                         return
 
                     request = mapper.build_request(self, method_info.request_type)
 
                 except (handlers.RequestError, pmessages.DecodeError), err:
                     self.setstatus('failure')
-                    self._ServiceHandler__send_simple_error(400, remote.RpcState.REQUEST_ERROR, 'Error parsing RPC request (%s)' % err, mapper)
+                    self.__send_error(400, remote.RpcState.REQUEST_ERROR, 'Error parsing RPC request (%s)' % err, mapper)
                     return
 
                 if hasattr(self.service, 'before_request_hook'):
@@ -540,7 +544,7 @@ else:
                     response = method(request)
                 except self.ApplicationError, err:
                     self.setstatus('failure')
-                    self._ServiceHandler__send_simple_error(400, remote.RpcState.APPLICATION_ERROR, err.message, mapper, err.error_name)
+                    self.__send_error(400, remote.RpcState.APPLICATION_ERROR, err.message, mapper, err.error_name)
                     return
 
                 mapper.build_response(self, response)
@@ -974,7 +978,7 @@ else:
             }
 
             # inject
-            _project_services[klass.name] = config_blob
+            _project_services['services'][klass.name or klass.__name__] = config_blob
             return klass
 
     ## ``mapper`` - decorate a class as a service mapper.

@@ -13,6 +13,7 @@ requests to the user's app.
 
 import os
 import config
+import inspect
 import webapp2
 import logging
 
@@ -113,7 +114,6 @@ _noop_app = [webapp2.Route('/.*', NoOperationHandler, name='no-op-handler')]
 _admin_app = [webapp2.Route('/_app/manage.*', AppAdminHandler, name='admin-handler-root')]
 _sitemap_app = [webapp2.Route('/_app/sitemap.*', SitemapHandler, name='sitemap-handler')]
 _appcache_app = [webapp2.Route('/_app/manifest.*', CacheManifestHandler, name='cache-manifest-handler')]
-_services_app = dispatch.mappings
 if endpoints:
     endpoint = endpoints.api_server([service for name, service in dispatch._resolve_services(load=True)
                                      if hasattr(service, 'api_info')], restricted=False)
@@ -129,7 +129,12 @@ def get_builtin_apps():
     global _builtin_route_cache
 
     if not _builtin_route_cache:
-        _builtin_route_cache = [route for route in reduce(lambda x, y: x + y, [_admin_app, _sitemap_app, _appcache_app, _services_app])]
+        _builtin_route_cache = [route for route in reduce(lambda x, y: x + y,
+                                                          filter(lambda x: not inspect.isroutine(x), [
+                                                          _admin_app,
+                                                          _sitemap_app,
+                                                          _appcache_app
+                                                          ]))]
     return _builtin_route_cache
 
 
@@ -205,22 +210,6 @@ def appcache(environ=None, start_response=None):
     return _run(_appcache_app, environ, start_response)
 
 
-## Services run shortcut
-def services(environ=None, start_response=None, direct=False):
-
-    ''' Run the service layer app. '''
-
-    global _run
-    global _services_app
-
-    if direct:
-        from apptools.services import direct
-        _services_app = direct.realtimeServiceMappings(config.config.get('apptools.project.services'))
-
-    ## Pass off to servicelayer-specific dispatch (if accessed through this entrypoint)
-    return _run(_services_app, environ, start_response)
-
-
 ## Main WSGI dispatch
 def gateway(environ=None, start_response=None, direct=False, appclass=webapp2.WSGIApplication):
 
@@ -231,7 +220,8 @@ def gateway(environ=None, start_response=None, direct=False, appclass=webapp2.WS
     global sys_config
 
     ## Get user/app rules, then splice in our internal rules at the end
-    routing_rules = [rule for rule in (app_rules + get_builtin_apps())]
+    routing_rules = [rule for rule in map(lambda x: x() if inspect.isroutine(x) else x,
+                                          (app_rules + get_builtin_apps()) + dispatch.mappings())]
 
     if direct:
         environ['xaf.direct'] = True

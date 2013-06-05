@@ -25,11 +25,28 @@ except:
     _DEBUG, config = True, False
 
 
-## generate URL mappings
-mappings = rpc._service_mappings(rpc._project_services)
+## Globals
+gateway = _application = Application = None
 
-## generate gateway application
-gateway = _application = Application = webapp2.WSGIApplication(mappings, **{
-    'debug': _DEBUG,
-    'config': config.config if config else {}
-})
+
+## generate URL mappings
+mappings = lambda: rpc._service_mappings(rpc._project_services)
+
+
+def initialize(services=mappings):
+
+    ''' Initialize the Service Layer. '''
+
+    global gateway, _application, Application, mappings
+
+    ## generate gateway application
+    gateway = _application = Application = webapp2.WSGIApplication(mappings, **{
+        'debug': _DEBUG,
+        'config': config.config if config else {}
+    })
+
+    return gateway
+
+
+if __name__ == '__main__':
+    initialize()
