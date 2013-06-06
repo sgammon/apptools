@@ -102,7 +102,7 @@ except ImportError as e:
     # The apptools service layer requires ProtoRPC to function.
     #
 
-    if _DEBUG:
+    if _DEBUG:  # in debug mode, indicate we are missing protorpc
         raise
     logging.warning('ProtoRPC could not be found - service layer not available.')
 
