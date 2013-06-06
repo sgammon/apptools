@@ -96,7 +96,7 @@ try:
     # webapp2 imports
     from webapp2_extras import protorpc as proto
 
-except:
+except ImportError as e:
 
     #
     # The apptools service layer requires ProtoRPC to function.
