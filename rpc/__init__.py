@@ -924,6 +924,9 @@ else:
         if issubclass(input, model.Model):
             input = input.to_message_model()
 
+        if input == model.Key or issubclass(input, model.Key):
+            input = Key
+
         if output is not None and issubclass(output, model.Model):
             output = output.to_message_model()
 

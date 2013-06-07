@@ -146,6 +146,11 @@ class MetaFactory(type):
         '''
 
         if '__adapter__' not in properties:
+
+            for i in bases:
+                if hasattr(i, '__adapter__'):
+                    return i.__adapter__
+
             # grab each supported adapter
             _adapters = [option for option in concrete if option.is_supported()]
 
@@ -761,13 +766,14 @@ class Property(object):
             if self._required: raise exceptions.PropertyRequired(self.name, instance.kind())
             if value is sentinel: return True  # empty value, non-required, all good :)
 
-        if isinstance(value, (list, tuple, set, frozenset, dict)):  # check multi-ness
+        if isinstance(value, (list, tuple, set, frozenset)):  # check multi-ness
             if not self._repeated: raise exceptions.PropertyNotRepeated(self.name, instance.kind())
         else:
             if self._repeated: raise exceptions.PropertyRepeated(self.name, instance.kind())
             value = (value,)  # make value iterable
 
         for v in value:  # check basetype
+
             # it validates if 1) the field is typeless, or 2) the value is `None` or an instance of it's type
             if self._basetype is None or ((v is not sentinel) and isinstance(v, (self._basetype, type(None)))):
                 continue
