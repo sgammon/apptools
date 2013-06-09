@@ -77,7 +77,7 @@ class InMemoryAdapter(IndexedModelAdapter):
         return True
 
     @classmethod
-    def get(cls, key):
+    def get(cls, key, **kwargs):
 
         ''' Retrieve an entity by Key from Python RAM. '''
 
@@ -97,7 +97,7 @@ class InMemoryAdapter(IndexedModelAdapter):
         return entity
 
     @classmethod
-    def put(cls, key, entity, model):
+    def put(cls, key, entity, model, **kwargs):
 
         ''' Persist an entity to storage in Python RAM. '''
 
@@ -128,7 +128,7 @@ class InMemoryAdapter(IndexedModelAdapter):
         return entity.key
 
     @classmethod
-    def delete(cls, key):
+    def delete(cls, key, **kwargs):
 
         ''' Delete an entity by Key from memory. '''
 
@@ -164,7 +164,7 @@ class InMemoryAdapter(IndexedModelAdapter):
         return False
 
     @classmethod
-    def allocate_ids(cls, key_class, kind, count=1):
+    def allocate_ids(cls, key_class, kind, count=1, **kwargs):
 
         ''' Allocate new Key IDs up to `count`. '''
 
@@ -188,7 +188,7 @@ class InMemoryAdapter(IndexedModelAdapter):
         return pointer
 
     @classmethod
-    def write_indexes(cls, writes):
+    def write_indexes(cls, writes, **kwargs):
 
         ''' Write a set of generated indexes via `generate_indexes`. '''
 
@@ -304,7 +304,7 @@ class InMemoryAdapter(IndexedModelAdapter):
                                  "for a simple set index, or more for a hashed index.")
 
     @classmethod
-    def clean_indexes(cls, writes):
+    def clean_indexes(cls, writes, **kwargs):
 
         ''' Clean indexes for a key. '''
 
@@ -383,7 +383,7 @@ class InMemoryAdapter(IndexedModelAdapter):
         return _cleaned
 
     @classmethod
-    def execute_query(cls, spec):  # pragma: no cover
+    def execute_query(cls, spec, **kwargs):  # pragma: no cover
 
         ''' Execute a query across one (or multiple) indexed properties. '''
 

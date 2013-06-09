@@ -110,7 +110,7 @@ class ModelAdapter(object):
         return _compressor
 
     ## == Internal Methods == ##
-    def _get(self, key):
+    def _get(self, key, **kwargs):
 
         ''' Low-level method for retrieving an entity by Key. Fetches and deserializes
             the given entity, if it exists, or returns ``None``.
@@ -147,7 +147,7 @@ class ModelAdapter(object):
 
         # pass off to delegated `get`
         try:
-            entity = getter((encoded, flattened))
+            entity = getter((encoded, flattened), **kwargs)
         except RuntimeError:  # pragma: no cover
             raise
         else:
@@ -158,7 +158,7 @@ class ModelAdapter(object):
             entity['key'] = self.registry[kind].__keyclass__(*(x for x in flattened if x is not None), _persisted=True)
             return self.registry[kind](_persisted=True, **entity)
 
-    def _put(self, entity):
+    def _put(self, entity, **kwargs):
 
         ''' Low-level method for persisting an Entity. Collapses and serializes
             the target ``entity`` into native types and delegates to the active
@@ -193,9 +193,9 @@ class ModelAdapter(object):
 
         # delegate
         return self.put((self.encode_key(joined, flattened) or entity.key.urlsafe(joined), flattened),
-                        entity._set_persisted(True), _model)
+                        entity._set_persisted(True), _model, **kwargs)
 
-    def _delete(self, key):
+    def _delete(self, key, **kwargs):
 
         ''' Low-level method for deleting an entity by Key.
 
@@ -206,7 +206,7 @@ class ModelAdapter(object):
             self.logging.info("Deleting Key: \"%s\"." % key)
 
         joined, flattened = key.flatten(True)
-        return self.delete((self.encode_key(joined, flattened) or key.urlsafe(joined), flattened))
+        return self.delete((self.encode_key(joined, flattened) or key.urlsafe(joined), flattened), **kwargs)
 
     @classmethod
     def _register(cls, model):
@@ -249,7 +249,7 @@ class ModelAdapter(object):
 
     ## == Abstract Methods == ##
     @abc.abstractmethod
-    def get(cls, key):  # pragma: no cover
+    def get(cls, key, **kwargs):  # pragma: no cover
 
         ''' Retrieve an entity by :py:class:`model.Key`. Must accept a
             tuple in the formatv``(<joined Key repr>, <flattened key>)``.
@@ -262,7 +262,7 @@ class ModelAdapter(object):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def put(cls, key, entity, model):  # pragma: no cover
+    def put(cls, key, entity, model, **kwargs):  # pragma: no cover
 
         ''' Persist an entity in storage. Must accept a :py:class:`model.Key`,
             which may not have an ID, in which case one is allocated. The entity
@@ -279,7 +279,7 @@ class ModelAdapter(object):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def delete(cls, key):  # pragma: no cover
+    def delete(cls, key, **kwargs):  # pragma: no cover
 
         ''' Delete an entity by :py:class:`model.Key`. Must accept a target
             ``key``, whose associated entity will be deleted.
@@ -293,7 +293,7 @@ class ModelAdapter(object):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def allocate_ids(cls, key_class, kind, count=1):  # pragma: no cover
+    def allocate_ids(cls, key_class, kind, count=1, **kwargs):  # pragma: no cover
 
         ''' Allocate new :py:class:`model.Key` IDs for ``kind`` up to
             ``count``. This method is abstract and **must** be overridden
@@ -417,7 +417,7 @@ class IndexedModelAdapter(ModelAdapter):
 
         }
 
-    def _put(self, entity):
+    def _put(self, entity, **kwargs):
 
         ''' Hook to trigger index writes for a given entity. Defers
             up the chain to :py:class:`ModelAdapter` after generating
@@ -445,7 +445,7 @@ class IndexedModelAdapter(ModelAdapter):
 
         return written_key
 
-    def _delete(self, key):
+    def _delete(self, key, **kwargs):
 
         ''' Hook to trigger index cleanup for a given key. Defers
             up the chain to :py:class:`ModelAdapter` after generating
@@ -549,7 +549,7 @@ class IndexedModelAdapter(ModelAdapter):
         return encoded_key, _meta_indexes, _property_indexes
 
     @abc.abstractmethod
-    def write_indexes(cls, writes):  # pragma: no cover
+    def write_indexes(cls, writes, **kwargs):  # pragma: no cover
 
         ''' Write a batch of index updates generated earlier
             via :py:meth:`generate_indexes`. This method is
@@ -563,7 +563,7 @@ class IndexedModelAdapter(ModelAdapter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def clean_indexes(cls, key):  # pragma: no cover
+    def clean_indexes(cls, key, **kwargs):  # pragma: no cover
 
         ''' Clean indexes and index entries matching a
             particular :py:class:`model.Key`. This method is
@@ -577,7 +577,7 @@ class IndexedModelAdapter(ModelAdapter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def execute_query(cls, spec):  # pragma: no cover
+    def execute_query(cls, spec, **kwargs):  # pragma: no cover
 
         ''' Execute a query, specified by ``spec``, across
             one (or multiple) indexed properties.

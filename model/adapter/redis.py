@@ -365,12 +365,19 @@ class RedisAdapter(ModelAdapter):
             :param kwargs: Keyword arguments to pass to the low-level operation selected.
             :returns: Result of the selected low-level operation. '''
 
+        # defer to pipeline or resolve channel for kind
+        target = kwargs.get('target', None)
+        if target is None:
+            target = cls.channel(kind)
+        else:
+            del kwargs['target']  # if we were passed an explicit target, remove the arg so the driver doesn't complain
+
         if isinstance(operation, tuple):
             operation = '_'.join([operation])  # reduce (CLIENT, KILL) to 'client_kill' (for example)
-        return getattr(cls.channel(kind), operation.lower())(*args, **kwargs)
+        return getattr(target, operation.lower())(*args, **kwargs)
 
     @classmethod
-    def get(cls, key):
+    def get(cls, key, pipeline=None):
 
         ''' Retrieve an entity by Key from Redis.
 
@@ -382,7 +389,7 @@ class RedisAdapter(ModelAdapter):
         if cls.EngineConfig.mode == RedisMode.toplevel_blob:
 
             # execute query
-            result = cls.execute(cls.Operations.GET, flattened[1], joined)
+            result = cls.execute(cls.Operations.GET, flattened[1], joined, target=pipeline)
 
             if isinstance(result, basestring):
 
@@ -408,7 +415,7 @@ class RedisAdapter(ModelAdapter):
         # @TODO: different storage internal modes
 
     @classmethod
-    def put(cls, key, entity, model):
+    def put(cls, key, entity, model, pipeline=None):
 
         ''' Persist an entity to storage in Redis.
 
@@ -435,7 +442,7 @@ class RedisAdapter(ModelAdapter):
                 serialized = cls.compressor.compress(serialized)
 
             # delegate to redis client
-            return cls.execute(cls.Operations.SET, flattened[1], joined, serialized)
+            return cls.execute(cls.Operations.SET, flattened[1], joined, serialized, target=pipeline)
 
         elif cls.EngineConfig.mode == RedisMode.hashkind_blob:
             ## @TODO: `put` for `hashkind_blob` mode
@@ -452,7 +459,7 @@ class RedisAdapter(ModelAdapter):
         # @TODO: different storage internal modes
 
     @classmethod
-    def delete(cls, key):
+    def delete(cls, key, pipeline=None):
 
         ''' Delete an entity by Key from Redis.
 
@@ -466,7 +473,7 @@ class RedisAdapter(ModelAdapter):
         if cls.EngineConfig.mode == RedisMode.toplevel_blob:
 
             # delegate to redis client with encoded key
-            return cls.execute(cls.Operations.DELETE, key.kind, cls.encode_key(joined, flattened))
+            return cls.execute(cls.Operations.DELETE, key.kind, cls.encode_key(joined, flattened), target=pipeline)
 
         elif cls.EngineConfig.mode == RedisMode.hashkind_blob:
             ## @TODO: `delete` for `hashkind_blob` mode
@@ -483,7 +490,7 @@ class RedisAdapter(ModelAdapter):
         # @TODO: different storage internal modes
 
     @classmethod
-    def allocate_ids(cls, key_class, kind, count=1):
+    def allocate_ids(cls, key_class, kind, count=1, pipeline=None):
 
         ''' Allocate new :py:class:`model.Key` IDs up to ``count``. Allocated
             IDs are guaranteed not to be provisioned or otherwise used by the
@@ -515,7 +522,7 @@ class RedisAdapter(ModelAdapter):
             key_root_id = cls._magic_separator.join([cls._meta_prefix, cls.encode_key(joined, flattened)])
 
             # increment by the amount desired
-            value = cls.execute(cls.Operations.HASH_INCREMENT, kinded_key.kind, key_root_id, cls._id_prefix, count)
+            value = cls.execute(cls.Operations.HASH_INCREMENT, kinded_key.kind, key_root_id, cls._id_prefix, count, pipeline=None)
 
         elif cls.EngineConfig.mode == RedisMode.hashkind_blob:
             ## @TODO: `allocate_ids` for `hashkind_blob` mode
@@ -566,7 +573,7 @@ class RedisAdapter(ModelAdapter):
             return abstract._encoder(joined)
         return joined
 
-    def write_indexes(cls, writes):  # pragma: no cover
+    def write_indexes(cls, writes, pipeline=None):  # pragma: no cover
 
         ''' Write a batch of index updates generated earlier via
             :py:meth:`RedisAdapter.generate_indexes`.
@@ -576,7 +583,7 @@ class RedisAdapter(ModelAdapter):
 
         raise NotImplementedError()
 
-    def clean_indexes(cls, key):  # pragma: no cover
+    def clean_indexes(cls, key, pipeline=None):  # pragma: no cover
 
         ''' Clean indexes and index entries matching a particular
             :py:class:`model.Key`, and generated via the adapter method
@@ -587,7 +594,7 @@ class RedisAdapter(ModelAdapter):
 
         raise NotImplementedError()
 
-    def execute_query(cls, spec):  # pragma: no cover
+    def execute_query(cls, spec, pipeline=None):  # pragma: no cover
 
         ''' Execute a :py:class:`model.Query` across one (or multiple)
             indexed properties.

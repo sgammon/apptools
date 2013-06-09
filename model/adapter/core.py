@@ -95,17 +95,17 @@ class AdaptedModel(ModelMixin):
 
     ## = Public Class Methods = ##
     @classmethod
-    def get(cls, key=None, name=None):
+    def get(cls, key=None, name=None, **kwargs):
 
         ''' Retrieve a persisted version of this model via the current datastore adapter. '''
 
         if not key and not name: raise ValueError('Must pass either a Key or key name into `%s.get`.' % cls.kind())
-        if name: return cls.__adapter__._get(cls.__keyclass__(cls.kind(), name))  # if we're passed a name, construct a key with the local kind
+        if name: return cls.__adapter__._get(cls.__keyclass__(cls.kind(), name), **kwargs)  # if we're passed a name, construct a key with the local kind
         if isinstance(key, basestring):
             key = cls.__keyclass__.from_urlsafe(key)  # assume URL-encoded key, this is user-facing
         elif isinstance(key, (list, tuple)):
             key = cls.__keyclass__(*key)  # an ordered partslist is fine too
-        return cls.__adapter__._get(key)
+        return cls.__adapter__._get(key, **kwargs)
 
     @classmethod
     def query(cls, **kwargs):
@@ -117,19 +117,19 @@ class AdaptedModel(ModelMixin):
         raise AttributeError("Adapter \"%s\" (currently selected for model \"%s\") does not support indexing, and therefore can't support `model.Query` objects." % (cls.__adapter__.__class__.__name__, cls.kind()))
 
     ## = Public Methods = ##
-    def put(self, adapter=None):
+    def put(self, adapter=None, **kwargs):
 
         ''' Persist this entity via the current datastore adapter. '''
 
         if not adapter: adapter = self.__class__.__adapter__  # Allow adapter override
-        return adapter._put(self)
+        return adapter._put(self, **kwargs)
 
-    def delete(self, adapter=None):
+    def delete(self, adapter=None, **kwargs):
 
         ''' Discard any primary or index-based data linked to this Key. '''
 
         if not adapter: adapter = self.__class__.__adapter__  # Allow adapter override
-        return adapter._delete(self.__key__)
+        return adapter._delete(self.__key__, **kwargs)
 
 
 ## DictMixin
