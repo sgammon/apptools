@@ -374,6 +374,9 @@ class RedisAdapter(ModelAdapter):
 
         if isinstance(operation, tuple):
             operation = '_'.join([operation])  # reduce (CLIENT, KILL) to 'client_kill' (for example)
+        if isinstance(target, (_redis_client.client.Pipeline, _redis_client.client.StrictPipeline)):
+            getattr(target, operation.lower())(*args, **kwargs)
+            return target
         return getattr(target, operation.lower())(*args, **kwargs)
 
     @classmethod
