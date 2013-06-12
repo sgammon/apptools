@@ -277,6 +277,16 @@ else:
             from apptools import rpc
             return rpc.Key(id=str(self.id), kind=self.kind, encoded=self.urlsafe())
 
+        @classmethod
+        def to_message_model(cls):
+
+            ''' Return a schema for a `Key` instance in ProtoRPC `Message` form.
+
+                :returns: Vanilla :py:class:`protorpc.Key` class. '''
+
+            from apptools import rpc
+            return rpc.Key
+
     ## ProtoRPCModel
     # Mixin to core `Model` class that enables ProtoRPC message conversion.
     class ProtoRPCModel(ModelMixin):

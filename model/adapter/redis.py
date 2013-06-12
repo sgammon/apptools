@@ -11,9 +11,13 @@ stored in and retrieved from redis.
           about embedded licenses and other legalese, see `LICENSE.md`.
 """
 
+# stdlib
+import hashlib
+import datetime
+
 # adapter API
 from . import abstract
-from .abstract import ModelAdapter
+from .abstract import IndexedModelAdapter
 
 # apptools util
 from apptools.util import json
@@ -53,6 +57,7 @@ _server_profiles = {}  # holds globally-configured server profiles
 _default_profile = None  # holds the default redis instance mapping
 _client_connections = {}  # holds instantiated redis connection clients
 _profiles_by_model = {}  # holds specific model => redis instance mappings, if any
+_SERIES_BASETYPES = (datetime.datetime, datetime.date, datetime.time, float, int, long)
 
 
 ## RedisMode
@@ -69,7 +74,7 @@ class RedisMode(object):
 
 ## RedisAdapter
 # Adapt apptools models to Redis.
-class RedisAdapter(ModelAdapter):
+class RedisAdapter(IndexedModelAdapter):
 
     ''' Adapt model classes to Redis. '''
 
@@ -83,6 +88,7 @@ class RedisAdapter(ModelAdapter):
     _meta_prefix = '__meta__'
     _kind_prefix = '__kind__'
     _magic_separator = '::'
+    _path_separator = '.'
 
     ## EngineConfig
     # Holds hard-coded configuration values for the `RedisAdapter` engine.
@@ -369,7 +375,7 @@ class RedisAdapter(ModelAdapter):
         target = kwargs.get('target', None)
         if target is None:
             target = cls.channel(kind)
-        else:
+        if 'target' in kwargs:
             del kwargs['target']  # if we were passed an explicit target, remove the arg so the driver doesn't complain
 
         if isinstance(operation, tuple):
@@ -514,7 +520,7 @@ class RedisAdapter(ModelAdapter):
                       integer IDs, each suitable for use in a
                       :py:class:`model.Key` directly. '''
 
-        if count < 1:
+        if not count:
             raise ValueError("Cannot allocate less than 1 ID's.")
 
         # generate kinded key to resolve ID pointer
@@ -525,7 +531,12 @@ class RedisAdapter(ModelAdapter):
             key_root_id = cls._magic_separator.join([cls._meta_prefix, cls.encode_key(joined, flattened)])
 
             # increment by the amount desired
-            value = cls.execute(cls.Operations.HASH_INCREMENT, kinded_key.kind, key_root_id, cls._id_prefix, count, pipeline=None)
+            value = cls.execute(*(
+                cls.Operations.HASH_INCREMENT,
+                kinded_key.kind,
+                key_root_id,
+                cls._id_prefix,
+                count), target=pipeline)
 
         elif cls.EngineConfig.mode == RedisMode.hashkind_blob:
             ## @TODO: `allocate_ids` for `hashkind_blob` mode
@@ -576,6 +587,7 @@ class RedisAdapter(ModelAdapter):
             return abstract._encoder(joined)
         return joined
 
+    @classmethod
     def write_indexes(cls, writes, pipeline=None):  # pragma: no cover
 
         ''' Write a batch of index updates generated earlier via
@@ -584,8 +596,119 @@ class RedisAdapter(ModelAdapter):
             :param writes: Batch of writes to commit to ``Redis``.
             :raises: :py:exc:`NotImplementedError`, as this method is not yet implemented. '''
 
-        raise NotImplementedError()
+        origin, meta, property_map = writes
 
+        results, indexer_calls = [], []
+
+        # resolve target (perhaps a pipeline?)
+        if pipeline:
+            target = pipeline
+        else:
+            target = cls.channel(cls._meta_prefix)
+
+        for btype, bundle in (('meta', meta), ('property', property_map)):
+
+            # add meta indexes first
+            for element in bundle:
+
+                # provision args, kwargs, and hash components containers
+                args, kwargs, hash_c = [], {}, []
+
+                if btype is 'meta':
+                    # meta indexes are always unicode
+                    converter, write = unicode, element
+                else:
+                    # property indexes come through with a type converter
+                    converter, write = element
+
+                    # basestring is not allowed to be instantiated
+                    if converter is basestring:
+                        converter = unicode
+
+                ## Unpack index write
+                if len(write) > 3:  # qualified value-key-mapping index
+
+                    # extract write, inflate
+                    index, path, value = write[0], write[1:-1], write[-1]
+                    hash_c.append(index)
+                    hash_c.append(cls._path_separator.join(path))
+                    hash_value = True  # add hashed value later
+
+                elif len(write) == 3:  # value-key-mapping index
+
+                    # extract write, inflate
+                    index, path, value = write
+                    hash_c.append(index)
+                    hash_c.append(cls._path_separator.join(path))
+                    hash_value = True  # add hashed value later
+
+                elif len(write) == 2:  # it's a qualified key index
+
+                    # extract write, inflate
+                    index, value = write
+                    path = None
+                    hash_c.append(index)
+                    hash_value = True  # do not add hashed value later
+
+                elif len(write) == 1:  # it's a simple key index
+
+                    # extract index, add value
+                    index, path, value = write[0], None, origin
+                    hash_c.append(index)
+                    hash_value = False  # do not add hashed value later
+
+                else:
+                    raise ValueError('Invalid index write bundle: "%s".' % write)
+
+                # resolve datatype of index
+                if not isinstance(value, bool) and isinstance(value, _SERIES_BASETYPES):
+
+                    if converter is None:
+                        raise RuntimeError('Illegal non-string value passed in for a `meta` index '
+                                           'value. Write bundle: "%s".' % write)
+
+                    # time-based or number-like values are automatically stored in sorted sets
+                    handler = cls.Operations.SORTED_ADD
+                    sanitized_value = converter(value)
+
+                    if isinstance(sanitized_value, tuple):
+                        magic_symbol, sanitized_value = sanitized_value
+                        hash_c.append(unicode(magic_symbol))
+                        args.append(sanitized_value)  # add calculated score to args
+                    else:
+                        magic_symbol = None
+                        args.append(sanitized_value)
+
+                    if hash_value:
+                        hash_c.append(sanitized_value)
+
+                    args.append(origin)  # add key to args
+
+                else:
+
+                    # everything else is stored unsorted
+                    handler = cls.Operations.SET_ADD
+
+                    if converter:
+                        sanitized_value = converter(value)
+                    else:
+                        sanitized_value = value
+
+                    if hash_value:
+                        hash_c.append(sanitized_value)
+                    args.append(origin)
+
+                # build index key
+                indexer_calls.append((handler, tuple([None, cls._magic_separator.join(map(unicode, hash_c))] + args), {'target': target}))
+
+        for handler, hargs, hkwargs in indexer_calls:
+            results.append(cls.execute(handler, *hargs, **hkwargs))
+
+        if pipeline:
+            return pipeline
+        return results
+
+    @classmethod
     def clean_indexes(cls, key, pipeline=None):  # pragma: no cover
 
         ''' Clean indexes and index entries matching a particular
@@ -597,6 +720,7 @@ class RedisAdapter(ModelAdapter):
 
         raise NotImplementedError()
 
+    @classmethod
     def execute_query(cls, spec, pipeline=None):  # pragma: no cover
 
         ''' Execute a :py:class:`model.Query` across one (or multiple)

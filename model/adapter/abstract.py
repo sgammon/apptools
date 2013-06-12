@@ -432,16 +432,16 @@ class IndexedModelAdapter(ModelAdapter):
         if entity.key:
 
             # proxy to `generate_indexes` and write indexes
-            self.write_indexes(self.generate_indexes(entity.key, self._pluck_indexed(entity)))
+            self.write_indexes(self.generate_indexes(entity.key, self._pluck_indexed(entity)), **kwargs)
 
             # delegate up the chain for entity write
-            return super(IndexedModelAdapter, self)._put(entity)
+            return super(IndexedModelAdapter, self)._put(entity, **kwargs)
 
         # delegate write up the chain
-        written_key = super(IndexedModelAdapter, self)._put(entity)
+        written_key = super(IndexedModelAdapter, self)._put(entity, **kwargs)
 
         # proxy to `generate_indexes` and write
-        self.write_indexes(self.generate_indexes(written_key, self._pluck_indexed(entity)))
+        self.write_indexes(self.generate_indexes(written_key, self._pluck_indexed(entity)), **kwargs)
 
         return written_key
 
@@ -490,7 +490,7 @@ class IndexedModelAdapter(ModelAdapter):
             :returns: Tupled set of ``(encoded_key, meta_indexes, property_indexes)``. '''
 
         # provision vars, generate meta indexes
-        encoded_key = cls.encode_key(key) or key.urlsafe()
+        encoded_key = cls.encode_key(*key.flatten(True)) or key.urlsafe()
 
         _property_indexes, _meta_indexes = [], [
             (cls._key_prefix,),  # add key to universal key index
