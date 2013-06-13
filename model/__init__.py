@@ -19,7 +19,9 @@ import abc
 import inspect
 import operator
 
-# apptools model exceptions
+# model components
+from . import query
+from . import adapter
 from . import exceptions
 
 # apptools model adapters
@@ -815,4 +817,7 @@ class Model(AbstractModel):
 # Module Globals
 __abstract__ = [abstract, MetaFactory, AbstractKey, AbstractModel]
 __concrete__ = [concrete, Property, KeyMixin, ModelMixin, Key, Model]
-__all__ = __abstract__ + __concrete__
+
+# All modules
+__all__ = ['concrete', 'abstract', 'MetaFactory', 'AbstractKey', 'AbstractModel', 'query',
+           'Property', 'KeyMixin', 'ModelMixin', 'Key', 'Model', 'adapter', 'exceptions']
