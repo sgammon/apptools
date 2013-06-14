@@ -761,5 +761,4 @@ class ModelTests(AppToolsTest):
             sample_default = basestring, {'default': 'Hello, default!'}
 
         # try on the class level
-        self.assertIsInstance(ClassDefaultSample.sample_default, basestring)
-        self.assertEqual(ClassDefaultSample.sample_default, 'Hello, default!')
+        self.assertIsInstance(ClassDefaultSample.sample_default, model.Property)

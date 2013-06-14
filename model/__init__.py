@@ -447,6 +447,7 @@ class AbstractModel(_model_parent()):
             if name.startswith('__'): return super(AbstractModel.__metaclass__, cls).__setattr__(name, value)
             raise exception('create', name, cls)  # cannot create new properties before instantiation
 
+
     ## AbstractModel.PropertyValue
     # Small, ultra-lightweight datastructure responsible for holding a property value bundle for an entity attribute.
     class _PropertyValue(tuple):
@@ -738,10 +739,7 @@ class Property(object):
             if not value and value == Property._sentinel and instance.__explicit__ is False:
                 return None  # soak up sentinels via the descriptor API
             return value
-
-        elif self._default:  # if we have a default and we're at the class level, who cares just give it up i guess
-            return self._default
-        return None  # otherwise, class-level access is always None
+        return self  # otherwise, class-level access is always the property in question
 
     def __set__(self, instance, value):
 
@@ -782,9 +780,96 @@ class Property(object):
             raise exceptions.InvalidPropertyValue(self.name, instance.kind(), type(v).__name__, self._basetype.__name__)
         return True  # validation passed! :)
 
+    @classmethod
+    def __repr__(self):
+
+        ''' Generate a string representation
+            of this :py:class:`Property`.
+
+            :returns: Stringified, human-readable
+            value describing this :py:class:`Property`. '''
+
+        return "Property(%s, type=%s)" % (self.name, self._basetype)
+
+    __str__ = __repr__
+
     # util method to clone `Property` objects
     clone = lambda self: self.__class__(self.name, self._basetype, self._default,
                                         self._required, self._repeated, self._indexed, **self._options)
+
+    ## == Filter Overrides (Operators) == ##
+    def __eq__(self, other):
+
+        ''' `==` operator override. '''
+
+        return query.Filter(self, other, **{
+            'type': query.Filter.PROPERTY,
+            'operator': query.Filter.EQUALS
+        })
+
+    def __ne__(self, other):
+
+        ''' `!=` operator override. '''
+
+        return query.Filter(self, other, **{
+            'type': query.Filter.PROPERTY,
+            'operator': query.Filter.NOT_EQUALS
+        })
+
+    def __gt__(self, other):
+
+        ''' `>` operator override. '''
+
+        return query.Filter(self, other, **{
+            'type': query.Filter.PROPERTY,
+            'operator': query.Filter.GREATER_THAN
+        })
+
+    def __ge__(self, other):
+
+        ''' `>=` operator override. '''
+
+        return query.Filter(self, other, **{
+            'type': query.Filter.PROPERTY,
+            'operator': query.Filter.GREATER_THAN_EQUAL_TO
+        })
+
+    def __lt__(self, other):
+
+        ''' `<` operator override. '''
+
+        return query.Filter(self, other, **{
+            'type': query.Filter.PROPERTY,
+            'operator': query.Filter.LESS_THAN
+        })
+
+    def __le__(self, other):
+
+        ''' `=<` operator override. '''
+
+        return query.Filter(self, other, **{
+            'type': query.Filter.PROPERTY,
+            'operator': query.Filter.LESS_THAN_EQUAL_TO
+        })
+
+    ## == Sort Overrides (Operators) == ##
+    def __neg__(self):
+
+        ''' `-` operator override. '''
+
+        return query.Sort(self, **{
+            'type': query.Sort.PROPERTY,
+            'direction': query.Sort.DESCENDING
+        })
+
+    def __pos__(self):
+
+        ''' `+` operator override. '''
+
+        return query.Sort(self, **{
+            'type': query.Sort.PROPERTY,
+            'operator': query.Sort.ASCENDING
+        })
 
 
 ## Model

@@ -108,13 +108,17 @@ class AdaptedModel(ModelMixin):
         return cls.__adapter__._get(key, **kwargs)
 
     @classmethod
-    def query(cls, **kwargs):
+    def query(cls, *args, **kwargs):
 
         ''' Start building a new `model.Query` object, if the underlying adapter implements `IndexedModelAdapter`. '''
 
-        if issubclass(cls.__adapter__, IndexedModelAdapter):  # we implement indexer operations
-            raise NotImplementedError()  # @TODO: query functionality needs to be built-out
-        raise AttributeError("Adapter \"%s\" (currently selected for model \"%s\") does not support indexing, and therefore can't support `model.Query` objects." % (cls.__adapter__.__class__.__name__, cls.kind()))
+        if isinstance(cls.__adapter__, IndexedModelAdapter):  # we implement indexer operations
+            from apptools.model import query
+            return query.Query(cls, *args, **kwargs)
+
+        context = (cls.__adapter__.__class__.__name__, cls.kind())
+        raise AttributeError("Adapter \"%s\" (currently selected for model \"%s\") does not support indexing, "
+                             "and therefore can't support `model.Query` objects." % context)
 
     ## = Public Methods = ##
     def put(self, adapter=None, **kwargs):
