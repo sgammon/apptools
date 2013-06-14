@@ -486,32 +486,32 @@ class IndexedModelAdapter(ModelAdapter):
 
             :param key: Target :py:class:`model.Key` to index.
             :param properties: Entity :py:class:`model.Model` property
-                               values to index.
+            values to index.
             :returns: Tupled set of ``(encoded_key, meta_indexes, property_indexes)``. '''
 
-        # provision vars, generate meta indexes
-        encoded_key = cls.encode_key(*key.flatten(True)) or key.urlsafe()
+        _property_indexes, _meta_indexes = [], []
 
-        _property_indexes, _meta_indexes = [], [
-            (cls._key_prefix,),  # add key to universal key index
-            (cls._kind_prefix, key.kind)  # map kind to encoded key
-        ]
+        if key is not None:
 
-        # consider ancestry
-        if not key.parent:
+            # provision vars, generate meta indexes
+            encoded_key = cls.encode_key(*key.flatten(True)) or key.urlsafe()
+            _meta_indexes.append((cls._kind_prefix, key.kind))  # map kind to encoded key
 
-            # generate group indexes in the case of a nonvoid parent
-            _meta_indexes.append((cls._group_prefix,))
+            # consider ancestry
+            if not key.parent:
 
-        else:
+                # generate group indexes in the case of a nonvoid parent
+                _meta_indexes.append((cls._group_prefix,))
 
-            # append keyparent-based group prefix
-            root_key = [i for i in key.ancestry][0]
+            else:
 
-            # encode root key
-            encoded_root_key = cls.encode_key(root_key) or root_key.urlsafe()
+                # append keyparent-based group prefix
+                root_key = [i for i in key.ancestry][0]
 
-            _meta_indexes.append((cls._group_prefix, encoded_root_key))
+                # encode root key
+                encoded_root_key = cls.encode_key(root_key) or root_key.urlsafe()
+
+                _meta_indexes.append((cls._group_prefix, encoded_root_key))
 
         # add property index entries
         if properties:
@@ -545,8 +545,10 @@ class IndexedModelAdapter(ModelAdapter):
             context = (_meta_indexes, _property_indexes, encoded_key)
             cls.logging.info("Generated indexes for write: META(\"%s\"), VALUE(\"%s\") under key \"%s\"." % context)
 
-        # we're writing indexes
-        return encoded_key, _meta_indexes, _property_indexes
+        if key is not None:
+            # we're writing indexes
+            return encoded_key, _meta_indexes, _property_indexes
+        return _property_indexes  # we're generating properties only
 
     @abc.abstractmethod
     def write_indexes(cls, writes, **kwargs):  # pragma: no cover

@@ -23,9 +23,9 @@ from apptools.util import datastructures
 
 
 ## Globals / Constants
-_TARGET_KEY = datastructures.Sentinel('KEY')
 
 # Filter components
+_TARGET_KEY = datastructures.Sentinel('KEY')
 PROPERTY = datastructures.Sentinel('PROPERTY')
 KEY_KIND = datastructures.Sentinel('KEY_KIND')
 KEY_ANCESTOR = datastructures.Sentinel('KEY_ANCESTOR')
@@ -43,8 +43,7 @@ GREATER_THAN = GT = datastructures.Sentinel('GREATER_THAN')
 GREATER_THAN_EQUAL_TO = GE = datastructures.Sentinel('GREATER_THAN_EQUAL_TO')
 CONTAINS = IN = datastructures.Sentinel('CONTAINS')
 
-
-
+# Operator Constants
 _operator_map = {
     EQUALS: operator.eq,
     NOT_EQUALS: operator.ne,
@@ -216,7 +215,7 @@ class Query(AbstractQuery):
             :returns: Iterable (``list``) of matching model
             entities. '''
 
-        pass
+        import pdb; pdb.set_trace()
 
 
 ## QueryComponent

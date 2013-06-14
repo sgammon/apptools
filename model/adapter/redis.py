@@ -258,7 +258,7 @@ class RedisAdapter(IndexedModelAdapter):
 
         ''' Load and return the appropriate serialization codec.
             :returns: The currently ``serializer``. Defaults to ``msgpack``
-                      with a fallback to built-in ``JSON``. '''
+            with a fallback to built-in ``JSON``. '''
 
         ## Use msgpack if available, fall back to JSON
         if _MSGPACK:
@@ -278,17 +278,19 @@ class RedisAdapter(IndexedModelAdapter):
             parameter signature as ``type``.
 
             :param name: Name of the :py:class:`model.Model` to resolve
-                         an adapter for.
+            an adapter for.
+
             :param bases: Tupled base parents for the :py:class:`model.Model`
-                          class-to-be.
+            class-to-be.
+
             :param properties: Map of defined :py:class:`model.Model` data
-                               properties.
+            properties.
 
             :raises ValueError: In the case that ``config`` requests a ``Redis``
-                                connection profile which is invalid or missing.
+            connection profile which is invalid or missing.
 
             :returns: The acquired adapter, or ``None`` in the case of an empty
-                      set of server profiles. '''
+            set of server profiles. '''
 
         global _server_profiles
         global _default_profile
@@ -328,10 +330,10 @@ class RedisAdapter(IndexedModelAdapter):
 
             :param kind: String :py:class:`model.Model` kind to retrieve a channel for.
             :returns: Acquired ``Redis`` client connection, potentially specific to the
-                      handed-in ``kind``. '''
+            handed-in ``kind``. '''
 
         # convert to string kind if we got a model class
-        if not isinstance(kind, basestring):
+        if not isinstance(kind, basestring) and kind is not None:
             kind = kind.kind()
 
         # check for existing connection
@@ -392,7 +394,7 @@ class RedisAdapter(IndexedModelAdapter):
 
             :param key: Target :py:class:`model.Key` to retrieve from storage.
             :returns: The deserialized and decompressed entity associated with
-                      the target ``key``. '''
+            the target ``key``. '''
 
         joined, flattened = key
         if cls.EngineConfig.mode == RedisMode.toplevel_blob:
@@ -429,13 +431,15 @@ class RedisAdapter(IndexedModelAdapter):
         ''' Persist an entity to storage in Redis.
 
             :param key: New (and potentially empty) :py:class:`model.Key` for
-                        ``entity``. Must be assigned an ``ID`` by the driver
-                        through :py:meth:`RedisAdapter.allocate_ids` in the case
-                        of an empty (non-deterministic) :py:class:`model.Key`.
+            ``entity``. Must be assigned an ``ID`` by the driver
+            through :py:meth:`RedisAdapter.allocate_ids` in the case
+            of an empty (non-deterministic) :py:class:`model.Key`.
+
             :param entity: Object entity :py:class:`model.Model` to persist in
-                           ``Redis``.
+            ``Redis``.
+
             :param model: Schema :py:class:`model.Model` associated with the
-                          target ``entity`` being persisted.
+            target ``entity`` being persisted.
 
             :returns: Result of the lower-level write operation. '''
 
@@ -473,7 +477,7 @@ class RedisAdapter(IndexedModelAdapter):
         ''' Delete an entity by Key from Redis.
 
             :param key: Target :py:class:`model.Key`, whose associated
-                        :py:class:`model.Model` is being deleted.
+            :py:class:`model.Model` is being deleted.
 
             :returns: The result of the low-level delete operation. '''
 
@@ -507,18 +511,20 @@ class RedisAdapter(IndexedModelAdapter):
             identifying non-deterministic data.
 
             :param key_class: Descendent of :py:class:`model.Key`
-                              to allocate IDs for.
+            to allocate IDs for.
+
             :param kind: String :py:class:`model.Model` kind name.
+
             :param count: The number of IDs to generate, which **must**
-                          be greater than 1. Defaults to ``1``.
+            be greater than 1. Defaults to ``1``.
 
             :raises ValueError: In the case the ``count`` is less than ``1``.
             :returns: If **only one** ID is requested, an **integer ID**
-                      suitable for use in a :py:class:`model.Key` directly.
-                      If **more than one** ID is requested, a **generator**
-                      is returned, which ``yields`` a set of provisioned
-                      integer IDs, each suitable for use in a
-                      :py:class:`model.Key` directly. '''
+            suitable for use in a :py:class:`model.Key` directly.
+            If **more than one** ID is requested, a **generator**
+            is returned, which ``yields`` a set of provisioned
+            integer IDs, each suitable for use in a
+            :py:class:`model.Key` directly. '''
 
         if not count:
             raise ValueError("Cannot allocate less than 1 ID's.")
@@ -577,24 +583,33 @@ class RedisAdapter(IndexedModelAdapter):
             see :py:meth:`model.Key.flatten`).
 
             :param joined: String-joined :py:class:`model.Key`.
+
             :param flattened: Tupled ("raw format") :py:class:`model.Key`.
+
             :returns: In the case that ``encoding`` is *on*, the encoded string
-                      :py:class:`model.Key`, suitable for storage in ``Redis``.
-                      Otherwise (``encoding`` is *off*), the cleartext ``joined``
-                      key. '''
+            :py:class:`model.Key`, suitable for storage in ``Redis``.
+            Otherwise (``encoding`` is *off*), the cleartext ``joined``
+            key. '''
 
         if cls.EngineConfig.encoding:
             return abstract._encoder(joined)
         return joined
 
     @classmethod
-    def write_indexes(cls, writes, pipeline=None):  # pragma: no cover
+    def write_indexes(cls, writes, pipeline=None, execute=True):  # pragma: no cover
 
         ''' Write a batch of index updates generated earlier via
             :py:meth:`RedisAdapter.generate_indexes`.
 
             :param writes: Batch of writes to commit to ``Redis``.
-            :raises: :py:exc:`NotImplementedError`, as this method is not yet implemented. '''
+
+            :param pipeline:
+
+            :param execute:
+
+            :raises: :py:exc:`NotImplementedError`, as this method is not yet implemented.
+
+            :returns: '''
 
         origin, meta, property_map = writes
 
@@ -701,12 +716,14 @@ class RedisAdapter(IndexedModelAdapter):
                 # build index key
                 indexer_calls.append((handler, tuple([None, cls._magic_separator.join(map(unicode, hash_c))] + args), {'target': target}))
 
-        for handler, hargs, hkwargs in indexer_calls:
-            results.append(cls.execute(handler, *hargs, **hkwargs))
+        if execute:
+            for handler, hargs, hkwargs in indexer_calls:
+                results.append(cls.execute(handler, *hargs, **hkwargs))
 
-        if pipeline:
-            return pipeline
-        return results
+            if pipeline:
+                return pipeline
+            return results
+        return indexer_calls  # return calls only
 
     @classmethod
     def clean_indexes(cls, key, pipeline=None):  # pragma: no cover
