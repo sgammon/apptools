@@ -97,12 +97,9 @@ class MetaFactory(type):
                           *metaclass classes*.
             '''
 
-            # alias embedded metaclasses to their `__owner__` (for __repr__)
-            if name == '__metaclass__' and hasattr(cls, '__owner__'):
-                name = cls.__name__ = cls.__owner__
-
-            # pass up the chain properly to ensure metaclass enforcement
-            return super(cls, cls).__new__(cls, name, bases, properties)
+            # alias embedded metaclasses to their `__owner__` (for __repr__), then pass up the chain
+            name = cls.__name__ = cls.__owner__ if hasattr(cls, '__owner__') else name
+            return super(cls, cls).__new__(cls, name, bases, properties)  # enforces metaclass
 
     ## = Internal Methods = ##
     def __new__(cls, name=None, bases=tuple(), properties={}):
@@ -755,16 +752,15 @@ class Property(object):
 
         ''' Validate the value of this property, if any. '''
 
-        sentinel = Property._sentinel
         if self.__class__ != Property and hasattr(self, 'validate'):  # pragma: no cover
             return self.validate(instance)  # check for subclass-defined validator to delegate validation to
 
         value = instance._get_value(self.name)  # retrieve value
 
         # check required-ness
-        if (value in (None, sentinel)):
+        if (value in (None, self._sentinel)):
             if self._required: raise exceptions.PropertyRequired(self.name, instance.kind())
-            if value is sentinel: return True  # empty value, non-required, all good :)
+            if value is self._sentinel: return True  # empty value, non-required, all good :)
 
         if isinstance(value, (list, tuple, set, frozenset)):  # check multi-ness
             if not self._repeated: raise exceptions.PropertyNotRepeated(self.name, instance.kind())
@@ -775,9 +771,10 @@ class Property(object):
         for v in value:  # check basetype
 
             # it validates if 1) the field is typeless, or 2) the value is `None` or an instance of it's type
-            if self._basetype is None or ((v is not sentinel) and isinstance(v, (self._basetype, type(None)))):
+            if self._basetype is None or ((v is not self._sentinel) and isinstance(v, (self._basetype, type(None)))):
                 continue
-            raise exceptions.InvalidPropertyValue(self.name, instance.kind(), type(v).__name__, self._basetype.__name__)
+            raise exceptions.InvalidPropertyValue(*(
+                self.name, instance.kind(), type(v).__name__, self._basetype.__name__))
         return True  # validation passed! :)
 
     @classmethod
@@ -797,79 +794,23 @@ class Property(object):
     clone = lambda self: self.__class__(self.name, self._basetype, self._default,
                                         self._required, self._repeated, self._indexed, **self._options)
 
-    ## == Filter Overrides (Operators) == ##
-    def __eq__(self, other):
+    ## == Query Overrides (Operators) == ##
+    __sort__ = lambda self, other, direction: query.Sort(self, other, direction=(direction or query.Sort.ASCENDING))
+    __filter__ = lambda self, other, operator: query.Filter(self, other, operator=(operator or query.Filter.EQUALS))
 
-        ''' `==` operator override. '''
 
-        return query.Filter(self, other, **{
-            'type': query.Filter.PROPERTY,
-            'operator': query.Filter.EQUALS
-        })
+    ## == Sort Spawn == ##
+    __pos__ = lambda self: self.__sort__(query.Sort.ASCENDING)  # `+` operator override
+    __neg__ = lambda self: self.__sort__(query.Sort.DESCENDING)  # `-` operator override
 
-    def __ne__(self, other):
 
-        ''' `!=` operator override. '''
-
-        return query.Filter(self, other, **{
-            'type': query.Filter.PROPERTY,
-            'operator': query.Filter.NOT_EQUALS
-        })
-
-    def __gt__(self, other):
-
-        ''' `>` operator override. '''
-
-        return query.Filter(self, other, **{
-            'type': query.Filter.PROPERTY,
-            'operator': query.Filter.GREATER_THAN
-        })
-
-    def __ge__(self, other):
-
-        ''' `>=` operator override. '''
-
-        return query.Filter(self, other, **{
-            'type': query.Filter.PROPERTY,
-            'operator': query.Filter.GREATER_THAN_EQUAL_TO
-        })
-
-    def __lt__(self, other):
-
-        ''' `<` operator override. '''
-
-        return query.Filter(self, other, **{
-            'type': query.Filter.PROPERTY,
-            'operator': query.Filter.LESS_THAN
-        })
-
-    def __le__(self, other):
-
-        ''' `=<` operator override. '''
-
-        return query.Filter(self, other, **{
-            'type': query.Filter.PROPERTY,
-            'operator': query.Filter.LESS_THAN_EQUAL_TO
-        })
-
-    ## == Sort Overrides (Operators) == ##
-    def __neg__(self):
-
-        ''' `-` operator override. '''
-
-        return query.Sort(self, **{
-            'type': query.Sort.PROPERTY,
-            'direction': query.Sort.DESCENDING
-        })
-
-    def __pos__(self):
-
-        ''' `+` operator override. '''
-
-        return query.Sort(self, **{
-            'type': query.Sort.PROPERTY,
-            'operator': query.Sort.ASCENDING
-        })
+    ## == Filter Spawn == ##
+    __eq__ = lambda self, other: self.__filter__(other, query.Filter.EQUALS)  # `==` operator override
+    __ne__ = lambda self, other: self.__filter__(other, query.Filter.NOT_EQUALS)  # `!=` operator override
+    __gt__ = lambda self, other: self.__filter__(other, query.Filter.GREATER_THAN)  # `>` operator override
+    __ge__ = lambda self, other: self.__filter__(other, query.Filter.GREATER_THAN_EQUAL_TO)  # `>=` operator override
+    __lt__ = lambda self, other: self.__filter__(other, query.Filter.LESS_THAN)  # `<` operator override
+    __le__ = lambda self, other: self.__filter__(other, query.Filter.LESS_THAN_EQUAL_TO)  # `<=` operator override
 
 
 ## Model
@@ -886,14 +827,11 @@ class Model(AbstractModel):
         ''' Initialize this Model. '''
 
         # grab key / persisted flag, if any, and set explicit flag to `False`
-        key, persisted, self.__explicit__ = properties.get('key', False), properties.get('_persisted', False), False
+        self.__explicit__, self.__initialized__ = False, True
 
-        # if we're handed a key, it's manually set... otherwise, build empty, kinded key
-        self.key = key or self.__keyclass__(self.kind(), _persisted=False)
-
-        # initialize internals and map any kwargs into data
-        self.__data__, self.__initialized__ = {}, True
-        self._set_value(properties, _dirty=(not persisted))
+        # initialize key, internals, and map any kwargs into data
+        self.key, self.__data__ = properties.get('key', False) or self.__keyclass__(self.kind(), _persisted=False), {}
+        self._set_value(properties, _dirty=(not properties.get('_persisted', False)))
 
     ## = Class Methods = ##
     kind = classmethod(lambda cls: cls.__name__)

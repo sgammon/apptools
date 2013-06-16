@@ -738,7 +738,7 @@ class RedisAdapter(IndexedModelAdapter):
         raise NotImplementedError()
 
     @classmethod
-    def execute_query(cls, spec, pipeline=None):  # pragma: no cover
+    def execute_query(cls, spec):  # pragma: no cover
 
         ''' Execute a :py:class:`model.Query` across one (or multiple)
             indexed properties.
