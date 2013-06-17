@@ -89,6 +89,7 @@ class RedisAdapter(IndexedModelAdapter):
     _kind_prefix = '__kind__'
     _magic_separator = '::'
     _path_separator = '.'
+    _chunk_separator = ':'
 
     ## EngineConfig
     # Holds hard-coded configuration values for the `RedisAdapter` engine.
@@ -388,7 +389,7 @@ class RedisAdapter(IndexedModelAdapter):
         return getattr(target, operation.lower())(*args, **kwargs)
 
     @classmethod
-    def get(cls, key, pipeline=None):
+    def get(cls, key, pipeline=None, _entity=None):
 
         ''' Retrieve an entity by Key from Redis.
 
@@ -396,11 +397,15 @@ class RedisAdapter(IndexedModelAdapter):
             :returns: The deserialized and decompressed entity associated with
             the target ``key``. '''
 
-        joined, flattened = key
+        if key:
+            joined, flattened = key
         if cls.EngineConfig.mode == RedisMode.toplevel_blob:
 
-            # execute query
-            result = cls.execute(cls.Operations.GET, flattened[1], joined, target=pipeline)
+            if _entity:
+                result = _entity
+            else:
+                # execute query
+                result = cls.execute(cls.Operations.GET, flattened[1], joined, target=pipeline)
 
             if isinstance(result, basestring):
 
@@ -412,14 +417,26 @@ class RedisAdapter(IndexedModelAdapter):
                 return cls.serializer.loads(result)
 
         elif cls.EngineConfig.mode == RedisMode.hashkind_blob:
+
+            if _entity:
+                result = _entity
+
             ## @TODO: `get` for `hashkind_blob` mode
             pass
 
         elif cls.EngineConfig.mode == RedisMode.hashkey_blob:
+
+            if _entity:
+                result = _entity
+
             ## @TODO: `get` for `hashkey_blob`
             pass
 
         elif cls.EngineConfig.mode == RedisMode.hashkey_hash:
+
+            if _entity:
+                result = _entity
+
             ## @TODO: `get` for `hashkey_hash`
             pass
 
@@ -694,12 +711,14 @@ class RedisAdapter(IndexedModelAdapter):
                         magic_symbol = None
                         args.append(sanitized_value)
 
-                    if hash_value:
-                        hash_c.append(sanitized_value)
+                    #if hash_value:
+                    #    hash_c.append(sanitized_value)
 
                     args.append(origin)  # add key to args
 
                 else:
+
+                    # @TODO(sgammon): this can cause silent issues
 
                     # everything else is stored unsorted
                     handler = cls.Operations.SET_ADD
@@ -738,12 +757,142 @@ class RedisAdapter(IndexedModelAdapter):
         raise NotImplementedError()
 
     @classmethod
-    def execute_query(cls, spec):  # pragma: no cover
+    def execute_query(cls, kind, spec, options, **kwargs):  # pragma: no cover
 
         ''' Execute a :py:class:`model.Query` across one (or multiple)
             indexed properties.
 
-            :param spec: Descendent of :py:class:`model.Query` specifying the query to satisfy.
-            :raises: :py:exc:`NotImplementedError`, as this method is not yet implemented. '''
+            :param kind: Kind name (``str``) for which we are querying
+            across, or ``None`` if this is a ``kindless`` query.
 
-        raise NotImplementedError()
+            :param spec: Tupled pair of ``filter`` and ``sort`` directives
+            to apply to this :py:class:`Query` (:py:class:`query.Filter` and
+            :py:class:`query.Sort` and their descendents, respectively), like
+            ``(<filters>, <sorts>)``.
+
+            :param options: Object descendent from, or directly instantiated
+            as :py:class:`QueryOptions`, specifying options for the execution
+            of this :py:class:`Query`.
+
+            :param **kwargs: Low-level options for handling this query, such
+            as ``pipeline`` (for pipelining support) and ``execute`` (to trigger
+            a buffer flush for a generated or constructed pipeline or operation
+            buffer).
+
+            :returns: Iterable (``list``) of matching :py:class:`model.Key`
+            yielded by execution of the current :py:class:`Query`. Returns
+            empty iterable (``[]``) in the case that no results could be found. '''
+
+        # @TODO(sgammon): desparately needs rewriting. absolute utter plebbery.
+
+        from apptools import model
+        from apptools.model import query
+
+        if not kind:
+            # @TODO(sgammon): implement kindless queries
+            raise NotImplementedError('Kindless queries are not yet implemented in `Redis`.')
+
+        # extract filter and sort directives and build ancestor
+        filters, sorts = spec
+        ancestry_parent = model.Key.from_urlsafe(options.ancestor) if options.ancestor else None
+
+        if filters:
+            kinded_key = model.Key(kind, parent=ancestry_parent)
+
+            ## HUGE HACK: use generate_indexes to make index names.
+            # fix this plz
+
+            _filters, _filter_i_lookup = {}, set()
+            for _f in filters:
+
+                origin, meta, property_map = cls.generate_indexes(kinded_key, {
+                    _f.target.name: (_f.target, _f.value.data)
+                })
+
+                for operation, index, config in cls.write_indexes((origin, [], property_map), None, False):
+
+                    if operation == 'ZADD':
+                        _flag, _index_key, value = 'Z', index[1], index[2]
+                    else:
+                        import pdb; pdb.set_trace()
+
+                if (_flag, _index_key) not in _filter_i_lookup:
+                    _filters[(_flag, _index_key)] = []
+                    _filter_i_lookup.add((_flag, _index_key))
+
+                _filters[(_flag, _index_key)].append((_f.operator, value))
+
+            # process sorted sets first: leads to lower cardinality
+            _data_frame = []  # allocate results window
+            sorted_indexes = dict([(index, _filters[('Z', index)]) for _, index in _filters.iterkeys()])
+            if sorted_indexes:
+
+                for prop, _directives in sorted_indexes.iteritems():
+                    if len(_filters[('Z', prop)]) == 2:
+                        _operators = [operator for operator, value in _directives]
+                        _values = [value for operator, value in _directives]
+
+                        # special case: maybe we can do a sorted range request
+                        if (query.GREATER_THAN in _operators) or (query.GREATER_THAN_EQUAL_TO in _operators):
+                            if (query.LESS_THAN in _operators) or (query.LESS_THAN_EQUAL_TO in _operators):
+                                greater, lesser = max(_values), min(_values)
+                                _data_frame.append(cls.execute(*(
+                                    cls.Operations.SORTED_RANGE_BY_SCORE,
+                                    None,
+                                    prop,
+                                    min(_values),
+                                    max(_values)
+                                )))
+
+                                continue
+
+                if _data_frame:  # there were results, start merging
+                    _result_window = set()
+                    for frame in _data_frame:
+
+                        if not len(_result_window):
+                            _result_window = set(frame)
+                            continue  # initial frame: fill background
+
+                        _result_window = (_result_window & set(frame))
+
+                    _raw_keys = [i for i in _result_window]
+                    matching_keys = [model.Key.from_urlsafe(k, _persisted=True) for k in _result_window]
+                else:
+                    matching_keys = []
+
+        else:
+            if not sorts:
+
+                # grab all entities of this kind
+                prefix = model.Key(kind, 0, parent=ancestry_parent).urlsafe().replace('=', '')[0:-3]
+                _raw_keys = cls.execute(cls.Operations.KEYS, kind.kind(), prefix + '*')  # regex search it. why not
+                matching_keys = [model.Key.from_urlsafe(k, _persisted=True) for k in _raw_keys]
+
+                # if we're doing keys only, we're done
+                if options.keys_only:
+                    return matching_keys
+
+        # otherwise, build entities and return
+        result_entities = []
+
+        # fetch keys
+        with cls.channel(kind.kind()).pipeline() as pipeline:
+
+            # fill pipeline
+            for key in _raw_keys:
+                cls.execute(cls.Operations.GET, kind.kind(), key, target=pipeline)
+
+            # execute pipeline, zip keys and build results
+            for key, entity in zip(matching_keys, pipeline.execute()):
+                if not entity:
+                    continue
+
+                # decode raw entity
+                decoded = cls.get(None, None, entity)
+
+                # attach key, decode entity and construct
+                decoded['key'] = key
+                result_entities.append(kind(_persisted=True, **decoded))
+
+        return result_entities

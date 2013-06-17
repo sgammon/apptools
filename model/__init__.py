@@ -444,6 +444,14 @@ class AbstractModel(_model_parent()):
             if name.startswith('__'): return super(AbstractModel.__metaclass__, cls).__setattr__(name, value)
             raise exception('create', name, cls)  # cannot create new properties before instantiation
 
+        def __getitem__(cls, name, exception=exceptions.InvalidItem):
+
+            ''' Override itemgetter syntax to return property
+                objects at the class level. '''
+
+            if name not in cls.__lookup__: raise exception('read', name, cls)  # cannot read non-data properties
+            return cls.__dict__[name]
+
 
     ## AbstractModel.PropertyValue
     # Small, ultra-lightweight datastructure responsible for holding a property value bundle for an entity attribute.

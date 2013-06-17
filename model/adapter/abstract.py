@@ -155,7 +155,8 @@ class ModelAdapter(object):
                 return  # not found
 
             # inflate key + model and return
-            entity['key'] = self.registry[kind].__keyclass__(*(x for x in flattened if x is not None), _persisted=True)
+            key.__persisted__ = True
+            entity['key'] = key
             return self.registry[kind](_persisted=True, **entity)
 
     def _put(self, entity, **kwargs):
@@ -365,7 +366,7 @@ class IndexedModelAdapter(ModelAdapter):
             return (cls._magic['key'], map(lambda x: x is not None, flattened))
 
         @classmethod
-        def convert_date(cls, date):
+        def convert_date(cls, _date):
 
             ''' Convert a Python ``date`` to an indexable value.
 
@@ -373,7 +374,7 @@ class IndexedModelAdapter(ModelAdapter):
                 :returns: Tupled ``(<magic date code>, <flattened date>)`` to add to the index. '''
 
             # convert to ISO format, return date with magic
-            return (cls._magic['date'], date.isoformat())
+            return (cls._magic['date'], _date.isoformat())
 
         @classmethod
         def convert_time(cls, _time):
@@ -429,20 +430,22 @@ class IndexedModelAdapter(ModelAdapter):
 
         # small optimization - with a deterministic key, we can parrellelize
         # index writes (assuming async is supported in the underlying driver)
-        if entity.key:
 
-            # proxy to `generate_indexes` and write indexes
-            self.write_indexes(self.generate_indexes(entity.key, self._pluck_indexed(entity)), **kwargs)
-
-            # delegate up the chain for entity write
-            return super(IndexedModelAdapter, self)._put(entity, **kwargs)
+        _indexed_properties = self._pluck_indexed(entity)
 
         # delegate write up the chain
         written_key = super(IndexedModelAdapter, self)._put(entity, **kwargs)
 
-        # proxy to `generate_indexes` and write
-        self.write_indexes(self.generate_indexes(written_key, self._pluck_indexed(entity)), **kwargs)
+        # proxy to `generate_indexes` and write indexes
+        if not _indexed_properties:
+            origin, meta = self.generate_indexes(entity.key)
+            property_map = {}
+        else:
+            origin, meta, property_map = self.generate_indexes(entity.key, _indexed_properties)
 
+        self.write_indexes((origin, meta, property_map), **kwargs)
+
+        # delegate up the chain for entity write
         return written_key
 
     def _delete(self, key, **kwargs):
@@ -495,6 +498,7 @@ class IndexedModelAdapter(ModelAdapter):
 
             # provision vars, generate meta indexes
             encoded_key = cls.encode_key(*key.flatten(True)) or key.urlsafe()
+            _meta_indexes.append((cls._key_prefix,))
             _meta_indexes.append((cls._kind_prefix, key.kind))  # map kind to encoded key
 
             # consider ancestry
@@ -579,7 +583,7 @@ class IndexedModelAdapter(ModelAdapter):
         raise NotImplementedError()
 
     @abc.abstractmethod
-    def execute_query(cls, spec, **kwargs):  # pragma: no cover
+    def execute_query(cls, kind, spec, options, **kwargs):  # pragma: no cover
 
         ''' Execute a query, specified by ``spec``, across
             one (or multiple) indexed properties.

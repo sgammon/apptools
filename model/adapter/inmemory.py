@@ -383,8 +383,9 @@ class InMemoryAdapter(IndexedModelAdapter):
         return _cleaned
 
     @classmethod
-    def execute_query(cls, spec, **kwargs):  # pragma: no cover
+    def execute_query(cls, kind, spec, options, **kwargs):  # pragma: no cover
 
         ''' Execute a query across one (or multiple) indexed properties. '''
 
+        import pdb; pdb.set_trace()
         raise NotImplementedError()
