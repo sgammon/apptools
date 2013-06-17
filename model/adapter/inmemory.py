@@ -387,5 +387,4 @@ class InMemoryAdapter(IndexedModelAdapter):
 
         ''' Execute a query across one (or multiple) indexed properties. '''
 
-        import pdb; pdb.set_trace()
-        raise NotImplementedError()
+        raise NotImplementedError('Queries are not yet supported in `InMemoryAdapter`.')

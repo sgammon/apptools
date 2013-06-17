@@ -814,7 +814,7 @@ class RedisAdapter(IndexedModelAdapter):
                     if operation == 'ZADD':
                         _flag, _index_key, value = 'Z', index[1], index[2]
                     else:
-                        import pdb; pdb.set_trace()
+                        raise NotImplementedError('Non-sorted index merges are not yet supported in `RedisAdapter`.')
 
                 if (_flag, _index_key) not in _filter_i_lookup:
                     _filters[(_flag, _index_key)] = []
