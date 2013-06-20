@@ -795,6 +795,7 @@ class RedisAdapter(IndexedModelAdapter):
         # extract filter and sort directives and build ancestor
         filters, sorts = spec
         ancestry_parent = model.Key.from_urlsafe(options.ancestor) if options.ancestor else None
+        _data_frame = []  # allocate results window
 
         if filters:
             kinded_key = model.Key(kind, parent=ancestry_parent)
@@ -814,7 +815,7 @@ class RedisAdapter(IndexedModelAdapter):
                     if operation == 'ZADD':
                         _flag, _index_key, value = 'Z', index[1], index[2]
                     else:
-                        raise NotImplementedError('Non-sorted index merges are not yet supported in `RedisAdapter`.')
+                        _flag, _index_key, value = 'S', index[1], index[2]
 
                 if (_flag, _index_key) not in _filter_i_lookup:
                     _filters[(_flag, _index_key)] = []
@@ -823,14 +824,16 @@ class RedisAdapter(IndexedModelAdapter):
                 _filters[(_flag, _index_key)].append((_f.operator, value))
 
             # process sorted sets first: leads to lower cardinality
-            _data_frame = []  # allocate results window
-            sorted_indexes = dict([(index, _filters[('Z', index)]) for _, index in _filters.iterkeys()])
+            sorted_indexes = dict([(index, _filters[index]) for index in filter(lambda x: x[0] == 'Z', _filters.iterkeys())])
+            unsorted_indexes = dict([(index, _filters[index]) for index in filter(lambda x: x[0] == 'S', _filters.iterkeys())])
+
             if sorted_indexes:
 
                 for prop, _directives in sorted_indexes.iteritems():
-                    if len(_filters[('Z', prop)]) == 2:
+                    if len(_filters[prop]) == 2:
                         _operators = [operator for operator, value in _directives]
                         _values = [value for operator, value in _directives]
+                        _, prop = prop
 
                         # special case: maybe we can do a sorted range request
                         if (query.GREATER_THAN in _operators) or (query.GREATER_THAN_EQUAL_TO in _operators):
@@ -846,32 +849,55 @@ class RedisAdapter(IndexedModelAdapter):
 
                                 continue
 
-                if _data_frame:  # there were results, start merging
-                    _result_window = set()
-                    for frame in _data_frame:
+                    ## @TODO(sgammon): build this query branch
+                    raise RuntimeError("Specified query is not yet supported.")
 
-                        if not len(_result_window):
-                            _result_window = set(frame)
-                            continue  # initial frame: fill background
+            if unsorted_indexes:
 
-                        _result_window = (_result_window & set(frame))
+                _intersections = set()
+                for prop, _directives in unsorted_indexes.iteritems():
+                    _flag, index = prop
+                    _intersections.add(index)
 
-                    _raw_keys = [i for i in _result_window]
-                    matching_keys = [model.Key.from_urlsafe(k, _persisted=True) for k in _result_window]
-                else:
-                    matching_keys = []
+                # special case: only one unsorted set - pull content instead of a intersection merge
+                if _intersections and len(_intersections) == 1:
+                    _data_frame.append(cls.execute(*(
+                        cls.Operations.SET_MEMBERS,
+                        None,
+                        _intersections.pop()
+                    )))
+
+                # more than one intersection: do an `SINTER` call instead of `SMEMBERS`
+                if _intersections and len(_intersections) > 1:
+                    _data_frame.append(cls.execute(*(
+                        cls.Operations.SET_INTERSECT,
+                        None,
+                        _intersections
+                    )))
+
+            if _data_frame:  # there were results, start merging
+                _result_window = set()
+                for frame in _data_frame:
+
+                    if not len(_result_window):
+                        _result_window = set(frame)
+                        continue  # initial frame: fill background
+
+                    _result_window = (_result_window & set(frame))
+                matching_keys = [k for k in _result_window]
+            else:
+                matching_keys = []
 
         else:
             if not sorts:
 
                 # grab all entities of this kind
                 prefix = model.Key(kind, 0, parent=ancestry_parent).urlsafe().replace('=', '')[0:-3]
-                _raw_keys = cls.execute(cls.Operations.KEYS, kind.kind(), prefix + '*')  # regex search it. why not
-                matching_keys = [model.Key.from_urlsafe(k, _persisted=True) for k in _raw_keys]
+                matching_keys = cls.execute(cls.Operations.KEYS, kind.kind(), prefix + '*')  # regex search it. why not
 
                 # if we're doing keys only, we're done
                 if options.keys_only:
-                    return matching_keys
+                    return [model.Key.from_urlsafe(k, _persisted=True) for k in matching_keys]
 
         # otherwise, build entities and return
         result_entities = []
@@ -880,11 +906,13 @@ class RedisAdapter(IndexedModelAdapter):
         with cls.channel(kind.kind()).pipeline() as pipeline:
 
             # fill pipeline
-            for key in _raw_keys:
+            for key in matching_keys:
                 cls.execute(cls.Operations.GET, kind.kind(), key, target=pipeline)
 
+            _blob_results = pipeline.execute()
+
             # execute pipeline, zip keys and build results
-            for key, entity in zip(matching_keys, pipeline.execute()):
+            for key, entity in zip([model.Key.from_urlsafe(k, _persisted=True) for k in matching_keys], _blob_results):
                 if not entity:
                     continue
 
