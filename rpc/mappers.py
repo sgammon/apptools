@@ -15,11 +15,18 @@ default mappers that ship with apptools.
 
 # stdlib
 import hmac
-import config
 import base64
 import hashlib
 import webapp2
 import datetime
+
+try:
+    import config
+except ImportError:
+    class Config(object):
+        debug = True
+        config = {}
+    config = Config()
 
 # apptools rpc
 from apptools import rpc
