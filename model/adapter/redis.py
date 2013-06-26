@@ -830,7 +830,11 @@ class RedisAdapter(IndexedModelAdapter):
             if sorted_indexes:
 
                 for prop, _directives in sorted_indexes.iteritems():
+
+                    # double-filters
                     if len(_filters[prop]) == 2:
+
+                        # extract info
                         _operators = [operator for operator, value in _directives]
                         _values = [value for operator, value in _directives]
                         _, prop = prop
@@ -838,16 +842,43 @@ class RedisAdapter(IndexedModelAdapter):
                         # special case: maybe we can do a sorted range request
                         if (query.GREATER_THAN in _operators) or (query.GREATER_THAN_EQUAL_TO in _operators):
                             if (query.LESS_THAN in _operators) or (query.LESS_THAN_EQUAL_TO in _operators):
+
+                                # range value query over sorted index
                                 greater, lesser = max(_values), min(_values)
                                 _data_frame.append(cls.execute(*(
                                     cls.Operations.SORTED_RANGE_BY_SCORE,
                                     None,
                                     prop,
                                     min(_values),
-                                    max(_values)
+                                    max(_values),
+                                    options.offset,
+                                    options.limit
                                 )))
 
                                 continue
+
+                    # single-filters
+                    if len(_filters[prop]) == 1:
+
+                        # extract info
+                        _operator = [operator for operator, value in _directives][0]
+                        _value = float([value for operator, value in _directives][0])
+                        _, prop = prop
+
+                        if _operator is query.EQUALS:
+
+                            # static value query over sorted index
+                            _data_frame.append(cls.execute(*(
+                                cls.Operations.SORTED_RANGE_BY_SCORE,
+                                None,
+                                prop,
+                                _value,
+                                _value,
+                                options.offset,
+                                options.limit
+                            )))
+
+                            continue
 
                     ## @TODO(sgammon): build this query branch
                     raise RuntimeError("Specified query is not yet supported.")

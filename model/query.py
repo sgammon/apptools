@@ -88,8 +88,8 @@ class QueryOptions(object):
     _defaults = {
         '_keys_only': False,
         '_ancestor': None,
-        '_limit': 0,
-        '_offset': -1,
+        '_limit': -1,
+        '_offset': 0,
         '_projection': None,
         '_hint': None,
         '_plan': None,
