@@ -118,6 +118,16 @@ class AppToolsJSONEncoder(libjson.JSONEncoder):
         else:
             if isinstance(target, runtime.Undefined):
                 return None
+        try:
+            from apptools import model
+        except ImportError as e:
+            raise
+        else:
+            if isinstance(target, model.Key):
+                return target.urlsafe()
+            if isinstance(target, model.Model):
+                return target.to_json()
+
         if isinstance(target, (datetime.datetime, datetime.date, datetime.time)):
             return target.isoformat()
         if _NDB:

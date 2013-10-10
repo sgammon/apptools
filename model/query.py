@@ -323,6 +323,13 @@ class Query(AbstractQuery):
 
             :returns: Nothing, as this is an initializer. '''
 
+        if filters:
+            if not isinstance(filters, (list, tuple)):
+                filters = [filters]
+        if sorts:
+            if not isinstance(sorts, (list, tuple)):
+                sorts = [sorts]
+
         options = kwargs.get('options', QueryOptions(**kwargs))
         self.kind, self.filters, self.sorts, self.options = kind, filters or [], sorts or [], options
 

@@ -253,7 +253,7 @@ def gateway(environ=None, start_response=None, direct=False, appclass=webapp2.WS
                     cProfile.runctx("_run(app, environ, start_response)", globals(), locals(), filename=dump_path)
 
                 action = profile_run
-
+    
     ## Go!
     return action(app, environ, start_response)
 

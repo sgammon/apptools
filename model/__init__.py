@@ -268,11 +268,12 @@ class AbstractKey(_key_parent()):
         ''' Test whether two keys are functionally identical. '''
 
         if (not self and not other) or (self and other):
-            if self.__schema__ <= other.__schema__:  # subset check
-                if self.__schema__ >= other.__schema__:  # superset check
-                    if isinstance(other, self.__class__):  # type check
-                        # last resort: check each data property
-                        return all((i for i in map(lambda x: getattr(other, x) == getattr(self, x), self.__schema__)))
+            if isinstance(other, self.__class__):  # class check
+                if self.__schema__ <= other.__schema__:  # subset check
+                    if self.__schema__ >= other.__schema__:  # superset check
+                        if isinstance(other, self.__class__):  # type check
+                            # last resort: check each data property
+                            return all((i for i in map(lambda x: getattr(other, x) == getattr(self, x), self.__schema__)))
         # didn't pass one of our tests
         return False  # pragma: no cover
 
@@ -664,7 +665,7 @@ class Key(AbstractKey):
 
         formatter, value = formats.items()[0] if formats else ('__constructed__', None)  # extract 1st-provided format
 
-        if len(formats) > 1:  # disallow multiple key formats
+        if len(filter(lambda x: x[0] != '_persisted', formats.iteritems())) > 1:  # disallow multiple key formats
             raise exceptions.MultipleKeyFormats(', '.join(formats.keys()))
 
         return {  # delegate full-key decoding to classmethods

@@ -381,12 +381,16 @@ class RedisAdapter(IndexedModelAdapter):
         if 'target' in kwargs:
             del kwargs['target']  # if we were passed an explicit target, remove the arg so the driver doesn't complain
 
-        if isinstance(operation, tuple):
-            operation = '_'.join([operation])  # reduce (CLIENT, KILL) to 'client_kill' (for example)
-        if isinstance(target, (_redis_client.client.Pipeline, _redis_client.client.StrictPipeline)):
-            getattr(target, operation.lower())(*args, **kwargs)
-            return target
-        return getattr(target, operation.lower())(*args, **kwargs)
+        try:
+            if isinstance(operation, tuple):
+                operation = '_'.join([operation])  # reduce (CLIENT, KILL) to 'client_kill' (for example)
+            if isinstance(target, (_redis_client.client.Pipeline, _redis_client.client.StrictPipeline)):
+                getattr(target, operation.lower())(*args, **kwargs)
+                return target
+            return getattr(target, operation.lower())(*args, **kwargs)
+        except Exception as e:
+            import pdb; pdb.set_trace()
+            raise
 
     @classmethod
     def get(cls, key, pipeline=None, _entity=None):

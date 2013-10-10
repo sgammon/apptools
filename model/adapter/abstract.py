@@ -410,6 +410,7 @@ class IndexedModelAdapter(ModelAdapter):
 
             int: self.serializer.dumps,
             bool: self.serializer.dumps,
+            long: self.serializer.dumps,
             float: self.serializer.dumps,
             basestring: self.serializer.dumps,
             datetime.date: self.Indexer.convert_date,
