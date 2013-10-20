@@ -2,16 +2,25 @@
 
 '''
 
-API: Assets
+    apptools API: assets
 
-Responsible for reading the assets config (see config/assets.py) and outputting asset
-URLs based on the config & resource requested. There is support for switching the
-absolute URL base to a CDN hostname, or multiple CDN hostnames. There's also support
-for cachebusting via key value pairs, and switching to minified assets.
+    responsible for reading the assets config (see config/assets.py) and outputting asset
+    URLs based on the config & resource requested. There is support for switching the
+    absolute URL base to a CDN hostname, or multiple CDN hostnames. There's also support
+    for cachebusting via key value pairs, and switching to minified assets.
 
--sam (<sam@momentum.io>)
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
 
 '''
+
 
 ## Base Imports
 import random

@@ -1,16 +1,25 @@
 # -*- coding: utf-8 -*-
 
-"""
-Welcome to the :py:mod:`apptools` Model API! Using this package, you can model data,
-interact with datastore layers through Model Adapters (see: :py:mod:`adapters`),
-and generate messages for use with Service classes.
+'''
 
-:author: Sam Gammon (sam@momentum.io)
-:copyright: (c) 2013 momentum labs.
-:license: This is private source code - Ampush has been granted an
-          unlimited, exclusive license for embedded use. For details
-          about embedded licenses and other legalese, see `LICENSE.md`.
-"""
+    apptools model
+
+    welcome to the :py:mod:`apptools` Model API! Using this package, you can model data,
+    interact with datastore layers through Model Adapters (see: :py:mod:`adapters`),
+    and generate messages for use with Service classes.
+
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
+
+'''
+
 
 __version__ = 'v2'
 

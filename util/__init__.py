@@ -2,14 +2,23 @@
 
 '''
 
-AppTools Util
+    apptools util
 
-Holds small utilities and useful pieces of code/functionality that don't
-belong anywhere more-specific in AppTools.
+    holds small utilities and useful pieces of code/functionality that don't
+    belong anywhere specific.
 
--sam (<sam@momentum.io>)
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
 
 '''
+
 
 ## Base Imports
 import os
@@ -18,14 +27,6 @@ import logging as std_logging
 
 ## Export Util Controllers
 from apptools.util.debug import AppToolsLogger
-
-## AppEngine Imports
-try:
-    from google.appengine.ext import ndb
-    from google.appengine.api import datastore_types
-    _NDB = True
-except ImportError as e:
-    _NDB = False
 
 ## Exported Datastructures
 from apptools.util.datastructures import DictProxy
@@ -43,7 +44,8 @@ except ImportError:
         try:
             from django.utils import json as djson
         except ImportError:
-            std_logging.critical('No valid JSON adapter found. This could cause serious problems...')
+            std_logging.critical('No valid JSON adapter found. '
+                                 'This could cause serious problems...')
             raise
         else:
             libjson = djson  # apparently, simplejson is NOT installed and we're running on py < 2.7, on appengine (probably)
@@ -59,11 +61,14 @@ _MODULE_LOADER_SENTINEL = type(os)
 logging = AppToolsLogger('apptools.util')
 
 
-## _loadAPIModule
-# Take an entry from one of the package bridges, and lazy-load it into _MODULE_LOADER_CACHE.
 def _loadModule(entry):
 
-    ''' Callback to lazy-load an API module in tuple(path, item) format. '''
+    ''' Callback to lazy-load an API module in tuple(path, item) format.
+
+        :param entry:
+        :raise ValueError:
+        :raise ImportError:
+        :returns: '''
 
     global _MODULE_LOADER_CACHE
 
@@ -77,37 +82,46 @@ def _loadModule(entry):
             path, name = entry
             mod = __import__(path, globals(), locals(), [name])
             _MODULE_LOADER_CACHE[entry] = getattr(mod, name)
+            return _MODULE_LOADER_CACHE[entry]
 
         # string syntax - "path.to.module.ModuleOrClassName"
         elif isinstance(entry, basestring):
             mod = __import__(entry, globals(), locals(), ['*'])
             _MODULE_LOADER_CACHE[entry] = mod
+            return _MODULE_LOADER_CACHE[entry]
 
         # module syntax - you're kind of an idiot.
         elif isinstance(entry, _MODULE_LOADER_SENTINEL):
-            return module
+            return entry
 
-        else:
-            logging.error('Lazyloader failed to resolve module for shortcut: "' + str(entry) + '".')
-            raise ImportError("Could not resolve module for entry '" + str(entry) + "'.")
+        logging.error('Lazyloader failed to resolve module for shortcut: "' + str(entry) + '".')
+        raise ImportError("Could not resolve module for entry '" + str(entry) + "'.")
 
     return _MODULE_LOADER_CACHE[entry]
 
-## Custom JSON Encoder/Decoder
+
 class AppToolsJSONEncoder(libjson.JSONEncoder):
 
     ''' Custom encoder that implements the __json__ method interface. '''
 
     def __init__(self, *args, **kwargs):
 
-        ''' Initialize this JSONEncoder.  '''
+        ''' Initialize this JSONEncoder.
+
+            :param args:
+            :param kwargs:
+            :returns: '''
 
         # pass up the chain
         super(AppToolsJSONEncoder, self).__init__(*args, **kwargs)
 
     def default(self, target):
 
-        ''' Invoked when the JSON encoder can't encode something. '''
+        ''' Invoked when the JSON encoder can't encode something.
+
+            :param target:
+            :raises ImportError:
+            :returns: '''
 
         if hasattr(target, '__json__'):
             return libjson.JSONEncoder.default(target)
@@ -139,10 +153,11 @@ class AppToolsJSONEncoder(libjson.JSONEncoder):
                 return str(target)
         return libjson.JSONEncoder.default(self, target)
 
-## Splice in custom JSON codec
+
 class JSONWrapper(object):
 
-    ''' Utility wrapper for json.dumps/loads that proxies to AppTools' custom JSON codec. '''
+    ''' Utility wrapper for json.dumps/loads that proxies
+        to AppTools' custom JSON codec. '''
 
     JSONDecoder = libjson.JSONDecoder
     JSONEncoder = libjson.JSONEncoder
@@ -154,7 +169,11 @@ class JSONWrapper(object):
     @classmethod
     def dump(cls, iterator, **kwargs):
 
-        ''' Streaming serialization to JSON strings. '''
+        ''' Streaming serialization to JSON strings.
+
+            :param iterator:
+            :param kwargs:
+            :returns: '''
 
         for i in interator:
             yield AppToolsJSONEncoder(**kwargs).encode(i)
@@ -162,7 +181,11 @@ class JSONWrapper(object):
     @classmethod
     def load(cls, iterator, **kwargs):
 
-        ''' Streaming deserialization from JSON strings. '''
+        ''' Streaming deserialization from JSON strings.
+
+            :param iterator:
+            :param kwargs:
+            :returns: '''
 
         for i in iterator:
             yield jsonlib.loads(i, **kwargs)
@@ -170,14 +193,22 @@ class JSONWrapper(object):
     @classmethod
     def dumps(cls, struct, **kwargs):
 
-        ''' Dump a structure to a JSON string. '''
+        ''' Dump a structure to a JSON string.
+
+            :param struct:
+            :param kwargs:
+            :returns: '''
 
         return AppToolsJSONEncoder(**kwargs).encode(struct)
 
     @classmethod
     def loads(cls, string, **kwargs):
 
-        ''' Load via libjson. '''
+        ''' Load via libjson.
+
+            :param string:
+            :param kwargs:
+            :returns: '''
 
         return libjson.loads(string, **kwargs)
 

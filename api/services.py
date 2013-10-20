@@ -2,19 +2,28 @@
 
 '''
 
-API: Services
+    apptools API: services
 
-Bridges the AppTools service layer to base classes via `ServicesMixin`.
-This adds the methods + properties:
+    bridges the AppTools service layer to base classes via `ServicesMixin`.
+    this adds the methods + properties:
 
-    - _servicesConfig: Shortcut to project services config.
-    - _globalServicesConfig: Shortcut to global Service Layer settings.
-    - make_services_manifest: Generate a datastructure of installed + enabled services, suitable for
-        mapping to URLs or printing to a template.
+        - _servicesConfig: Shortcut to project services config.
+        - _globalServicesConfig: Shortcut to global Service Layer settings.
+        - make_services_manifest: Generate a datastructure of installed + enabled services, suitable for
+            mapping to URLs or printing to a template.
 
--sam (<sam@momentum.io>)
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
 
 '''
+
 
 # API Imports
 from apptools.api import CoreAPI

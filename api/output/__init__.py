@@ -2,18 +2,27 @@
 
 '''
 
-API: Output
+    apptools output API
 
-Responsible for the task of finding and compiling templates to be sent to the browser.
-Two levels of caching are implemented here - in-memory handler caching and memcache.
+    responsible for the task of finding and compiling templates to be sent to the browser.
+    two levels of caching are implemented here - in-memory handler caching and memcache.
 
-According to settings in the config.py, this module will attempt to load compiled
-template code from the handler first, memcache second, and at last resort will compile
-the template and store it in the cache.
+    according to settings in the config.py, this module will attempt to load compiled
+    template code from the handler first, memcache second, and at last resort will compile
+    the template and store it in the cache.
 
--sam (<sam@momentum.io>)
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
 
 '''
+
 
 ## Base Imports
 import os

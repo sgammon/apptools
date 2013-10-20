@@ -2,31 +2,32 @@
 
 '''
 
-Util: Config
+    apptools util: appconfig
 
-Holds utilities for dealing with application config, and the default config set.
+    holds utilities for dealing with application config, and the default config set.
 
--sam (<sam@momentum.io>)
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
 
 '''
 
+
 # Base Imports
 import os
-import sys
-import copy
-import socket
-import logging
 import webapp2
 import hashlib
 
-# Logging Imports
-from logging import handlers
-
 
 ## Constants
-debug = any([os.environ.get('SERVER_SOFTWARE', 'Default').startswith(x) for x in frozenset(('Develop', 'Sandbox'))])
+debug = any((os.environ.get('SERVER_SOFTWARE', 'Default').startswith(x) for x in frozenset(('Develop', 'Sandbox'))))
 
-## Constants
 _DEFAULT_CONFIG = {
 
     'webapp2': {
@@ -350,8 +351,6 @@ _DEFAULT_CONFIG = {
 }
 
 
-## ConfigProxy
-# Wraps app configuration, enabling log messages on config access/write.
 class ConfigProxy(object):
 
     ''' Wraps app configuration to enable debug features. '''
@@ -365,14 +364,19 @@ class ConfigProxy(object):
 
     def __init__(self, config):
 
-        ''' Initialize this object. '''
+        ''' Initialize this object.
+
+            :param config:
+            :returns: '''
 
         self._config, self._oc, self._lookup = config, config.items(), set(config.keys())
 
     @webapp2.cached_property
     def logging(self):
 
-        ''' Named logging pipe. '''
+        ''' Named logging pipe.
+
+            :returns: '''
 
         from apptools.util import debug
         self.debug = self._config.get('apptools.system', {}).get('config', {}).get('debug', False)
@@ -380,14 +384,18 @@ class ConfigProxy(object):
 
     def __iter__(self):
 
-        ''' Return raw config for iteration. '''
+        ''' Return raw config for iteration.
+
+            :returns: '''
 
         self._i = 0  # reset iteration index
         return self
 
     def next(self):
 
-        ''' Return the next item in this iteration. '''
+        ''' Return the next item in this iteration.
+
+            :returns: '''
 
         # proxy iteration to our encapsulated config dictionary
         if self._i == len(self._oc) - 1:
@@ -399,7 +407,11 @@ class ConfigProxy(object):
 
     def __getitem__(self, item):
 
-        ''' Return an item in config. '''
+        ''' Return an item in config.
+
+            :param item:
+            :raises KeyError:
+            :returns: '''
 
         # redirect config access to dictionary
         self.logging.info("Config access: '%s'." % item)
@@ -410,7 +422,11 @@ class ConfigProxy(object):
 
     def __setitem__(self, item, value):
 
-        ''' Set an item in config. '''
+        ''' Set an item in config.
+
+            :param item:
+            :param value:
+            :returns: '''
 
         if item not in self._lookup:
             self._lookup.add(item)
@@ -421,13 +437,20 @@ class ConfigProxy(object):
 
     def __contains__(self, item):
 
-        ''' Contains redirect. '''
+        ''' Contains redirect.
+
+            :param item:
+            :returns: '''
 
         return item in self._lookup
 
     def _overlay(self, mapping, rov=None):
 
-        ''' Recursively update config, from target `mapping`. '''
+        ''' Recursively update config, from target `mapping`.
+
+            :param mapping:
+            :param rov:
+            :returns: '''
 
         if not isinstance(mapping, dict):
             return mapping
@@ -442,52 +465,68 @@ class ConfigProxy(object):
 
     def overlay(self, mapping):
 
-        ''' Exported method for recursively updating config. '''
+        ''' Exported method for recursively updating config.
+
+            :param mapping:
+            :returns: '''
 
         return ConfigProxy(self._overlay(mapping))
 
     def get(self, name, default=None):
 
-        ''' Retrieve an item from config without raising an AttributeError. '''
+        ''' Retrieve an item from config without raising an AttributeError.
+
+            :param name:
+            :param default:
+            :returns: '''
 
         self.logging.info("Config access: '%s'." % name)
         return self._config.get(name, default)
 
     def items(self):
 
-        ''' Retrieve a set of (key, value) tuples. '''
+        ''' Retrieve a set of (key, value) tuples.
+
+            :returns: '''
 
         return [i for i in self._oc]
 
     def iteritems(self):
 
-        ''' Generate a set of (key, value) tuples. '''
+        ''' Generate a set of (key, value) tuples.
 
-        for i in self._oc:
-            yield i
+            :returns: '''
+
+        for i in self._oc: yield i
 
     def keys(self):
 
-        ''' Retrieve a set of this config's keys. '''
+        ''' Retrieve a set of this config's keys.
+
+            :returns: '''
 
         return self._lookup
 
     def iterkeys(self):
 
-        ''' Generate a set of this config's keys. '''
+        ''' Generate a set of this config's keys.
 
-        for i in self._lookup:
-            yield i
+            :returns: '''
+
+        for i in self._lookup: yield i
 
     def values(self):
 
-        ''' Retrieve a set of this config's values. '''
+        ''' Retrieve a set of this config's values.
+
+            :returns: '''
 
         return [v for k, v in self._oc]
 
     def itervalues(self):
 
-        ''' Generate a set of this config's values. '''
+        ''' Generate a set of this config's values.
 
-        for k, v in self._oc:
-            yield v
+            :returns: '''
+
+        for k, v in self._oc: yield v

@@ -2,34 +2,33 @@
 
 '''
 
-    apptools2: core adapter tests
-    -------------------------------------------------
-    |                                               |
-    |   `apptools.tests.model.adapter.core`         |
-    |                                               |
-    |   this package contains test cases for the    |
-    |   builtin core adapters (JSON/dict/etc).      |
-    |                                               |
-    -------------------------------------------------
-    |   authors:                                    |
-    |       -- sam gammon (sam@momentum.io)         |
-    -------------------------------------------------
-    |   changelog:                                  |
-    |       -- apr 1, 2013: initial draft           |
-    -------------------------------------------------
+    apptools model tests: `apptools.model.adapter.core`
+
+    this package contains test cases for the builtin core adapters,
+    like JSON/dict/AdaptedModel/AdaptedKey.
+
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
 
 '''
+
 
 # stdlib
 import unittest
 import datetime
 
-# apptools test
-from apptools.tests import AppToolsTest
-
 # apptools model API
 from apptools import model
-from apptools.model import adapter
+
+# apptools test
+from apptools.tests import AppToolsTest
 
 
 ## Car

@@ -1,15 +1,24 @@
 # -*- coding: utf-8 -*-
 
-"""
-allows apptools models to be stored and
-retrieved using mongoDB.
+'''
 
-:author: Sam Gammon (sam@momentum.io)
-:copyright: (c) 2013 momentum labs.
-:license: This is private source code - Ampush has been granted an
-          unlimited, exclusive license for embedded use. For details
-          about embedded licenses and other legalese, see `LICENSE.md`.
-"""
+    apptools model adapter: mongoDB
+
+	allows apptools models to be stored and
+	retrieved using mongoDB.
+
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
+
+'''
+
 
 # adapter API
 from .abstract import ModelAdapter
