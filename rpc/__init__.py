@@ -267,16 +267,6 @@ else:
                 'path': '.'.join(_psplit[0:-1]),
                 'name': _psplit[-1]})._setcondition(cls.config.get('debug', True))
 
-        @decorators.memoize
-        @decorators.classproperty
-        def _servicesConfig(cls):
-
-            ''' Return main services config.
-
-                :returns: Service config dictionary. '''
-
-            return config.config.get('apptools.services', {})
-
 
     ## RemoteServiceFactory - class for generating/preparing new RemoteService objects
     class RemoteServiceFactory(ConfiguredClass):
