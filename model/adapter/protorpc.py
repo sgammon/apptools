@@ -195,7 +195,7 @@ else:
                 _pargs.append(_field_i)
 
                 # factory
-                _model_message[name] = pmessages.MessageField(*_pargs)
+                _model_message[name] = pmessages.MessageField(*_pargs, **_pkwargs)
                 continue
 
             # check for keys (implemented with `basestring` for now)
@@ -331,7 +331,18 @@ else:
 
             if self.key:
                 return self.__class__.to_message_model()(key=self.key.to_message(), **values)
-            return self.__class__.to_message_model()(**values)
+
+            def _check_value(item):
+
+                ''' Checks for invalid ProtoRPC values. '''
+
+                key, value = item
+
+                if isinstance(value, list) and len(value) == 0:
+                    return False
+                return True
+
+            return self.__class__.to_message_model()(**dict(filter(_check_value, values.iteritems())))
 
         @classmethod
         def to_message_model(cls):
