@@ -977,11 +977,17 @@ else:
 
         global _project_services
 
-        if len(args) == 1 and len(kwargs) == 0:
-            klass = args[0]
+        # pop name
+        name = args[0] if isinstance(args[0], basestring) else (
+            getattr(klass, 'name') if hasattr(klass, 'name') else klass.__name__
+        )
+
+        def _injector(klass):
+
+            ''' Injects service config. '''
 
             config_blob = {
-                'enabled': True,
+                'enabled': kwargs.get('enabled', True),
                 'service': '.'.join(klass.__module__.split('.') + [klass.__name__]),
                 'methods': klass._ServiceClass__remote_methods.keys(),
                 'config': {
@@ -992,8 +998,12 @@ else:
             }
 
             # inject
-            _project_services['services'][klass.name or klass.__name__] = config_blob
+            _project_services['services'][name] = config_blob
             return klass
+
+        if len(args) == 1 and len(kwargs) == 0 and isinstance(args[0], type):
+            return _injector(args[0])  # bound decorator
+        return _injector
 
     ## ``mapper`` - decorate a class as a service mapper.
     def mapper(klass):
@@ -1003,5 +1013,7 @@ else:
         global _installed_mappers
         _installed_mappers.append(klass)
         return klass
+
+    Error = remote.ApplicationError
 
 Exceptions = datastructures.DictProxy
