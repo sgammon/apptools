@@ -19,11 +19,14 @@
 
 '''
 
-
 ## Base Imports
 import os
 import datetime
 import logging as std_logging
+
+# webapp2
+from webapp2 import Route
+from webapp2_extras import routes
 
 ## Export Util Controllers
 from apptools.util.debug import AppToolsLogger
@@ -55,6 +58,7 @@ else:
     libjson = std_json  # we're running on >= py 2.7. life is gewd
 
 ## Globals
+global_rules = []
 _MODULE_LOADER_CACHE = {}
 _MODULE_LOADER_SENTINEL = type(os)
 
@@ -98,6 +102,42 @@ def _loadModule(entry):
         raise ImportError("Could not resolve module for entry '" + str(entry) + "'.")
 
     return _MODULE_LOADER_CACHE[entry]
+
+
+def rule(*args, **kwargs):
+
+    ''' Decorator for a handler that binds it to a newly-constructed
+        route. Usable either as a callable decorator or a bound decorator. '''
+
+    global global_rules
+
+    # definitely a bound decorator (look for a `route` attribute)
+    if len(args) == 1 and isinstance(args[0], (type, type(rule))):
+        target = args.pop()
+        if hasattr(target, 'route'):
+          global_rules.append(Route(target.route, name=target.__name__, handler='.'.join((target.__module__, target.__name__))))
+        else:
+          raise AttributeError('Bound-rule handler had no route: "%s".' % target)
+        return target
+
+    # definitely a callable decorator
+    if 'handler' in kwargs:
+      new_route = Route(*args, **kwargs)
+      global_rules.append(new_route)
+
+    def _decorate(target):
+
+        ''' Decorate that target! '''
+
+        if 'handler' not in kwargs:
+          kwargs['handler'] = '.'.join((target.__module__, target.__name__))
+          new_route = Route(*args, **kwargs)
+          global_rules.append(new_route)
+
+        target.route = new_route
+        return target
+
+    return _decorate
 
 
 class AppToolsJSONEncoder(libjson.JSONEncoder):
