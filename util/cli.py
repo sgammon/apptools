@@ -1,10 +1,14 @@
 # -*- coding: utf-8 -*-
 
-__doc__ = ''' docs coming soon '''
+''' docs coming soon '''
 
 
 # stdlib
-import sys, os, argparse
+import sys, os, argparse, textwrap, inspect
+
+
+## Globals
+_root_tool = None
 
 
 ## == Embedded Metaclass == ##
@@ -41,11 +45,8 @@ class Tool(object):
           :returns: Initialized class, transformed into additional
           objects provided by :py:mod:`argparse`. '''
 
-      # construct class regularly
-      klass = super(cls, cls).__new__(cls, name, bases, properties)
-
       # initialize `Tool` regularly to apply this metaclass downwards
-      if name is 'Tool': return klass
+      if name is 'Tool': return super(cls, cls).__new__(cls, name, bases, properties)
 
       _subtools, _arguments = [], []
       for key, value in properties.viewitems():
@@ -53,33 +54,51 @@ class Tool(object):
         # is it a list of arguments?
         if isinstance(value, (list, tuple)) and key is 'arguments':
 
-          def _add_argument(_parser, _name, _config):
-              _parser.add_argument(_name, **_config)
+          def _add_argument(_parser, _flag, _config):
+            if isinstance(_flag, tuple):
+              return _parser.add_argument(*_flag, **_config)
+            return _parser.add_argument(_flag, **_config)
 
-          for _name, config in value:
-            _arguments.append(((_add_argument, _name, config)))
+          for bundle in value:
+            if len(bundle) == 2:
+              _name, _config = bundle
+              _arguments.append((_add_argument, _name, _config))
+            else:
+              if isinstance(bundle[-1], dict):
+                positional, _config = bundle[0:-1], bundle[-1]
+                _arguments.append((_add_argument, positional, _config))
 
         # is it a subtool?
         elif isinstance(value, type) and issubclass(value, Tool):
 
-          def _add_subparser(obj, subparsers):
+          def _add_subparser(root, obj, subparsers):
             sub = subparsers.add_parser((getattr(obj, 'name') if hasattr(obj, 'name') else obj.__name__).lower(), **{
-              'help': getattr(obj, '__doc__').strip() if hasattr(obj, '__doc__') and (getattr(obj, '__doc__') is not None) else None  ## bind helptext from __doc__
+              'conflict_handler': 'resolve',
+              'help': textwrap.dedent(getattr(obj, '__doc__').strip()) if hasattr(obj, '__doc__') and (getattr(obj, '__doc__') is not None) else None  ## bind helptext from __doc__
             })
+
+            sub.set_defaults(func=obj.execute)
 
             return sub
 
           _subtools.append((value, _add_subparser))
 
-        elif not key.startswith('__'):
+        elif not key.startswith('__') and inspect.isfunction(value):
+
+          # it's a method - should be static dammit
+          properties[key] = staticmethod(value)
+
+        elif not key.startswith('__') and not inspect.isfunction(value):
           # well those are the only two options
           raise RuntimeError('Attached item to `Tool` subclass that is not '
                              'an argument or subtool.')
 
+      klass = super(cls, cls).__new__(cls, name, bases, properties)  # construct class
+
       # add to registered parsers
       cls.parsers[name] = {
         'name': (properties['name'] if 'name' in properties else name).lower(),
-        'description': properties['__doc__'] if '__doc__' in properties else None,
+        'description': textwrap.dedent(properties['__doc__']) if '__doc__' in properties else None,
         'implementation': klass,
         'objects': {
           'subtools': _subtools,
@@ -107,7 +126,7 @@ class Tool(object):
       self.tree[parent].append(self)
       return parser
 
-  def __init__(self, parser=None):
+  def __init__(self, parser=None, autorun=False):
 
     ''' This initializer method is called at the tip of the toolchain
         tree (composed of :py:class:`Tool` classes) to start the process
@@ -118,12 +137,15 @@ class Tool(object):
 
         :returns: ``None``, as this is an initializer method. '''
 
+    global _root_tool
+
     # lookup local config
     config = self.__metaclass__.parsers[self.__class__.__name__]
 
     if not parser:
       # start top-level argument parser
-      parser = argparse.ArgumentParser(prog=(self.name if hasattr(self, 'name') else self.__class__.__name__).lower(), description=__doc__)
+      parser = argparse.ArgumentParser(prog=(self.name if hasattr(self, 'name') else self.__class__.__name__).lower(), description=textwrap.dedent(self.__doc__.strip()))
+      if not _root_tool: _root_tool = parser
 
     self.parser = parser  # assign local parser
 
@@ -133,10 +155,12 @@ class Tool(object):
 
     # local subtools
     if config.get('objects', {}).get('subtools', []):
-      commands = parser.add_subparsers(help='bundled tools')
+      commands = parser.add_subparsers(dest='subcommand', title='bundled tools')
       for impl, callable in config.get('objects', {}).get('subtools', []):
-        subparser = callable(impl, commands)  # initialize each subtool
+        subparser = callable(_root_tool, impl, commands)  # initialize each subtool
         setattr(self, (impl.name if hasattr(impl, 'name') else impl.__name__).lower(), impl(subparser))
+
+    if autorun: self(_root_tool.parse_args())
 
   def __call__(self, arguments):
 
@@ -149,4 +173,13 @@ class Tool(object):
         :returns: Unix return code, suitable for passing directly
         to ``sys.exit()``. '''
 
-    return 0
+    try:
+      if hasattr(arguments, 'func'):
+        ## dispatch and return
+        return_value = arguments.func(arguments)
+
+    except Exception as e:
+      print "EXCEPTION HAPPENED"
+      raise
+
+    return 1 if not return_value else 0
