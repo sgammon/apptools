@@ -360,7 +360,7 @@ def devserver(root=None, interface='127.0.0.1', port=8080, label=None, services_
     httpd.serve_forever()
     return 0 if cli else True
 
-  except Exception:
+  except Exception as e:
     if not cli:
       raise
     print "Encountered exception: %s" % e

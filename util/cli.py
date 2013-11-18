@@ -192,8 +192,7 @@ class Tool(object):
         ## dispatch and return
         return_value = arguments.func(arguments)
 
-    except Exception as e:
-      print "EXCEPTION HAPPENED"
+    except Exception as exc:
       raise
 
     return 1 if not return_value else 0
