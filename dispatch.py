@@ -51,6 +51,7 @@ from apptools import core
 from apptools.util import runtools
 
 # new RPC version 2.0
+from apptools.rpc import mappers
 from apptools.rpc import dispatch
 
 if rule_builders:

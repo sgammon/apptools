@@ -102,9 +102,6 @@ try:
     from protorpc.webapp import forms
     from protorpc.webapp import service_handlers as handlers
 
-    # webapp2 imports
-    from webapp2_extras import protorpc as proto
-
 except ImportError as e:
 
     #
@@ -717,7 +714,7 @@ else:
 
     ## RemoteServiceHandlerFactory - responsible for creating and preparing remote service handlers, which dispatch a request to a service class.
     @platform.PlatformInjector
-    class RemoteServiceHandlerFactory(proto.ServiceHandlerFactory, ConfiguredClass):
+    class RemoteServiceHandlerFactory(handlers.ServiceHandlerFactory, ConfiguredClass):
 
         ''' Factory for preparing ServiceHandlers. '''
 
