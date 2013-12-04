@@ -177,6 +177,7 @@ class CoreAssetsAPI(CoreAPI):
         ''' Return a URL for an asset, according to the current configuration. '''
 
         global _asset_url_cache
+
         identifier = (handler.force_https_assets, handler.force_hostname, handler.force_absolute_assets, _type, name, module, prefix, version, minify, version_by_getvar)
         if identifier in _asset_url_cache:
             return _asset_url_cache[identifier]
@@ -210,6 +211,7 @@ class CoreAssetsAPI(CoreAPI):
                         if asset is False:
                             raise InvalidAssetEntry("Could not resolve asset '" + str(name) + "' under VALID module '" + str(module) + "'.")
 
+            print asset
             if asset is not None and isinstance(asset, dict):
 
                 # Start building asset URL

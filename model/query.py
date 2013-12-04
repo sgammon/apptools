@@ -542,7 +542,7 @@ class Filter(QueryComponent):
     GREATER_THAN_EQUAL_TO = GE = GREATER_THAN_EQUAL_TO
     CONTAINS = IN = CONTAINS
 
-    def __init__(self, prop, value, type=PROPERTY, operator=EQUALS):
+    def __init__(self, property, value, type=PROPERTY, operator=EQUALS):
 
         ''' Initialize this :py:class:`Filter`. '''
 

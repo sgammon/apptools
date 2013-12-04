@@ -18,12 +18,31 @@
 
 '''
 
+class Error(Exception): pass
 
-class AbstractConstructionFailure(NotImplementedError):
+
+class ModelException(Error):
+
+    def __init__(self, *context):
+
+        '''  '''
+
+        self.message = self.message % context
+
+    def __repr__(self):
+
+        '''  '''
+
+        return self.message
+
+    __str__ = __unicode__ = __repr__
+
+
+class AbstractConstructionFailure(ModelException, NotImplementedError):
     message = "Cannot directly instantiate abstract class `%s`."
 
 
-class AdapterException(RuntimeError):
+class AdapterException(ModelException, RuntimeError):
     pass
 
 
@@ -35,7 +54,7 @@ class InvalidExplicitAdapter(AdapterException):
     message = "Requested model adapter \"%s\" could not be found or is not supported in this environment."
 
 
-class InvalidKey(TypeError):
+class InvalidKey(ModelException, TypeError):
     message = "Cannot set model key to invalid type \"%s\" (for value \"%s\"). Expected `basestring`, `tuple` or `%s`."
 
 
@@ -43,31 +62,31 @@ class UndefinedKey(InvalidKey):
     message = "Could not operate on undefined key (value: \"%s\", kwargs: \"%s\")."
 
 
-class MultipleKeyValues(TypeError):
+class MultipleKeyValues(ModelException, TypeError):
     message = "Cannot merge multiple key values/formats in `%s._set_key`. (got: value(%s), formats(%s))."
 
 
-class MultipleKeyFormats(TypeError):
+class MultipleKeyFormats(ModelException, TypeError):
     message = "Cannot provide multiple formats to `_set_key` (got: \"%s\")."
 
 
-class PersistedKey(AttributeError):
+class PersistedKey(ModelException, AttributeError):
     message = "Cannot set property \"%s\" of an already-persisted key."
 
 
-class InvalidAttributeWrite(AttributeError):
+class InvalidAttributeWrite(ModelException, AttributeError):
     message = "Cannot %s property \"%s\" of model \"%s\" before instantiation."
 
 
-class InvalidKeyAttributeWrite(AttributeError):
+class InvalidKeyAttributeWrite(ModelException, AttributeError):
     message = "Cannot %s property \"%s\" of key \"%s\" before instantiation."
 
 
-class InvalidAttribute(AttributeError):
+class InvalidAttribute(ModelException, AttributeError):
     message = "Cannot %s nonexistent data property \"%s\" of model class \"%s\"."
 
 
-class InvalidItem(KeyError):
+class InvalidItem(ModelException, KeyError):
     message = "Cannot %s nonexistent data item \"%s\" of model class \"%s\"."
 
 
@@ -75,7 +94,7 @@ class KeySchemaMismatch(InvalidKey):
     message = "Key type \"%s\" takes a maximum of %s positional arguments to populate the format \"%s\"."
 
 
-class ValidationError(ValueError):
+class ValidationError(ModelException, ValueError):
     pass
 
 
