@@ -228,7 +228,7 @@ class ModelAdapter(object):
             :returns: The ``model`` it was handed (for chainability). '''
 
         if cls.config.get('debug', False):
-            cls.logging.info("Registered Model class: \"%s\"." % model)
+            cls.logging.debug("Registered Model class: \"%s\"." % model)
 
         cls.registry[model.kind()] = model
         return model
