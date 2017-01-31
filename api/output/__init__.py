@@ -2,27 +2,50 @@
 
 '''
 
-API: Output
+    apptools output API
 
-Responsible for the task of finding and compiling templates to be sent to the browser.
-Two levels of caching are implemented here - in-memory handler caching and memcache.
+    responsible for the task of finding and compiling templates to be sent to the browser.
+    two levels of caching are implemented here - in-memory handler caching and memcache.
 
-According to settings in the config.py, this module will attempt to load compiled
-template code from the handler first, memcache second, and at last resort will compile
-the template and store it in the cache.
+    according to settings in the config.py, this module will attempt to load compiled
+    template code from the handler first, memcache second, and at last resort will compile
+    the template and store it in the cache.
 
--sam (<sam@momentum.io>)
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
 
 '''
 
+
 ## Base Imports
 import os
+import time
 import base64
-import config
 import pprint
 import random
 import hashlib
 import webapp2
+import datetime
+
+try:
+    import config; _APPCONFIG = True
+except:
+    _APPCONFIG = False
+
+    # build fake config
+    class FakeConfig(object):
+        debug = True
+        config = {'debug': True}
+
+    config = FakeConfig()
+
 
 ## API Mixins
 from apptools.api import CoreAPI
@@ -30,6 +53,7 @@ from apptools.api import HandlerMixin
 
 ## Utils
 from apptools.util import json
+from apptools.util import AppToolsJSONEncoder
 
 ## Log + Exceptions
 from apptools.exceptions import AppException
@@ -43,9 +67,9 @@ from webapp2_extras import jinja2
 from jinja2 import FileSystemLoader as JFileSystemLoader
 from jinja2.exceptions import TemplateNotFound
 
-logging = AppToolsLogger('apptools.core', 'OutputAPI')
-
+## Globals
 t_data = {}
+logging = AppToolsLogger('apptools.core', 'OutputAPI')
 
 
 ## CoreOutputAPIException
@@ -63,23 +87,53 @@ class ModuleLoader(object):
 
     ''' Loads templates that have been compiled into Python modules. '''
 
+    has_source_access = False
+
+    @cached_property
+    def loaderConfig(self):
+
+        ''' Cached template loader configuration. '''
+
+        return config.config.get('apptools.project.output.template_loader')
+
     @cached_property
     def logging(self):
 
         ''' Log pipe. '''
 
         global logging
-        return logging.extend(name='ModuleLoader')
+        return logging.extend(name='ModuleLoader')._setcondition(self.loaderConfig.get('loaders', {}).get('logging', False))
 
     def __init__(self, templatemodule):
 
         ''' Loads a template from a module. '''
 
         self.modules = {}
-        self.logging.debug('Loading templatemodule: "%s".' % templatemodule)
+        self.logging.info('Loading templatemodule: "%s".' % templatemodule)
         self.templatemodule = templatemodule
 
-    def load(self, environment, filename, globals=None):
+    def prepare_template(self, environment, filename, tpl_vars, globals):
+
+        ''' Prepare a template to be returned after it has been loaded. '''
+
+        t = object.__new__(environment.template_class)
+        t.environment = environment
+        t.globals = globals
+        t.name = tpl_vars['name']
+        t.filename = filename
+        t.blocks = tpl_vars['blocks']
+
+        # render function and module
+        t.root_render_func = tpl_vars['root']
+        t._module = None
+
+        # debug and loader helpers
+        t._debug_info = tpl_vars['debug_info']
+        t._uptodate = lambda: True
+
+        return t
+
+    def load(self, environment, filename, globals=None, prepare=True):
 
         ''' Loads a pre-compiled template, stored as Python code in a template module. '''
 
@@ -95,27 +149,18 @@ class ModuleLoader(object):
                 # Store module to avoid unnecessary repeated imports.
                 self.modules[filename] = self.get_module(environment, filename)
 
-            tpl_vars = self.modules[filename].run(environment)
+            if prepare:
+                tpl_vars = self.modules[filename].run(environment)
 
-            t = object.__new__(environment.template_class)
-            t.environment = environment
-            t.globals = globals
-            t.name = tpl_vars['name']
-            t.filename = filename
-            t.blocks = tpl_vars['blocks']
-
-            # render function and module
-            t.root_render_func = tpl_vars['root']
-            t._module = None
-
-            # debug and loader helpers
-            t._debug_info = tpl_vars['debug_info']
-            t._uptodate = lambda: True
-
-            return t
         except Exception, e:
             self.logging.exception('Encountered exception during template module import: "%s".' % e)
             raise e
+
+        else:
+            if prepare:
+                return self.prepare_template(environment, filename, tpl_vars, globals)
+            else:
+                return self.modules[filename]
 
     def get_module(self, environment, template):
 
@@ -126,7 +171,7 @@ class ModuleLoader(object):
         prefix, obj = module_name.rsplit('.', 1)
 
         try:
-            self.logging.debug('Template module at path "%s" for template path "%s" was found and is valid.' % (module_name, template))
+            self.logging.info('Template module at path "%s" for template path "%s" was found and is valid.' % (module_name, template))
             return getattr(__import__(prefix, None, {'environment': environment}, [obj]), obj)
         except (ImportError, AttributeError):
             t = TemplateNotFound(template)
@@ -143,7 +188,7 @@ def get_tdata_from_fastcache(name, do_log):
     global t_data
     if name in t_data:
         if do_log:
-            logging.debug('OUTPUT_LOADER: Found bytecode in fastcache memory under key \'' + str(base64.b64encode(name)) + '\'.')
+            logging.info('OUTPUT_LOADER: Found bytecode in fastcache memory under key \'' + str(base64.b64encode(name)) + '\'.')
         return t_data[name]
     else:
         return None
@@ -156,7 +201,7 @@ def set_tdata_to_fastcache(name, data, do_log):
     global t_data
     t_data[name] = data
     if do_log:
-        logging.debug('OUTPUT_LOADER: Set template \'' + str(name) + '\' to fastcache memory.')
+        logging.info('OUTPUT_LOADER: Set template \'' + str(name) + '\' to fastcache memory.')
 
 
 # Memcache API loader
@@ -168,7 +213,7 @@ def get_tdata_from_memcache(name, do_log):
     data = _apibridge.memcache.get('Core//Output//Template-' + name)
     if data is not None:
         if do_log:
-            logging.debug('OUTPUT_LOADER: Found bytecode in memcache under key \'tdata-' + str(name) + '\'.')
+            logging.info('OUTPUT_LOADER: Found bytecode in memcache under key \'tdata-' + str(name) + '\'.')
         return data
     else:
         return None
@@ -181,7 +226,7 @@ def set_tdata_to_memcache(name, data, do_log):
     from apptools.core import _apibridge
     _apibridge.memcache.set('Core//Output//Template-' + name, data)
     if do_log:
-        logging.debug('OUTPUT_LOADER: Set template \'' + str(name) + '\' to memcache under key \'Core//Output//Template-' + str(name) + '\'.')
+        logging.info('OUTPUT_LOADER: Set template \'' + str(name) + '\' to memcache under key \'Core//Output//Template-' + str(name) + '\'.')
 
 
 ## CoreOutputLoader
@@ -190,10 +235,15 @@ class CoreOutputLoader(JFileSystemLoader):
 
     ''' Loads templates and automatically inserts bytecode caching logic for both fastcache (instance memory) and memcache. '''
 
+    has_source_access = True
+
     @cached_property
     def logging(self):
+
+        ''' Log pipe. '''
+
         global logging
-        return logging.extend(name='FileSystemLoader')
+        return logging.extend(name='FileSystemLoader')._setcondition(self.loaderConfig.get('loaders', {}).get('logging', False))
 
     @cached_property
     def devConfig(self):
@@ -292,6 +342,7 @@ class OutputMixin(HandlerMixin):
     minify = unicode
     _output_api = _api
     _response_headers = {}
+    json_encoder = AppToolsJSONEncoder
 
     # Cached access to Jinja2
     @cached_property
@@ -324,20 +375,23 @@ class OutputMixin(HandlerMixin):
         if 'X-AppFactory-Frontline' in self.request.headers:
             self._response_headers['X-Platform'] = self.request.headers.get('X-AppFactory-Frontline')
 
-        if config.debug:
-            self._response_headers.update({
-                'X-Debug': 'True',
-                'Cache-Control': self._outputConfig.get('headers', {}).get('Cache-Control', 'no-cache'),  # Stop caching of responses from Python, by default
-                'X-Powered-By': self._outputConfig.get('headers', {}).get('X-Powered-By', 'Google AppEngine/1.6.5 %s/%s' % (self._projectConfig['name'], '.'.join(map(str, [self._projectConfig['version']['major'], self._projectConfig['version']['minor'], self._projectConfig['version']['micro']])))),  # Indicate the SDK version
-                'X-UA-Compatible': self._outputConfig.get('headers', {}).get('X-UA-Compatible', 'IE=edge,chrome=1'),  # Enable compatibility with Chrome Frame, and force IE to render with the latest engine
-                'Access-Control-Allow-Origin': self._outputConfig.get('headers', {}).get('Access-Control-Allow-Origin', '*')  # Enable Cross Origin Resource Sharing (CORS)
-            })
-        else:
-            self._response_headers.update({
-                'Cache-Control': self._outputConfig.get('headers', {}).get('Cache-Control', 'private; max-age=600'),  # Stop caching of responses from Python, by default
-                'X-UA-Compatible': self._outputConfig.get('headers', {}).get('X-UA-Compatible', 'IE=edge,chrome=1'),  # Enable compatibility with Chrome Frame, and force IE to render with the latest engine
-                'Access-Control-Allow-Origin': self._outputConfig.get('headers', {}).get('Access-Control-Allow-Origin', '*')  # Enable Cross Origin Resource Sharing (CORS)
-            })
+        self._response_headers.update(filter(lambda x: x[1] is not None, {
+            'Cache-Control': self._outputConfig.get('headers', {}).get('Cache-Control', 'no-cache'),  # Stop caching of responses from Python, by default
+            'X-Powered-By': self._outputConfig.get('headers', {}).get('X-Powered-By', ' '.join(filter(lambda x: x is not None, [
+                'Google AppEngine/1.7.4',
+                'AppFactory/%s' % self.appfactory.version if hasattr(self, 'appfactory') else None,
+                '%s/%s' % (self._projectConfig['name'], '.'.join(map(str, [
+                    self._projectConfig.get('version', {}).get('major', 0),
+                    self._projectConfig.get('version', {}).get('minor ', 0),
+                    self._projectConfig.get('version', {}).get('micro', 1)
+                ])))
+            ]))),
+            'X-UA-Compatible': self._outputConfig.get('headers', {}).get('X-UA-Compatible', 'IE=edge,chrome=1'),
+            'Access-Control-Allow-Origin': self._outputConfig.get('headers', {}).get('Access-Control-Allow-Origin', None),
+            'X-Debug': 'True' if config.debug else None,
+            'Vary': 'Accept,Cookie'
+        }.items()))
+
         return self._response_headers
 
     # Base template context - available to every template, including macros (injected into Jinja2 globals)
@@ -367,6 +421,7 @@ class OutputMixin(HandlerMixin):
 
             'util': {  # Utility stuff
 
+                'handler': self,
                 'logging': self.logging.extend('apptools.templates', 'Context'),  # Handy logging bridge
 
                 'request': {  # Request Object
@@ -403,7 +458,10 @@ class OutputMixin(HandlerMixin):
                 'converters': {  # Converters
 
                     'json': json,  # SimpleJSON or Py2.7 JSON
-                    'hashlib': hashlib,
+                    'time': time,  # Builtin time tools
+                    'base64': base64,  # Utilities for B64 encoding/decoding
+                    'hashlib': hashlib,  # Hash utilities (MD5/SHA etc)
+                    'datetime': datetime,  # Builtin date/time tools
                     'timesince': self.util.timesince,  # Util library for "15 minutes ago"-type text from datetimes
                     'byteconvert': self.util.byteconvert  # Util library for formatting data storage amounts
 
@@ -413,7 +471,8 @@ class OutputMixin(HandlerMixin):
 
                     'random': random.random,
                     'randint': random.randint,
-                    'randrange': random.randrange
+                    'randrange': random.randrange,
+                    'choice': random.choice
 
                 },
 
@@ -445,7 +504,7 @@ class OutputMixin(HandlerMixin):
                 'debug': config.debug,  # dev_appserver/production flag (if true, you're running on localhost)
                 'version':  ''.join(map(lambda x: str(x), [self._projectConfig['version']['major'], '.', self._projectConfig['version']['minor'], ' ', self._projectConfig['version']['release']]))
 
-            }
+            },
         })
 
     # Cached access to the current template environment
@@ -464,7 +523,11 @@ class OutputMixin(HandlerMixin):
             ## Consider context injectors
             for injector in self.context_injectors:
                 try:
-                    newcontext = injector(self, context)
+                    if isinstance(injector, (list, tuple)):
+                        for sub_i in injector:
+                            newcontext = sub_i(self, context)
+                    else:
+                        newcontext = injector(self, context)
                 except Exception, e:
                     self.logging.warning('Context injector "' + str(injector) + '" encountered an unhandled exception. ' + str(e))
                     if config.debug:
@@ -514,8 +577,11 @@ class OutputMixin(HandlerMixin):
 
         # Inject python builtins as globals, so they are available to macros
 
+        from apptools.util import timesince, byteconvert
+
         # **Ever wanted your favorite Python builtins available in your template?** Look ma!
         j2cfg['globals'] = self.baseContext
+        j2cfg['filters'] = {'json': lambda f: self.json_encoder().encode(f), 'timesince': timesince.timesince, 'humanize': byteconvert.humanize_bytes}
 
         environment = jinja2.Jinja2(app, config=j2cfg)  # Make & return template environment
         return environment
@@ -525,26 +591,36 @@ class OutputMixin(HandlerMixin):
 
         ''' Minify rendered template output. Override for custom minification function or monkeypatch to 'unicode' to disable completely. '''
 
-        import slimmer
+        if content_type != 'application/json':
+            minify = unicode  # default to unicode
+        else:
+            minify = basestring
 
-        minify = unicode  # default to unicode
+        try:
+            import slimmer
 
-        # Read minification config + setup minification handler
-        if self._outputConfig.get('minify', False) is True:
-            if content_type == 'text/html':
-                minify = slimmer.html_slimmer
-                self.logging.debug('Minifying with HTMLSlimmer...')
-            elif content_type == 'text/javascript':
-                from slimmer.js_function_slimmer import slim as slimjs
-                minify = slimjs
-                self.logging.debug('Minifying with SlimJS...')
-            elif content_type == 'text/css':
-                minify = slimmer.css_slimmer
-                self.logging.debug('Minifying with SlimCSS...')
-            else:
-                self.logging.debug('No minification enabled.')
+        except ImportError as e:
+            self.logging.debug('Module `slimmer` not found. Skipping output minification.')
+            return minify(rendered_template)
 
-        return minify(rendered_template)
+        else:
+
+            # Read minification config + setup minification handler
+            if self._outputConfig.get('minify', False) is True:
+                if content_type == 'text/html':
+                    minify = slimmer.html_slimmer
+                    self.logging.debug('Minifying with HTMLSlimmer...')
+                elif content_type == 'text/javascript':
+                    from slimmer.js_function_slimmer import slim as slimjs
+                    minify = slimjs
+                    self.logging.debug('Minifying with SlimJS...')
+                elif content_type == 'text/css':
+                    minify = slimmer.css_slimmer
+                    self.logging.debug('Minifying with SlimCSS...')
+                else:
+                    self.logging.debug('No minification enabled.')
+
+            return minify(rendered_template)
 
     # Render a template, given a context, with Jinja2
     def render(self, path, context={}, elements={}, content_type='text/html', headers={}, **kwargs):

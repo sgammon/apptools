@@ -2,18 +2,39 @@
 
 '''
 
-Platform: Generic WSGI
+    apptools platform: generic WSGI
 
-Base platform functionality that is enabled in every supported environment.
-Provides utils and shortcuts that should always be available in AppTools.
+    base platform functionality that is enabled in every supported environment.
+    Provides utils and shortcuts that should always be available in AppTools.
 
--sam (<sam@momentum.io>)
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
 
 '''
 
-# Base Imports
-import config
+
+# 3rd party
 import webapp2
+
+# Appconfig
+try:
+    import config; _APPCONFIG = True
+except ImportError:
+    _APPCONFIG = False
+
+    # build fake config
+    class FakeConfig(object):
+        debug = True
+        config = {'debug': True}
+
+    config = FakeConfig()
 
 # Util Imports
 from apptools.util import _loadModule
@@ -129,9 +150,7 @@ class GenericWSGI(Platform):
         return [
 
             # Lib, Ext & Util
-            ('ext', self.ext), ('util', self.util),
-
-            # Services, Messages & Models
+            ('ext', self.ext), ('util', self.util)
 
         ]
 
@@ -142,7 +161,7 @@ class GenericWSGI(Platform):
 
         return [
             # Main Config
-            ('config', self.config), ('_sysConfig', self._sysConfig),
+            ('_sysConfig', self._sysConfig),
 
             # Services Config
             ('_globalServicesConfig', self._globalServicesConfig), ('_servicesConfig', self._servicesConfig),

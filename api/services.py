@@ -2,19 +2,28 @@
 
 '''
 
-API: Services
+    apptools API: services
 
-Bridges the AppTools service layer to base classes via `ServicesMixin`.
-This adds the methods + properties:
+    bridges the AppTools service layer to base classes via `ServicesMixin`.
+    this adds the methods + properties:
 
-    - _servicesConfig: Shortcut to project services config.
-    - _globalServicesConfig: Shortcut to global Service Layer settings.
-    - make_services_manifest: Generate a datastructure of installed + enabled services, suitable for
-        mapping to URLs or printing to a template.
+        - _servicesConfig: Shortcut to project services config.
+        - _globalServicesConfig: Shortcut to global Service Layer settings.
+        - make_services_manifest: Generate a datastructure of installed + enabled services, suitable for
+            mapping to URLs or printing to a template.
 
--sam (<sam@momentum.io>)
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
 
 '''
+
 
 # API Imports
 from apptools.api import CoreAPI
@@ -36,6 +45,7 @@ class CoreServicesAPI(CoreAPI):
 
 _api = CoreServicesAPI()
 
+
 ## ServicesMixin
 # Used as an addon class to base classes to bridge in Service Layer-related functionality.
 class ServicesMixin(HandlerMixin):
@@ -48,6 +58,8 @@ class ServicesMixin(HandlerMixin):
 
         ''' Generate a struct we can pass to the page in JSON that describes API services. '''
 
+        from apptools import rpc
+
         ## Generate list of services to expose to user
         svcs = []
         opts = {}
@@ -56,7 +68,14 @@ class ServicesMixin(HandlerMixin):
 
         if sdebug:
             self.logging.dev('Generating services manifest...')
-        for name, config in self._servicesConfig['services'].items():
+
+        if len(self._servicesConfig.get('services', [])):
+            service_specs = self._servicesConfig['services']
+
+        else:
+            service_specs = rpc._project_services['services']
+
+        for name, config in service_specs.items():
 
             if sdebug:
                 self.logging.dev('Considering API "%s"...' % name)
@@ -64,23 +83,24 @@ class ServicesMixin(HandlerMixin):
 
                 if sdebug:
                     self.logging.dev('API is enabled.')
-                security_profile = self._globalServicesConfig['middleware_config']['security']['profiles'].get(config['config']['security'], None)
 
-                caching_profile = self._globalServicesConfig['middleware_config']['caching']['profiles'].get(config['config']['caching'], None)
+                security_profile = self._globalServicesConfig.get('middleware_config', {}).get('security', {}).get('profiles', {}).get(config.get('config', {}).get('security', '__null__'), {})
+
+                caching_profile = self._globalServicesConfig.get('middleware_config', {}).get('caching', {}).get('profiles', {}).get(config.get('config', {}).get('caching', {}))
 
                 if security_profile is None:
 
                     ## Pull default profile if none is specified
-                    security_profile = self._globalServicesConfig['middleware_config']['security']['profiles'][self._globalServicesConfig['defaults']['service']['config']['security']]
+                    security_profile = self._globalServicesConfig.get('middleware_config', {}).get('security', {}).get('profiles', {}).get(self._globalServicesConfig.get('defaults', {}).get('service', {}).get('config', {}).get('security', {}))
 
                 if caching_profile is None:
-                    caching_profile = self._globalServicesConfig['middleware_config']['caching']['profiles'][self._globalServicesConfig['defaults']['service']['config']['caching']]
+                    caching_profile = self._globalServicesConfig.get('middleware_config', {}).get('caching', {}).get('profiles', {}).get(self._globalServicesConfig.get('defaults', {}).get('service', {}).get('config', {}).get('caching', {}))
 
                 ## Add caching to local opts
-                opts['caching'] = caching_profile['activate'].get('local', False)
+                opts['caching'] = (caching_profile or {}).get('activate', {}).get('local', False)
 
                 ## Grab prefix
-                service_action = self._servicesConfig['config']['url_prefix'].split('/')
+                service_action = self._servicesConfig.get('config', {}).get('url_prefix', '/_api/rpc').split('/')
 
                 ## Add service name
                 service_action.append(name)
@@ -89,7 +109,7 @@ class ServicesMixin(HandlerMixin):
                 service_action_url = '/'.join(service_action)
 
                 ## Expose depending on security profile
-                if security_profile['expose'] == 'all':
+                if security_profile.get('expose', 'all') == 'all':
                     if sdebug:
                         self.logging.dev('API is exposed publicly.')
                     svcs.append((name, service_action_url, config, opts))

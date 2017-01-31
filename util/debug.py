@@ -2,21 +2,37 @@
 
 '''
 
-Util: Debug
+    apptools util: debug
 
-Holds service middleware, that can hook into the pre- or post- remote method execution
-sequence.
+    holds logging and debug tools.
 
--sam (<sam@momentum.io>)
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
 
 '''
 
+
 # Base Imports
-import config
+import os
 import logging
+import inspect
+
+# Logging Imports
+from logging import handlers
 
 # Exceptions
 from apptools.exceptions import AppException
+
+# Debug mode
+debug = True
+#debug = any([os.environ.get('SERVER_SOFTWARE', 'Default').startswith(x) for x in frozenset(('Develop', 'Sandbox'))])
 
 # Datastructures
 from apptools.util.datastructures import DictProxy
@@ -30,17 +46,23 @@ try:
 except ImportError:
     _logbook_support = False
 
-    class AppToolsLoggingEngine(object):
+    class AppToolsLoggingEngine(logging.getLoggerClass()):
+
         ''' Simple, non-Logbook AppTools logging backend. '''
+
         pass
 else:
     _logbook_support = True
 
     class AppToolsLoggingEngine(logbook.Logger):
+
         ''' Logbook-powered AppTools logging backend. '''
+
         pass
 
 _loggers = WritableObjectProxy({})
+_appengine = any([os.environ.get('SERVER_SOFTWARE', 'Generic/1.0').startswith(y) for y in frozenset(['Google', 'Dev'])])
+_root_logger = None
 
 
 ## LoggingException
@@ -57,22 +79,27 @@ class AppToolsLogger(AppToolsLoggingEngine):
     ''' Logging controller for outputting debug information from different levels of AppTools. '''
 
     # Logging channel config
-    channel_name = '_default_'
-    channel_path = 'apptools.default'
+    name = 'apptools'
+    channel_name = '_root_'
+    channel_path = 'apptools'
     channel_parent = None
 
     # Event/context config
     bubble = False
+    filters = []
+    handlers = []
+    disabled = False
+    propagate = False
     context_fn = None
-    conditional = None
+    conditional = True
     logbook_support = False
 
     provider = None
     _stdlib_severity_map = DictProxy({
 
-        'dev': logging.debug,
-        'debug': logging.debug,
-        'verbose': logging.debug,
+        'dev': logging.info,
+        'debug': logging.info,
+        'verbose': logging.info,
         'info': logging.info,
         'warning': logging.warning,
         'error': logging.error,
@@ -80,11 +107,24 @@ class AppToolsLogger(AppToolsLoggingEngine):
 
     })
 
-    def __new__(cls, path='apptools.default', name='_default_', parent_channel=None, bubble=False, ctx=None):
+    def __new__(cls, path='apptools', name='_root_', parent_channel=None, bubble=False, ctx=None):
 
         ''' Create a new logger channel, or return it if it already exists. '''
 
         global _loggers
+        global _root_logger
+
+        from apptools.util import appconfig
+
+        if debug:
+            default_handler = logging.StreamHandler()
+        else:
+            # Quick fix/patch to allow initialization here or in config
+            _syslog_config = dict([(k, v) for k, v in appconfig._SYSLOG_CONFIG.items() if k not in ('class', 'level')])
+            default_handler = handlers.SysLogHandler(**_syslog_config)
+
+        if cls.handlers == []:
+            cls.handlers.append(default_handler)
 
         if cls.__name__ == 'AppToolsLogController':
             logging.warning('AppToolsLogController is deprecated. Check logger path/name: (%s, %s).' % path, name)
@@ -93,9 +133,19 @@ class AppToolsLogger(AppToolsLoggingEngine):
                 logger_k = path, name
             else:
                 logger_k = (path,)
+
+            ## check for cached logger object
             if logger_k in _loggers.keys():
                 return _loggers[logger_k]
             else:
+                ## splice in root as parent if unspecified
+                if not parent_channel and parent_channel != False:
+                    parent_channel = _root_logger
+
+                ## explicit flag for parent-less channel
+                elif parent_channel == False:
+                    parent_channel = None
+
                 return super(AppToolsLogger, cls).__new__(cls, path, name, parent_channel, bubble, ctx)
 
     def __init__(self, path='apptools.default', name='_default_', parent_channel=None, bubble=False, ctx=None):
@@ -147,7 +197,7 @@ class AppToolsLogger(AppToolsLoggingEngine):
             else:
                 raise LoggingException('Cannot extend logging channel without appending a name or a path.')
         except LoggingException, e:
-            if config.debug:
+            if debug:
                 raise e
             else:
                 logging.warning('LoggingException encountered: "%s".' % e)
@@ -167,33 +217,42 @@ class AppToolsLogger(AppToolsLoggingEngine):
         ''' Output an AppTools log message. '''
 
         if self.conditional:
+        
             out_message = []
             if module is not None:
                 out_message.append('[' + str(module) + ']')
             out_message.append(message)
-            return self.provider.get(severity)(' '.join(out_message))
+
+            if _logbook_support:
+                record = self.make_record_and_handle(getattr(logbook, severity.upper()), ''.join(out_message), [], {}, None, {})
+            else:
+                if _appengine:
+                    getattr(self._stdlib_severity_map, severity)(''.join(out_message))
+                else:
+                    # gather callee info
+                    frame = inspect.getframeinfo(inspect.currentframe().f_back)
+                    record = self.makeRecord(self.name, getattr(logging, severity.upper()), frame.filename, frame.lineno, ''.join(out_message), {}, None, frame.function)
+                    self.handle(record)
+        return
 
     def dev(self, message, module=None):
 
         ''' `Development` severity. '''
 
-        if config.debug:
+        if debug:
             return self._send_log(message, module, 'info')
 
     def debug(self, message, module=None):
 
         ''' `Debug` severity. '''
 
-        if config.debug:
-            return self._send_log(message, module, 'info')
-        else:
-            return self._send_log(message, module, 'debug')
+        return self._send_log(message, module, 'info')
 
     def verbose(self, message, module=None):
 
         ''' `Verbose` severity. '''
 
-        if config.debug:
+        if debug:
             return self._send_log(message, module, 'info')
         else:
             return self._send_log(message, module, 'debug')
@@ -228,4 +287,16 @@ class AppToolsLogger(AppToolsLoggingEngine):
 
         return self._send_log(message, module, 'critical')
 
+    @staticmethod
+    def echo(*args):
+
+        ''' Simply print the given arguments. Used for debugging. '''
+
+        print args
+
+
+## alias for backwards compatibility
 AppToolsLogController = AppToolsLogger
+
+## create root logger
+_root_logger = AppToolsLogger(path='apptools', name='', parent_channel=False)

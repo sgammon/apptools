@@ -2,22 +2,46 @@
 
 '''
 
-API: Assets
+    apptools API: assets
 
-Responsible for reading the assets config (see config/assets.py) and outputting asset
-URLs based on the config & resource requested. There is support for switching the
-absolute URL base to a CDN hostname, or multiple CDN hostnames. There's also support
-for cachebusting via key value pairs, and switching to minified assets.
+    responsible for reading the assets config (see config/assets.py) and outputting asset
+    URLs based on the config & resource requested. There is support for switching the
+    absolute URL base to a CDN hostname, or multiple CDN hostnames. There's also support
+    for cachebusting via key value pairs, and switching to minified assets.
 
--sam (<sam@momentum.io>)
+    :author: Sam Gammon <sam@momentum.io>
+    :copyright: (c) momentum labs, 2013
+    :license: The inspection, use, distribution, modification or implementation
+              of this source code is governed by a private license - all rights
+              are reserved by the Authors (collectively, "momentum labs, ltd")
+              and held under relevant California and US Federal Copyright laws.
+              For full details, see ``LICENSE.md`` at the root of this project.
+              Continued inspection of this source code demands agreement with
+              the included license and explicitly means acceptance to these terms.
 
 '''
 
+
 ## Base Imports
 import random
-import config as cfg
-from config import config
 from webapp2 import cached_property
+
+## Appconfig
+try:
+    import config as cfg
+    from config import config
+    _APPCONFIG = True
+except ImportError:
+    _APPCONFIG = False
+
+    # build fake config
+    class FakeConfig(object):
+
+        debug = True
+        config = {'debug': True}
+
+    cfg = FakeConfig()
+    config = cfg.config
 
 ## AppTools Imports
 from apptools.api import CoreAPI
@@ -38,29 +62,17 @@ _asset_url_cache = {}
 
 ## AssetException
 # Top level exception for all Asset API-related exceptions.
-class AssetException(CoreOutputAPIException):
-
-    ''' Top-level exception for all Asset API-related exceptions. '''
-
-    pass
+class AssetException(CoreOutputAPIException): ''' Top-level exception for all Asset API-related exceptions. '''
 
 
 ## InvalidAssetType
 # Raised when an asset type is invalid.
-class InvalidAssetType(AssetException):
-
-    ''' Raised when a given asset type is not recognized. '''
-
-    pass
+class InvalidAssetType(AssetException): ''' Raised when a given asset type is not recognized. '''
 
 
 ## InvalidAssetEntry
 # Raised when an asset entry is invalid.
-class InvalidAssetEntry(AssetException):
-
-    ''' Raised when a given asset type is valid, but an asset could not be found at the given identifier. '''
-
-    pass
+class InvalidAssetEntry(AssetException): ''' Raised when a given asset type is valid, but an asset could not be found at the given identifier. '''
 
 
 ## CoreAssetsAPI
@@ -126,9 +138,9 @@ class CoreAssetsAPI(CoreAPI):
         ''' Return a simple URL for an image. (Note: does not use assets config - images are not registered assets) '''
 
         global _img_url_cache
-
-        if (path, name) in _img_url_cache:
-            return _img_url_cache[(path, name)]
+        identifier = (path, name, handler.force_https_assets, handler.force_absolute_assets, handler.force_hostname)
+        if identifier in _img_url_cache:
+            return _img_url_cache[identifier]
         else:
             url_fragments = []
             if self._OutputConfig.get('assets', {}).get('serving_mode', 'local') == 'cdn':
@@ -136,12 +148,23 @@ class CoreAssetsAPI(CoreAPI):
                     url_fragments.append('https://')
                 else:
                     url_fragments.append('//')
-                if isinstance(self._OutputConfig['assets']['cdn_prefix'], list):
+                if hasattr(handler, 'force_hostname') and getattr(handler, 'force_hostname'):
+                    cdnprefix = getattr(handler, 'force_hostname')
+                elif isinstance(self._OutputConfig['assets']['cdn_prefix'], list):
                     cdnprefix = random.choice(self._OutputConfig['assets']['cdn_prefix'])
                 else:
                     cdnprefix = self._OutputConfig['assets']['cdn_prefix']
                 url_fragments.append([cdnprefix, 'assets', 'img', 'static'] + [i for i in path.split('/')] + [''])
             else:
+                if hasattr(handler, 'force_hostname') and getattr(handler, 'force_hostname'):
+                    if hasattr(handler, 'force_https_assets') and getattr(handler, 'force_https_assets') is True:
+                        url_fragments.append('https://')
+                    else:
+                        if handler.request.environ.get('HTTP_SCHEME', 'http').lower() == 'https':
+                            url_fragments.append('https://')
+                        else:
+                            url_fragments.append('http://')
+                    url_fragments.append(handler.force_hostname)
                 url_fragments.append('/')
                 url_fragments.append(['assets', 'img', 'static'] + [i for i in path.split('/')] + [''])
 
@@ -154,7 +177,8 @@ class CoreAssetsAPI(CoreAPI):
         ''' Return a URL for an asset, according to the current configuration. '''
 
         global _asset_url_cache
-        identifier = (handler.force_https_assets, _type, name, module, prefix, version, minify, version_by_getvar)
+
+        identifier = (handler.force_https_assets, handler.force_hostname, handler.force_absolute_assets, _type, name, module, prefix, version, minify, version_by_getvar)
         if identifier in _asset_url_cache:
             return _asset_url_cache[identifier]
         else:
@@ -187,15 +211,13 @@ class CoreAssetsAPI(CoreAPI):
                         if asset is False:
                             raise InvalidAssetEntry("Could not resolve asset '" + str(name) + "' under VALID module '" + str(module) + "'.")
 
+            print asset
             if asset is not None and isinstance(asset, dict):
 
                 # Start building asset URL
                 filename = []
                 query_string = {}
-                if self._OutputConfig['assets']['serving_mode'] == 'local':
-                    asset_url = ['assets', _type, prefix, module_path, ('.', filename)]
-                else:
-                    asset_url = ['assets', _type, prefix, module_path, ('.', filename)]
+                asset_url = ['assets', _type, prefix, module_path, ('.', filename)]
                 minify = minify or self._OutputConfig['assets'].get('minified', False)
 
                 ## 1: Consider absolute assets
@@ -260,7 +282,8 @@ class CoreAssetsAPI(CoreAPI):
                         ### Minification in no-path mode is a boolean (appends .min)
                         if minify and 'min' in asset and isinstance(asset['min'], bool):
                             query_string['m'] = '1'
-                            filename.append('min')
+                            if _type not in frozenset(['style', 'css']):
+                                filename.append('min')
 
                         ### Consider version
                         if version is not None or 'version' in asset:
@@ -303,9 +326,7 @@ class CoreAssetsAPI(CoreAPI):
 
                     ## 2.4: Build relative asset URL
                     if len(query_string) > 0 and self._OutputConfig['assets']['serving_mode'] != 'cdn':
-
                         compiled_url = reduce(lambda x, y: x + y, ['/', '/'.join(map(lambda x: isinstance(x, tuple) and x[0].join(x[1]) or x, filter(lambda x: x not in [True, False, None], asset_url))), '?', '&'.join([str(k) + '=' + str(v) for k, v in query_string.items()])])
-
                     else:
                         compiled_url = reduce(lambda x, y: x + y, ['/', '/'.join(map(lambda x: isinstance(x, tuple) and x[0].join(x[1]) or x, filter(lambda x: x not in [True, False, None], asset_url)))])
 
@@ -334,7 +355,6 @@ class CoreAssetsAPI(CoreAPI):
                                     return ''.join(['https://', cdnprefix] + [compiled_url])
                                 else:
                                     return ''.join(['//', cdnprefix] + [compiled_url])
-
                         return compiled_url
 
             else:
@@ -354,29 +374,45 @@ class AssetsMixin(HandlerMixin):
     ''' Bridge the Core Assets API to methods on a handler. '''
 
     _assets_api = _api
-    force_https_assets = False
-    force_absolute_assets = False
+    _gathered_assets = []
+    _gathered_asset_lookup = {}
+
+    def _record_linked_asset(self, type, ref, priority=None):
+
+        ''' Record a dependent asset for the requested resource in the _gathered_assets list. '''
+
+        if type is not None and ref is not None:
+            if ref in self._gathered_asset_lookup.get('seen', set([])):
+                return ref
+            else:
+                asset_id = (type, ref, priority)
+                self._gathered_assets.append(asset_id)
+                if self._gathered_asset_lookup.get('seen') is None:
+                    self._gathered_asset_lookup['seen'] = set([])
+                self._gathered_asset_lookup['seen'].add(ref)
+                self._gathered_asset_lookup[ref] = self._gathered_assets.index(asset_id)
+        return ref
 
     def get_img_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.img_url(self, *args, **kwargs)
+        return self._record_linked_asset('image', self._assets_api.img_url(self, *args, **kwargs))
 
     def get_style_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.style_url(self, *args, **kwargs)
+        return self._record_linked_asset('style', self._assets_api.style_url(self, *args, **kwargs))
 
     def get_script_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.script_url(self, *args, **kwargs)
+        return self._record_linked_asset('script', self._assets_api.script_url(self, *args, **kwargs))
 
     def get_asset(self, *args, **kwargs):
 
         ''' Proxy in the current handler. '''
 
-        return self._assets_api.asset_url(self, *args, **kwargs)
+        return self._record_linked_asset('unknown', self._assets_api.asset_url(self, *args, **kwargs))
